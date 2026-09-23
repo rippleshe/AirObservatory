@@ -1,0 +1,43 @@
+[project]
+name = "air-observatory"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "httpx>=0.27",
+  "pydantic-settings>=2.6",
+  "uvicorn[standard]>=0.30"
+]
+
+[project.optional-dependencies]
+analysis = [
+  "numpy>=2.0",
+  "pandas>=2.2",
+  "scikit-learn>=1.5"
+]
+ml = [
+  "numpy>=2.0",
+  "pandas>=2.2",
+  "scikit-learn>=1.5",
+  "torch>=2.4",
+  "xgboost>=2.1"
+]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.8"
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

@@ -1,0 +1,29 @@
+{
+  "name": "air-observatory-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vue-tsc -b && vite build",
+    "api:types": "openapi-typescript http://127.0.0.1:8110/openapi.json -o src/api/schema.d.ts"
+  },
+  "dependencies": {
+    "@tanstack/vue-query": "^5.90.0",
+    "echarts": "^6.0.0",
+    "lucide-vue-next": "^0.544.0",
+    "openapi-fetch": "^0.14.0",
+    "pinia": "^3.0.3",
+    "vue": "^3.5.21",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "openapi-typescript": "^7.9.1",
+    "playwright-core": "^1.63.0",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.7",
+    "vue-tsc": "^3.0.8"
+  }
+}

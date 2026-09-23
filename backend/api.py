@@ -1,0 +1,121 @@
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query
+
+from .schemas import (
+    DataKind,
+    ForecastResponse,
+    LocationSummary,
+    Metric,
+    ModelMetricsResponse,
+    OverviewResponse,
+    SeriesResponse,
+    SnapshotResponse,
+    StatusResponse,
+    SystemResponse,
+    TrainingReadinessResponse,
+)
+from .services import (
+    get_forecast,
+    get_locations,
+    get_model_metrics,
+    get_overview,
+    get_series,
+    get_snapshot,
+    get_status,
+    get_system_state,
+    get_training_readiness,
+)
+
+router = APIRouter(prefix="/api")
+
+
+def _bad_request(exc: ValueError) -> HTTPException:
+    return HTTPException(status_code=400, detail=str(exc))
+
+
+def _not_found(exc: LookupError) -> HTTPException:
+    return HTTPException(status_code=404, detail=str(exc))
+
+
+@router.get("/status", response_model=StatusResponse)
+def status() -> StatusResponse:
+    return get_status()
+
+
+@router.get("/overview", response_model=OverviewResponse)
+def overview(
+    metric: Annotated[Metric, Query()] = "pm25",
+    data_kind: Annotated[DataKind, Query()] = "model_analysis",
+) -> OverviewResponse:
+    try:
+        return get_overview(metric, data_kind)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.get("/locations/{location_id}/snapshot", response_model=SnapshotResponse)
+def snapshot(location_id: int) -> SnapshotResponse:
+    try:
+        return get_snapshot(location_id)
+    except LookupError as exc:
+        raise _not_found(exc) from exc
+
+
+@router.get("/locations/{location_id}/series", response_model=SeriesResponse)
+def series(
+    location_id: int,
+    variable: Annotated[Metric, Query()] = "pm25",
+    data_kind: Annotated[DataKind, Query()] = "model_analysis",
+    hours: Annotated[int, Query(ge=1, le=24 * 365)] = 48,
+) -> SeriesResponse:
+    try:
+        return get_series(location_id, variable, data_kind, hours)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+    except LookupError as exc:
+        raise _not_found(exc) from exc
+
+
+@router.get("/locations/{location_id}/forecast", response_model=ForecastResponse)
+def forecast(
+    location_id: int,
+    variable: Annotated[Metric, Query()] = "pm25",
+) -> ForecastResponse:
+    try:
+        return get_forecast(location_id, variable)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+    except LookupError as exc:
+        raise _not_found(exc) from exc
+
+@router.get("/models/{location_id}/metrics", response_model=ModelMetricsResponse)
+def model_metrics(location_id: int) -> ModelMetricsResponse:
+    try:
+        return get_model_metrics(location_id)
+    except LookupError as exc:
+        raise _not_found(exc) from exc
+
+
+@router.get(
+    "/models/{location_id}/readiness",
+    response_model=TrainingReadinessResponse,
+)
+def training_readiness(location_id: int) -> TrainingReadinessResponse:
+    try:
+        return get_training_readiness(location_id)
+    except (LookupError, ValueError) as exc:
+        raise _not_found(LookupError(str(exc))) from exc
+
+
+@router.get("/system", response_model=SystemResponse)
+def system_state(
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> SystemResponse:
+    return get_system_state(limit)
+
+@router.get("/locations", response_model=list[LocationSummary])
+def locations() -> list[LocationSummary]:
+    return get_locations()

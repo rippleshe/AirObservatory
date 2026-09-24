@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     http_timeout_seconds: float = Field(default=30.0, ge=5.0, le=120.0)
     cams_refresh_seconds: int = Field(default=900, ge=300)
     openaq_refresh_seconds: int = Field(default=300, ge=300)
+    weather_refresh_seconds: int = Field(default=21_600, ge=3_600)
     forecast_hours: int = Field(default=24, ge=1, le=120)
     openaq_radius_m: int = Field(default=25_000, ge=1_000, le=25_000)
     openaq_api_key: SecretStr | None = Field(

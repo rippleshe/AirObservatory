@@ -21,6 +21,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/overview/national": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** National Overview */
+        get: operations["national_overview_api_overview_national_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analysis/city-fingerprint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** City Fingerprint */
+        get: operations["city_fingerprint_api_analysis_city_fingerprint_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/overview": {
         parameters: {
             query?: never;
@@ -30,6 +64,57 @@ export interface paths {
         };
         /** Overview */
         get: operations["overview_api_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/locations/{location_id}/coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Coverage */
+        get: operations["coverage_api_locations__location_id__coverage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/locations/{location_id}/backtest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Backtest */
+        get: operations["backtest_api_locations__location_id__backtest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/locations/{location_id}/structure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** City Structure */
+        get: operations["city_structure_api_locations__location_id__structure_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -227,6 +312,253 @@ export interface components {
              */
             is_authoritative: boolean;
         };
+        /** AnalysisArtifactSummary */
+        AnalysisArtifactSummary: {
+            /** Run Id */
+            run_id: string;
+            /** Analysis Type */
+            analysis_type: string;
+            /** Version */
+            version: string;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Status */
+            status: string;
+        };
+        /** BacktestResponse */
+        BacktestResponse: {
+            /** Location Id */
+            location_id: number;
+            /** City */
+            city: string;
+            /** Target */
+            target: string;
+            /** Unit */
+            unit: string;
+            /** Metrics */
+            metrics: components["schemas"]["ModelMetric"][];
+            /** Samples */
+            samples: components["schemas"]["BacktestSample"][];
+        };
+        /** BacktestSample */
+        BacktestSample: {
+            /** Model Name */
+            model_name: string;
+            /** Model Revision */
+            model_revision: string;
+            /**
+             * Target At
+             * Format: date-time
+             */
+            target_at: string;
+            /** Horizon Hours */
+            horizon_hours: number;
+            /** Predicted Value */
+            predicted_value: number;
+            /** Observed Value */
+            observed_value: number;
+            /** Error */
+            error: number;
+            /** Absolute Error */
+            absolute_error: number;
+        };
+        /** CityFingerprintMeta */
+        CityFingerprintMeta: {
+            /** Run Id */
+            run_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+            /** City Count */
+            city_count: number;
+            /** Sample Hours Min */
+            sample_hours_min: number;
+            /** Sample Hours Max */
+            sample_hours_max: number;
+            /** Features */
+            features: string[];
+            /** Standardization */
+            standardization: string;
+            /** Local Structure Warning */
+            local_structure_warning: string;
+            /** Cluster Method */
+            cluster_method: string;
+            /** Cluster Count */
+            cluster_count: number;
+            /** Silhouette */
+            silhouette?: number | null;
+        };
+        /** CityFingerprintPoint */
+        CityFingerprintPoint: {
+            /** Location Id */
+            location_id: number;
+            /** City */
+            city: string;
+            /** Province */
+            province?: string | null;
+            /** Region */
+            region: string;
+            /** Sample Hours */
+            sample_hours: number;
+            /** Cluster */
+            cluster: number;
+            /** Values */
+            values: {
+                [key: string]: number;
+            };
+            /** Features */
+            features: {
+                [key: string]: number;
+            };
+        };
+        /** CityFingerprintResponse */
+        CityFingerprintResponse: {
+            meta: components["schemas"]["CityFingerprintMeta"];
+            /** Explained Variance */
+            explained_variance: components["schemas"]["PCAExplainedVariance"][];
+            /** Loadings */
+            loadings: components["schemas"]["PCALoading"][];
+            /** Points */
+            points: components["schemas"]["CityFingerprintPoint"][];
+            /** Cluster Profiles */
+            cluster_profiles: components["schemas"]["FingerprintClusterProfile"][];
+        };
+        /** CityStructureMeta */
+        CityStructureMeta: {
+            /** Run Id */
+            run_id: string;
+            /** Location Id */
+            location_id: number;
+            /** City */
+            city: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Window Start
+             * Format: date-time
+             */
+            window_start: string;
+            /**
+             * Window End
+             * Format: date-time
+             */
+            window_end: string;
+            /** Sample Count */
+            sample_count: number;
+            /** Input Rows */
+            input_rows: number;
+            /** Dropped Rows */
+            dropped_rows: number;
+            /** Missing Fraction */
+            missing_fraction: number;
+            /** Standardization */
+            standardization: string;
+            /** Missing Strategy */
+            missing_strategy: string;
+            /** Pollution Source */
+            pollution_source: string;
+            /** Weather Source */
+            weather_source: string;
+            /** Features */
+            features: string[];
+        };
+        /** CityStructureResponse */
+        CityStructureResponse: {
+            meta: components["schemas"]["CityStructureMeta"];
+            /** Explained Variance */
+            explained_variance: components["schemas"]["PCAExplainedVariance"][];
+            /** Loadings */
+            loadings: components["schemas"]["PCALoading"][];
+            /** Scores */
+            scores: components["schemas"]["PCAScore"][];
+            /** Correlation */
+            correlation: components["schemas"]["CorrelationRow"][];
+        };
+        /** CorrelationRow */
+        CorrelationRow: {
+            /** Feature */
+            feature: string;
+            /** Values */
+            values: {
+                [key: string]: number;
+            };
+        };
+        /** CoverageDay */
+        CoverageDay: {
+            /** Day */
+            day: string;
+            /** Observation Hours */
+            observation_hours: number;
+            /** Model Hours */
+            model_hours: number;
+            /** Weather Hours */
+            weather_hours: number;
+            /** Observation Coverage */
+            observation_coverage: number;
+            /** Model Coverage */
+            model_coverage: number;
+            /** Weather Coverage */
+            weather_coverage: number;
+        };
+        /** CoverageResponse */
+        CoverageResponse: {
+            /** Location Id */
+            location_id: number;
+            /** City */
+            city: string;
+            /** Days */
+            days: number;
+            /** Coverage */
+            coverage: components["schemas"]["CoverageDay"][];
+            /** Bindings */
+            bindings: components["schemas"]["TrustBinding"][];
+            /** Analyses */
+            analyses: components["schemas"]["AnalysisArtifactSummary"][];
+        };
+        /** FingerprintClusterProfile */
+        FingerprintClusterProfile: {
+            /** Cluster */
+            cluster: number;
+            /** City Count */
+            city_count: number;
+            /** Top Features */
+            top_features: components["schemas"]["FingerprintFeatureScore"][];
+        };
+        /** FingerprintFeatureScore */
+        FingerprintFeatureScore: {
+            /** Feature */
+            feature: string;
+            /** Zscore */
+            zscore: number;
+        };
         /** ForecastPoint */
         ForecastPoint: {
             /**
@@ -368,6 +700,95 @@ export interface components {
             /** Metrics */
             metrics: components["schemas"]["ModelMetric"][];
         };
+        /** NationalCity */
+        NationalCity: {
+            /** Location Id */
+            location_id: number;
+            /** Name */
+            name: string;
+            /** Province */
+            province?: string | null;
+            /** Region */
+            region: string;
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
+            /** Pm25 */
+            pm25?: number | null;
+            /** Pm25 Change 24H */
+            pm25_change_24h?: number | null;
+            /** China Aqi */
+            china_aqi?: number | null;
+            /** China Aqi Level */
+            china_aqi_level?: string | null;
+            /** Primary Pollutants */
+            primary_pollutants?: string[];
+            /** Health Effect */
+            health_effect?: string | null;
+            /** Advice */
+            advice?: string | null;
+            /** European Aqi Reference */
+            european_aqi_reference?: number | null;
+            /** Has Recent Ground Observation */
+            has_recent_ground_observation: boolean;
+            /**
+             * Source Time
+             * Format: date-time
+             */
+            source_time: string;
+        };
+        /** NationalOverviewResponse */
+        NationalOverviewResponse: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Latest Source Time */
+            latest_source_time?: string | null;
+            /** Aqi Standard */
+            aqi_standard: string;
+            /** Aqi Semantics */
+            aqi_semantics: string;
+            summary: components["schemas"]["NationalSummary"];
+            /** Regions */
+            regions: components["schemas"]["NationalRegion"][];
+            /** Cities */
+            cities: components["schemas"]["NationalCity"][];
+        };
+        /** NationalRegion */
+        NationalRegion: {
+            /** Region */
+            region: string;
+            /** City Count */
+            city_count: number;
+            /** Mean Pm25 */
+            mean_pm25?: number | null;
+            /** Mean China Aqi */
+            mean_china_aqi?: number | null;
+        };
+        /** NationalSummary */
+        NationalSummary: {
+            /** City Count */
+            city_count: number;
+            /** Model Coverage */
+            model_coverage: number;
+            /** Recent Ground Coverage */
+            recent_ground_coverage: number;
+            /** Mean Pm25 */
+            mean_pm25?: number | null;
+            /** High Pollution City Count */
+            high_pollution_city_count: number;
+            /** Worst City */
+            worst_city?: string | null;
+            /** Worst City Aqi */
+            worst_city_aqi?: number | null;
+            /** Level Counts */
+            level_counts?: {
+                [key: string]: number;
+            };
+        };
         /** OverviewLocation */
         OverviewLocation: {
             /** Location Id */
@@ -413,6 +834,36 @@ export interface components {
             meta: components["schemas"]["Meta"];
             /** Locations */
             locations: components["schemas"]["OverviewLocation"][];
+        };
+        /** PCAExplainedVariance */
+        PCAExplainedVariance: {
+            /** Component */
+            component: string;
+            /** Variance Ratio */
+            variance_ratio: number;
+            /** Cumulative Ratio */
+            cumulative_ratio: number;
+        };
+        /** PCALoading */
+        PCALoading: {
+            /** Feature */
+            feature: string;
+            /** Values */
+            values: {
+                [key: string]: number;
+            };
+        };
+        /** PCAScore */
+        PCAScore: {
+            /**
+             * Time
+             * Format: date-time
+             */
+            time: string;
+            /** Values */
+            values: {
+                [key: string]: number;
+            };
         };
         /** ProviderBinding */
         ProviderBinding: {
@@ -539,6 +990,25 @@ export interface components {
             /** Reasons */
             reasons: string[];
         };
+        /** TrustBinding */
+        TrustBinding: {
+            /** Provider */
+            provider: string;
+            /** Station Name */
+            station_name: string;
+            /** External Location Id */
+            external_location_id: string;
+            /** First At */
+            first_at?: string | null;
+            /** Last At */
+            last_at?: string | null;
+            /** Active */
+            active: boolean;
+            /** Kind */
+            kind: string;
+            /** Is Authoritative */
+            is_authoritative: boolean;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -581,10 +1051,50 @@ export interface operations {
             };
         };
     };
+    national_overview_api_overview_national_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalOverviewResponse"];
+                };
+            };
+        };
+    };
+    city_fingerprint_api_analysis_city_fingerprint_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CityFingerprintResponse"];
+                };
+            };
+        };
+    };
     overview_api_overview_get: {
         parameters: {
             query?: {
-                metric?: "pm25" | "pm10" | "no2" | "o3" | "aqi" | "reference_aqi";
+                metric?: "pm25" | "pm10" | "no2" | "o3" | "so2" | "co" | "aqi" | "reference_aqi";
                 data_kind?: "observation" | "model_analysis";
             };
             header?: never;
@@ -600,6 +1110,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OverviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    coverage_api_locations__location_id__coverage_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                location_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backtest_api_locations__location_id__backtest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                location_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacktestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    city_structure_api_locations__location_id__structure_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                location_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CityStructureResponse"];
                 };
             };
             /** @description Validation Error */
@@ -647,7 +1252,7 @@ export interface operations {
     series_api_locations__location_id__series_get: {
         parameters: {
             query?: {
-                variable?: "pm25" | "pm10" | "no2" | "o3" | "aqi" | "reference_aqi";
+                variable?: "pm25" | "pm10" | "no2" | "o3" | "so2" | "co" | "aqi" | "reference_aqi";
                 data_kind?: "observation" | "model_analysis";
                 hours?: number;
             };
@@ -682,7 +1287,7 @@ export interface operations {
     forecast_api_locations__location_id__forecast_get: {
         parameters: {
             query?: {
-                variable?: "pm25" | "pm10" | "no2" | "o3" | "aqi" | "reference_aqi";
+                variable?: "pm25" | "pm10" | "no2" | "o3" | "so2" | "co" | "aqi" | "reference_aqi";
             };
             header?: never;
             path: {

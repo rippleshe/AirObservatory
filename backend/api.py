@@ -5,11 +5,16 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query
 
 from .schemas import (
+    BacktestResponse,
+    CityFingerprintResponse,
+    CityStructureResponse,
+    CoverageResponse,
     DataKind,
     ForecastResponse,
     LocationSummary,
     Metric,
     ModelMetricsResponse,
+    NationalOverviewResponse,
     OverviewResponse,
     SeriesResponse,
     SnapshotResponse,
@@ -18,9 +23,14 @@ from .schemas import (
     TrainingReadinessResponse,
 )
 from .services import (
+    get_backtest,
+    get_city_fingerprint,
+    get_city_structure,
+    get_coverage,
     get_forecast,
     get_locations,
     get_model_metrics,
+    get_national_overview,
     get_overview,
     get_series,
     get_snapshot,
@@ -45,6 +55,22 @@ def status() -> StatusResponse:
     return get_status()
 
 
+@router.get("/overview/national", response_model=NationalOverviewResponse)
+def national_overview() -> NationalOverviewResponse:
+    return get_national_overview()
+
+
+@router.get(
+    "/analysis/city-fingerprint",
+    response_model=CityFingerprintResponse,
+)
+def city_fingerprint() -> CityFingerprintResponse:
+    try:
+        return get_city_fingerprint()
+    except LookupError as exc:
+        raise _not_found(exc) from exc
+
+
 @router.get("/overview", response_model=OverviewResponse)
 def overview(
     metric: Annotated[Metric, Query()] = "pm25",
@@ -54,6 +80,42 @@ def overview(
         return get_overview(metric, data_kind)
     except ValueError as exc:
         raise _bad_request(exc) from exc
+
+
+@router.get(
+    "/locations/{location_id}/coverage",
+    response_model=CoverageResponse,
+)
+def coverage(
+    location_id: int,
+    days: Annotated[int, Query(ge=7, le=180)] = 30,
+) -> CoverageResponse:
+    try:
+        return get_coverage(location_id, days)
+    except LookupError as exc:
+        raise _not_found(exc) from exc
+
+
+@router.get(
+    "/locations/{location_id}/backtest",
+    response_model=BacktestResponse,
+)
+def backtest(location_id: int) -> BacktestResponse:
+    try:
+        return get_backtest(location_id)
+    except LookupError as exc:
+        raise _not_found(exc) from exc
+
+
+@router.get(
+    "/locations/{location_id}/structure",
+    response_model=CityStructureResponse,
+)
+def city_structure(location_id: int) -> CityStructureResponse:
+    try:
+        return get_city_structure(location_id)
+    except LookupError as exc:
+        raise _not_found(exc) from exc
 
 
 @router.get("/locations/{location_id}/snapshot", response_model=SnapshotResponse)

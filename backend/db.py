@@ -5,22 +5,12 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from .city_catalog import city_seed_rows
 from .config import get_settings
 
 SCHEMA_PATH = Path(__file__).resolve().with_name("schema.sql")
 
-CITY_SEEDS = [
-    ("北京", "北京", "北京", 39.9042, 116.4074),
-    ("上海", "上海", "上海", 31.2304, 121.4737),
-    ("广州", "广州", "广东", 23.1291, 113.2644),
-    ("深圳", "深圳", "广东", 22.5431, 114.0579),
-    ("成都", "成都", "四川", 30.5728, 104.0668),
-    ("重庆", "重庆", "重庆", 29.5630, 106.5516),
-    ("武汉", "武汉", "湖北", 30.5928, 114.3055),
-    ("西安", "西安", "陕西", 34.3416, 108.9398),
-    ("杭州", "杭州", "浙江", 30.2741, 120.1551),
-    ("南京", "南京", "江苏", 32.0603, 118.7969),
-]
+CITY_SEEDS = city_seed_rows()
 
 SOURCE_SEEDS = [
     (
@@ -55,6 +45,17 @@ SOURCE_SEEDS = [
         0,
         "Deterministic forecast baselines generated from stored observations.",
     ),
+    (
+        "openmeteo_weather_reanalysis",
+        "Open-Meteo",
+        "weather_observation",
+        60,
+        0,
+        (
+            "Gridded historical weather/reanalysis features from Open-Meteo; "
+            "not a station observation."
+        ),
+    ),
 ]
 
 
@@ -88,8 +89,10 @@ def init_db() -> None:
         con.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
         con.executemany(
             """
-            INSERT INTO locations(name, city, province, latitude, longitude, timezone, station_type)
-            VALUES (?, ?, ?, ?, ?, 'Asia/Shanghai', 'city_reference')
+            INSERT INTO locations(
+                location_id, name, city, province, latitude, longitude, timezone, station_type
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 'Asia/Shanghai', 'city_reference')
             ON CONFLICT(name, station_type, external_id) DO UPDATE SET
                 city=excluded.city,
                 province=excluded.province,

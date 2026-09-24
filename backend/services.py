@@ -3,14 +3,24 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
+from .analytics.aqi import STANDARD as AQI_STANDARD
+from .analytics.aqi import realtime_aqi
+from .city_catalog import region_for
 from .config import get_settings
 from .repository import (
     active_location_rows,
     backtest_rows,
+    backtest_sample_rows,
+    coverage_rows,
+    latest_city_fingerprint_row,
+    latest_city_structure_row,
     latest_forecast_rows,
     latest_ingestion,
     latest_model_row,
+    location_analysis_rows,
+    location_binding_rows,
     location_row,
+    national_model_rows,
     overview_rows,
     provider_binding_rows,
     recent_ingestion_rows,
@@ -20,6 +30,19 @@ from .repository import (
 )
 from .schemas import (
     AirState,
+    AnalysisArtifactSummary,
+    BacktestResponse,
+    BacktestSample,
+    CityFingerprintMeta,
+    CityFingerprintPoint,
+    CityFingerprintResponse,
+    CityStructureMeta,
+    CityStructureResponse,
+    CorrelationRow,
+    CoverageDay,
+    CoverageResponse,
+    FingerprintClusterProfile,
+    FingerprintFeatureScore,
     ForecastPoint,
     ForecastResponse,
     ForecastSeries,
@@ -28,8 +51,15 @@ from .schemas import (
     Meta,
     ModelMetric,
     ModelMetricsResponse,
+    NationalCity,
+    NationalOverviewResponse,
+    NationalRegion,
+    NationalSummary,
     OverviewLocation,
     OverviewResponse,
+    PCAExplainedVariance,
+    PCALoading,
+    PCAScore,
     ProviderBinding,
     ProviderStatus,
     SeriesPoint,
@@ -38,6 +68,7 @@ from .schemas import (
     StatusResponse,
     SystemResponse,
     TrainingReadinessResponse,
+    TrustBinding,
 )
 
 UNITS = {
@@ -75,14 +106,16 @@ def _health(latest: datetime | None, data_kind: str) -> str:
 
 
 def _dominant(row) -> str | None:
-    values = {
-        "PM2.5": row["pm25"],
-        "PM10": row["pm10"],
-        "NO₂": row["no2"],
-        "O₃": row["o3"],
-    }
-    available = {key: value for key, value in values.items() if value is not None}
-    return max(available, key=available.get) if available else None
+    keys = set(row.keys())
+    result = realtime_aqi(
+        pm25=row["pm25"] if "pm25" in keys else None,
+        pm10=row["pm10"] if "pm10" in keys else None,
+        no2=row["no2"] if "no2" in keys else None,
+        o3=row["o3"] if "o3" in keys else None,
+        so2=row["so2"] if "so2" in keys else None,
+        co=row["co"] if "co" in keys else None,
+    )
+    return result.primary_pollutants[0] if result.primary_pollutants else None
 
 
 def _provider_status(
@@ -473,3 +506,310 @@ def get_locations() -> list[LocationSummary]:
         )
         for row in active_location_rows()
     ]
+
+def get_national_overview() -> NationalOverviewResponse:
+    rows = national_model_rows()
+    now = _now()
+    cities: list[NationalCity] = []
+    region_values: dict[str, list[tuple[float | None, int | None]]] = {}
+    level_counts = {
+        "优": 0,
+        "良": 0,
+        "轻度污染": 0,
+        "中度污染": 0,
+        "重度污染": 0,
+        "严重污染": 0,
+    }
+
+    for row in rows:
+        aqi = realtime_aqi(
+            pm25=row["pm25"],
+            pm10=row["pm10"],
+            no2=row["no2"],
+            o3=row["o3"],
+            so2=row["so2"],
+            co=row["co"],
+        )
+        if aqi.level is not None:
+            level_counts[aqi.level] += 1
+
+        region = region_for(row["city"]) or "其他"
+        region_values.setdefault(region, []).append((row["pm25"], aqi.aqi))
+        latest_ground = (
+            _dt(row["latest_ground_time"]) if row["latest_ground_time"] else None
+        )
+        recent_ground = bool(
+            latest_ground is not None and now - latest_ground <= timedelta(hours=3)
+        )
+        previous_pm25 = row["pm25_24h"]
+        change = (
+            float(row["pm25"]) - float(previous_pm25)
+            if row["pm25"] is not None and previous_pm25 is not None
+            else None
+        )
+        cities.append(
+            NationalCity(
+                location_id=row["location_id"],
+                name=row["name"],
+                province=row["province"],
+                region=region,
+                lat=row["latitude"],
+                lon=row["longitude"],
+                pm25=row["pm25"],
+                pm25_change_24h=change,
+                china_aqi=aqi.aqi,
+                china_aqi_level=aqi.level,
+                primary_pollutants=list(aqi.primary_pollutants),
+                health_effect=aqi.health_effect,
+                advice=aqi.advice,
+                european_aqi_reference=row["reference_aqi"],
+                has_recent_ground_observation=recent_ground,
+                source_time=_dt(row["source_time"]),
+            )
+        )
+
+    regions = []
+    for region, values in sorted(region_values.items()):
+        pm25_values = [value for value, _ in values if value is not None]
+        aqi_values = [value for _, value in values if value is not None]
+        regions.append(
+            NationalRegion(
+                region=region,
+                city_count=len(values),
+                mean_pm25=(
+                    sum(pm25_values) / len(pm25_values) if pm25_values else None
+                ),
+                mean_china_aqi=(
+                    sum(aqi_values) / len(aqi_values) if aqi_values else None
+                ),
+            )
+        )
+
+    aqi_cities = [city for city in cities if city.china_aqi is not None]
+    worst = max(aqi_cities, key=lambda city: city.china_aqi or -1, default=None)
+    pm25_values = [city.pm25 for city in cities if city.pm25 is not None]
+    latest_source = max((city.source_time for city in cities), default=None)
+
+    return NationalOverviewResponse(
+        generated_at=now,
+        latest_source_time=latest_source,
+        aqi_standard=AQI_STANDARD,
+        aqi_semantics="中国 AQI（CAMS 模式浓度按实时规则换算，非地面监测值）",
+        summary=NationalSummary(
+            city_count=len(active_location_rows()),
+            model_coverage=len(cities),
+            recent_ground_coverage=sum(
+                city.has_recent_ground_observation for city in cities
+            ),
+            mean_pm25=(
+                sum(pm25_values) / len(pm25_values) if pm25_values else None
+            ),
+            high_pollution_city_count=sum(
+                (city.china_aqi or 0) >= 201 for city in cities
+            ),
+            worst_city=worst.name if worst else None,
+            worst_city_aqi=worst.china_aqi if worst else None,
+            level_counts=level_counts,
+        ),
+        regions=regions,
+        cities=cities,
+    )
+
+def get_city_structure(location_id: int) -> CityStructureResponse:
+    row = latest_city_structure_row(location_id)
+    if row is None:
+        raise LookupError("No materialized city structure analysis is available")
+
+    payload = json.loads(row["metrics_json"])
+    return CityStructureResponse(
+        meta=CityStructureMeta(
+            run_id=payload["run_id"],
+            location_id=payload["location_id"],
+            city=payload["city"],
+            created_at=_dt(payload["created_at"]),
+            window_start=_dt(payload["window_start"]),
+            window_end=_dt(payload["window_end"]),
+            sample_count=payload["sample_count"],
+            input_rows=payload["input_rows"],
+            dropped_rows=payload["dropped_rows"],
+            missing_fraction=payload["missing_fraction"],
+            standardization=payload["standardization"],
+            missing_strategy=payload["missing_strategy"],
+            pollution_source=payload["pollution_source"],
+            weather_source=payload["weather_source"],
+            features=payload["features"],
+        ),
+        explained_variance=[
+            PCAExplainedVariance(**item) for item in payload["explained_variance"]
+        ],
+        loadings=[
+            PCALoading(
+                feature=item["feature"],
+                values={
+                    key: value
+                    for key, value in item.items()
+                    if key != "feature"
+                },
+            )
+            for item in payload["loadings"]
+        ],
+        scores=[
+            PCAScore(
+                time=_dt(item["time"]),
+                values={key: value for key, value in item.items() if key != "time"},
+            )
+            for item in payload["scores"]
+        ],
+        correlation=[
+            CorrelationRow(**item) for item in payload["correlation"]
+        ],
+    )
+
+def get_coverage(location_id: int, days: int = 30) -> CoverageResponse:
+    location = location_row(location_id)
+    if location is None:
+        raise LookupError("Location not found")
+
+    coverage = [
+        CoverageDay(
+            day=row["day"],
+            observation_hours=int(row["observation_hours"]),
+            model_hours=int(row["model_hours"]),
+            weather_hours=int(row["weather_hours"]),
+            observation_coverage=min(1.0, int(row["observation_hours"]) / 24.0),
+            model_coverage=min(1.0, int(row["model_hours"]) / 24.0),
+            weather_coverage=min(1.0, int(row["weather_hours"]) / 24.0),
+        )
+        for row in coverage_rows(location_id, days)
+    ]
+    bindings = [
+        TrustBinding(
+            provider=row["provider_name"],
+            station_name=row["external_name"],
+            external_location_id=row["external_location_id"],
+            first_at=_dt(row["first_at"]) if row["first_at"] else None,
+            last_at=_dt(row["last_at"]) if row["last_at"] else None,
+            active=bool(row["active"]),
+            kind=row["kind"],
+            is_authoritative=bool(row["is_authoritative"]),
+        )
+        for row in location_binding_rows(location_id)
+    ]
+    analyses = [
+        AnalysisArtifactSummary(
+            run_id=row["run_id"],
+            analysis_type=row["analysis_type"],
+            version=row["version"],
+            window_start=_dt(row["window_start"]),
+            window_end=_dt(row["window_end"]),
+            created_at=_dt(row["created_at"]),
+            status=row["status"],
+        )
+        for row in location_analysis_rows(location_id)
+    ]
+    return CoverageResponse(
+        location_id=location_id,
+        city=location["city"],
+        days=days,
+        coverage=coverage,
+        bindings=bindings,
+        analyses=analyses,
+    )
+
+
+def get_backtest(location_id: int) -> BacktestResponse:
+    location = location_row(location_id)
+    if location is None:
+        raise LookupError("Location not found")
+
+    metrics = get_model_metrics(location_id).metrics
+    samples = [
+        BacktestSample(
+            model_name=row["model_name"],
+            model_revision=row["model_version"],
+            target_at=_dt(row["target_at"]),
+            horizon_hours=int(row["horizon_hours"]),
+            predicted_value=float(row["predicted_value"]),
+            observed_value=float(row["observed_value"]),
+            error=float(row["error"]),
+            absolute_error=float(row["absolute_error"]),
+        )
+        for row in backtest_sample_rows(location_id)
+    ]
+    return BacktestResponse(
+        location_id=location_id,
+        city=location["city"],
+        target="pm25",
+        unit="µg/m³",
+        metrics=metrics,
+        samples=samples,
+    )
+
+def get_city_fingerprint() -> CityFingerprintResponse:
+    row = latest_city_fingerprint_row()
+    if row is None:
+        raise LookupError("No materialized city fingerprint analysis is available")
+
+    payload = json.loads(row["metrics_json"])
+    return CityFingerprintResponse(
+        meta=CityFingerprintMeta(
+            run_id=payload["run_id"],
+            created_at=_dt(payload["created_at"]),
+            window_start=_dt(payload["window_start"]),
+            window_end=_dt(payload["window_end"]),
+            city_count=int(payload["city_count"]),
+            sample_hours_min=int(payload["sample_hours_min"]),
+            sample_hours_max=int(payload["sample_hours_max"]),
+            features=list(payload["features"]),
+            standardization=payload["standardization"],
+            local_structure_warning=payload["local_structure_warning"],
+            cluster_method=payload["cluster_method"],
+            cluster_count=int(payload["cluster_count"]),
+            silhouette=payload.get("silhouette"),
+        ),
+        explained_variance=[
+            PCAExplainedVariance(**item)
+            for item in payload["explained_variance"]
+        ],
+        loadings=[
+            PCALoading(
+                feature=item["feature"],
+                values={key: value for key, value in item.items() if key != "feature"},
+            )
+            for item in payload["loadings"]
+        ],
+        points=[
+            CityFingerprintPoint(
+                location_id=int(item["location_id"]),
+                city=item["city"],
+                province=item.get("province"),
+                region=item["region"],
+                sample_hours=int(item["sample_hours"]),
+                cluster=int(item["cluster"]),
+                values={
+                    key: float(value)
+                    for key, value in item.items()
+                    if key.startswith("PC")
+                },
+                features={
+                    key: float(value)
+                    for key, value in item["features"].items()
+                },
+            )
+            for item in payload["points"]
+        ],
+        cluster_profiles=[
+            FingerprintClusterProfile(
+                cluster=int(item["cluster"]),
+                city_count=int(item["city_count"]),
+                top_features=[
+                    FingerprintFeatureScore(
+                        feature=feature["feature"],
+                        zscore=float(feature["zscore"]),
+                    )
+                    for feature in item["top_features"]
+                ],
+            )
+            for item in payload["cluster_profiles"]
+        ],
+    )

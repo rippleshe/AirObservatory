@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 
 from backend.config import get_settings
 from backend.db import init_db
 from backend.ml.forecasting import refresh_baseline_forecasts
 from backend.pipelines.cams import refresh_cams
 from backend.pipelines.openaq import refresh_openaq
+from backend.pipelines.weather import backfill_weather
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,6 +41,17 @@ async def refresh_observations_and_baselines() -> dict:
     return {"observations": observations, "baselines": baselines}
 
 
+async def refresh_recent_weather() -> dict:
+    today = datetime.now(UTC).date()
+    start = today - timedelta(days=2)
+    return await backfill_weather(
+        start_date=start.isoformat(),
+        end_date=today.isoformat(),
+        city=None,
+        batch_size=10,
+    )
+
+
 async def main() -> None:
     init_db()
     settings = get_settings()
@@ -48,6 +61,11 @@ async def main() -> None:
             "OpenAQ + baselines",
             settings.openaq_refresh_seconds,
             refresh_observations_and_baselines,
+        ),
+        periodic(
+            "weather archive",
+            settings.weather_refresh_seconds,
+            refresh_recent_weather,
         ),
     )
 

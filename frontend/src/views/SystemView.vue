@@ -42,9 +42,9 @@ function retry() {
   <section class="system-workspace">
     <header class="system-header">
       <div>
-        <h1>系统与数据管线</h1>
+        <h1>数据从哪里来？</h1>
         <p>
-          这里展示的是实际 provider 状态、采集运行记录和城市站点绑定，不是静态状态牌。
+          这里保留数据来源、最近更新时间、采集记录和站点绑定，方便核查作品背后的真实数据链。
         </p>
       </div>
       <button type="button" class="refresh-button" @click="retry">
@@ -96,8 +96,8 @@ function retry() {
       <header>
         <Database :size="15" />
         <div>
-          <h2>Provider bindings</h2>
-          <p>每个城市当前绑定的外部观测站点。</p>
+          <h2>城市与地面观测站点</h2>
+          <p>哪些城市确实有地面观测，以及数据来自哪个站点。</p>
         </div>
       </header>
       <div class="table-scroll">
@@ -134,8 +134,8 @@ function retry() {
       <header>
         <RefreshCw :size="15" />
         <div>
-          <h2>Ingestion runs</h2>
-          <p>最近的采集任务、延迟与错误状态。</p>
+          <h2>最近的数据更新记录</h2>
+          <p>每次采集是否成功、更新到了什么时间，以及有没有错误。</p>
         </div>
       </header>
       <div class="table-scroll">
@@ -188,7 +188,7 @@ function retry() {
 .system-header h1 {
   margin: 0;
   font-size: clamp(26px, 3vw, 42px);
-  font-weight: 560;
+  font-weight: var(--fw-display);
   letter-spacing: -.03em;
 }
 .system-header p {
@@ -232,12 +232,12 @@ function retry() {
 }
 .provider-state + .provider-state { border-left: 1px solid var(--hairline); }
 .provider-state div { display: grid; gap: 4px; }
-.provider-state span { color: var(--muted); font: 600 9px/1 var(--mono); letter-spacing: .08em; }
-.provider-state b { font-size: 12px; }
+.provider-state span { color: var(--muted); font: 600 var(--fs-label)/1 var(--mono); }
+.provider-state b { font-size: var(--fs-label); }
 .provider-state b.healthy { color: var(--ok); }
 .provider-state b.stale,
 .provider-state b.error { color: var(--warning); }
-.provider-state time { color: var(--muted); font-size: 9px; }
+.provider-state time { color: var(--muted); font-size: var(--fs-label); }
 .storage-state {
   min-height: 92px;
   display: grid;
@@ -249,12 +249,12 @@ function retry() {
   background: var(--sheet);
 }
 .storage-state > div { display: grid; gap: 4px; }
-.storage-state span { color: var(--muted); font: 600 9px/1 var(--mono); letter-spacing: .08em; }
-.storage-state b { font-size: 12px; }
+.storage-state span { color: var(--muted); font: 600 var(--fs-label)/1 var(--mono); }
+.storage-state b { font-size: var(--fs-label); }
 .storage-state dl { display: flex; gap: 16px; margin: 0; }
 .storage-state dl div { display: grid; gap: 4px; text-align: right; }
-.storage-state dt { color: var(--muted); font-size: 8px; }
-.storage-state dd { margin: 0; font-size: 11px; }
+.storage-state dt { color: var(--muted); font-size: var(--fs-label); }
+.storage-state dd { margin: 0; font-size: var(--fs-label); }
 .system-panel {
   margin-top: 16px;
   border: 1px solid var(--hairline);
@@ -268,15 +268,15 @@ function retry() {
   padding: 0 16px;
   border-bottom: 1px solid var(--hairline);
 }
-.system-panel h2 { margin: 0; font-size: 13px; font-weight: 620; }
-.system-panel p { margin: 3px 0 0; color: var(--muted); font-size: 10px; }
+.system-panel h2 { margin: 0; font-size: 13px; font-weight: var(--fw-strong); }
+.system-panel p { margin: 3px 0 0; color: var(--muted); font-size: var(--fs-label); }
 .table-scroll { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: var(--fs-label); }
 th, td { padding: 11px 14px; border-bottom: 1px solid var(--hairline); text-align: left; vertical-align: top; }
-th { color: var(--muted); font-size: 9px; font-weight: 600; }
+th { color: var(--muted); font-size: var(--fs-label); font-weight: var(--fw-strong); }
 .binding-state,
 .run-state {
-  font: 600 9px/1 var(--mono);
+  font: 600 var(--fs-label)/1 var(--mono);
   color: var(--muted);
 }
 .binding-state.active,

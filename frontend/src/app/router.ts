@@ -1,38 +1,34 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-const CurrentFieldView = () => import("../views/CurrentFieldView.vue");
-const ExploreView = () => import("../views/ExploreView.vue");
-const ForecastView = () => import("../views/ForecastView.vue");
+const NationalOverviewView = () => import("../views/NationalOverviewView.vue");
+const CityDetailView = () => import("../views/CityDetailView.vue");
 const SystemView = () => import("../views/SystemView.vue");
 
+/* One narrative: national picture → city explanation → data provenance.
+   Forecast, structure and trust live inside the city page, so there is no
+   parallel navigation for them. */
 export default createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/live" },
+    { path: "/", redirect: "/overview" },
     {
-      path: "/live",
-      name: "live",
-      component: CurrentFieldView,
-      meta: { title: "态势" },
+      path: "/overview",
+      name: "overview",
+      component: NationalOverviewView,
+      meta: { title: "全国总览" },
     },
     {
-      path: "/explore",
-      name: "explore",
-      component: ExploreView,
-      meta: { title: "探索" },
-    },
-    {
-      path: "/forecast",
-      name: "forecast",
-      component: ForecastView,
-      meta: { title: "预测" },
+      path: "/city/:locationId",
+      name: "city",
+      component: CityDetailView,
+      meta: { title: "城市详情" },
     },
     {
       path: "/system",
       name: "system",
       component: SystemView,
-      meta: { title: "系统" },
+      meta: { title: "数据与方法" },
     },
-    { path: "/:pathMatch(.*)*", redirect: "/live" },
+    { path: "/:pathMatch(.*)*", redirect: "/overview" },
   ],
 });

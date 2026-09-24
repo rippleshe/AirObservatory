@@ -5,7 +5,7 @@ import asyncio
 import json
 
 from backend.db import init_db
-from backend.pipelines.cams import backfill_cams, backfill_cams_catalog
+from backend.pipelines.weather import backfill_weather
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,14 +22,12 @@ def parse_args() -> argparse.Namespace:
 async def main() -> None:
     args = parse_args()
     init_db()
-    if args.all:
-        result = await backfill_cams_catalog(
-            args.start,
-            args.end,
-            batch_size=args.batch_size,
-        )
-    else:
-        result = await backfill_cams(args.city, args.start, args.end)
+    result = await backfill_weather(
+        start_date=args.start,
+        end_date=args.end,
+        city=None if args.all else args.city,
+        batch_size=args.batch_size,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

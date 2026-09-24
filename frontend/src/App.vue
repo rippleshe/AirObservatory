@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed } from "vue";
 import { useQuery } from "@tanstack/vue-query";
+import { Database, MapPinned, Radar } from "lucide-vue-next";
 import { useRoute } from "vue-router";
-import { Activity, Database, FlaskConical, Map, Radar } from "lucide-vue-next";
 import { api } from "./api/client";
 import { expectData } from "./api/request";
 import { useLocationCatalog } from "./composables/useLocationCatalog";
@@ -17,82 +17,59 @@ const status = useQuery({
   refetchInterval: 30_000,
   staleTime: 15_000,
 });
-const now = ref(new Date());
-let timer = 0;
 
-onMounted(() => {
-  timer = window.setInterval(() => (now.value = new Date()), 1000);
-});
-onBeforeUnmount(() => window.clearInterval(timer));
-
-const title = computed(() => String(route.meta.title ?? "态势"));
-const clock = computed(() =>
-  new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(now.value),
-);
+const title = computed(() => String(route.meta.title ?? "空气质量"));
+const cityTo = computed(() => `/city/${context.selectedLocationId ?? 1}`);
 const runtimeState = computed(() => {
   const providers = status.data.value?.providers;
-  if (!providers) return "CHECKING";
+  if (!providers) return "正在连接";
   const states = Object.values(providers).map((provider) => provider.state);
-  if (states.every((state) => state === "healthy")) return "LIVE";
-  if (states.some((state) => state === "error")) return "DEGRADED";
-  if (states.some((state) => state === "stale")) return "STALE";
-  return "ONLINE";
+  if (states.every((state) => state === "healthy")) return "数据已连接";
+  if (states.some((state) => state === "error")) return "部分数据异常";
+  if (states.some((state) => state === "stale")) return "等待新数据";
+  return "数据在线";
 });
 
 function selectGlobalLocation(event: Event) {
   const id = Number((event.target as HTMLSelectElement).value);
   const location = locations.data.value?.find((item) => item.location_id === id);
-  if (location) {
-    context.selectLocation(location.location_id, location.city);
-  }
+  if (location) context.selectLocation(location.location_id, location.city);
 }
-
-const nav = [
-  { to: "/live", label: "态势", icon: Map },
-  { to: "/explore", label: "探索", icon: FlaskConical },
-  { to: "/forecast", label: "预测", icon: Activity },
-  { to: "/system", label: "系统", icon: Database },
-];
 </script>
 
 <template>
   <div class="app-shell">
     <aside class="app-rail" aria-label="主导航">
-      <div class="brand-mark" title="Air Observatory"><Radar :size="22" /></div>
+      <RouterLink to="/overview" class="brand-mark" aria-label="Air Observatory 全国总览">
+        <Radar :size="23" />
+      </RouterLink>
+
       <nav>
-        <RouterLink
-          v-for="item in nav"
-          :key="item.to"
-          :to="item.to"
-          class="rail-link"
-          :aria-label="item.label"
-        >
-          <component :is="item.icon" :size="19" stroke-width="1.7" />
-          <span>{{ item.label }}</span>
+        <RouterLink to="/overview" class="rail-link">
+          <MapPinned :size="19" stroke-width="1.8" />
+          <span>全国</span>
+        </RouterLink>
+        <RouterLink :to="cityTo" class="rail-link">
+          <Radar :size="19" stroke-width="1.8" />
+          <span>城市</span>
         </RouterLink>
       </nav>
-      <div class="rail-live">
-        <span
-          :class="['live-dot', runtimeState.toLowerCase()]"
-          :title="`Runtime status: ${runtimeState}`"
-        ></span>
-        <span>{{ runtimeState }}</span>
-      </div>
+
+      <RouterLink to="/system" class="rail-method">
+        <Database :size="17" stroke-width="1.7" />
+        <span>数据</span>
+      </RouterLink>
     </aside>
 
     <main class="app-main">
       <header class="context-bar">
         <div class="context-title">
-          <span class="product-name">AIR OBSERVATORY</span>
+          <span class="product-name">Air Observatory</span>
           <strong>{{ title }}</strong>
         </div>
         <div class="context-meta">
-          <label class="city-context">
+          <span class="runtime-copy">{{ runtimeState }}</span>
+          <label v-if="route.name !== 'overview'" class="city-context">
             <span class="sr-only">城市</span>
             <select
               :value="context.selectedLocationId ?? ''"
@@ -107,8 +84,6 @@ const nav = [
               </option>
             </select>
           </label>
-          <span>{{ context.selectedMetric.toUpperCase() }}</span>
-          <time>{{ clock }}</time>
         </div>
       </header>
       <RouterView />

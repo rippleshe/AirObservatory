@@ -24,6 +24,18 @@ class ModelLiveBundle:
 
 
 @dataclass(frozen=True)
+class WeatherPoint:
+    observed_at: datetime
+    temperature_2m: float | None = None
+    relative_humidity_2m: float | None = None
+    pressure_msl: float | None = None
+    precipitation: float | None = None
+    wind_speed_10m: float | None = None
+    wind_direction_10m: float | None = None
+    boundary_layer_height: float | None = None
+
+
+@dataclass(frozen=True)
 class GroundMeasurement:
     observed_at: datetime
     parameter: str

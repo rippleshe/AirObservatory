@@ -4,71 +4,90 @@
    DESIGN.md requires projector-distance legibility. */
 
 :root {
-  font-family: "Segoe UI Variable", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  /* Display face is DIN-flavoured (Bahnschrift ships with Windows) — the
+     language of station readout boards and instrument panels. Body and every
+     number stay in the UI sans; hero figures are never set in the display face. */
+  --font-display: "Bahnschrift", "Segoe UI Variable Display", "Microsoft YaHei UI", system-ui, sans-serif;
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
   color: var(--ink);
   background: var(--canvas);
   font-synthesis: none;
 
-  /* ── surfaces ─────────────────────────────────────────── */
-  --canvas: #f2f5f3;
-  --sheet: #ffffff;
+  /* ── surfaces ───────────────────────────────────────────
+     Canvas sits clearly BELOW sheet in value. When they were 3% apart the
+     whole page read washed-out and low-resolution — figures have to sit on
+     a surface with real separation to look drawn rather than printed faint. */
+  --canvas: #e3eae7;
+  --sheet: #fbfcfb;
   --sheet-strong: #ffffff;
-  --sheet-soft: #f7f9f7;
-  --sheet-sunken: #eef2ef;
-  --soft: #edf1ed;
+  --sheet-soft: #f2f6f4;
+  --sheet-sunken: #e9efec;
+  --soft: #d7e1dd;
 
   /* ── ink ──────────────────────────────────────────────── */
-  --ink: #10221a;
-  --ink-soft: #2a3d34;
-  --muted: #5b6d64;
-  --faint: #74837b; /* never below 12px */
+  --ink: #0b1512;
+  --ink-soft: #243530;
+  --muted: #566a61;
+  --faint: #6d8179; /* never below 12px */
 
-  /* ── lines (1px solid, never dashed) ──────────────────── */
-  --hairline: #c9d3cd;
-  --hairline-soft: #dde4e0;
-  --hairline-strong: #a9b6af;
+  /* ── lines (1px solid, never dashed) ────────────────────
+     Hairlines must actually read as rules on the canvas, not disappear. */
+  --hairline: #a7b8b0;
+  --hairline-soft: #c3d1cb;
+  --hairline-strong: #7f968c;
+
+  /* ── map cartography ────────────────────────────────────
+     Cartographic inversion. The sea is a committed tone, the land is paper
+     white, the province boundaries are real ink. The previous set (pale lines
+     on pale mint, 10 L* between sea and land) is why the map read as muddy
+     low-resolution raster rather than a drawn chart: sea and land now sit
+     17 L* apart and the boundary clears 4.5:1 against both. */
+  --map-sea: #b9cdc6;
+  --map-land: #fbfcfb;
+  --map-border: #3d5a51;
+  --map-name: #4b635b;
 
   /* ── radius: two steps, not one ───────────────────────── */
-  --radius: 10px;      /* legacy alias of --radius-sm */
-  --radius-sm: 10px;   /* inner controls, chips, tooltips */
-  --radius-lg: 16px;   /* figure stages and cards */
+  --radius: 8px;       /* legacy alias of --radius-sm */
+  --radius-sm: 8px;    /* inner controls, chips, tooltips */
+  --radius-lg: 14px;   /* figure stages and cards */
   --radius-pill: 999px;
 
   /* ── type scale ───────────────────────────────────────── */
-  --fs-hero: clamp(38px, 4vw, 52px);
-  --fs-title: 27px;
+  --fs-hero: clamp(40px, 4.4vw, 62px);
+  --fs-title: 28px;
   --fs-sub: 18px;
   --fs-body: 14px;
   --fs-data: 13px;
   --fs-label: 12px; /* hard floor for information-carrying text */
 
-  --fw-display: 790;
-  --fw-strong: 720;
-  --fw-body: 450;
-  --track-display: -.035em;
-  --track-title: -.025em;
+  --fw-display: 700;
+  --fw-strong: 650;
+  --fw-body: 400;
+  --track-display: -.028em;
+  --track-title: -.018em;
 
   /* ── data semantics ───────────────────────────────────── */
   /* Model Analysis / Observation / Forecast stay visually distinct and
      are never merged — see ARCHITECTURE.md "数据语义". */
-  --model: #356f87;
-  --observation: #2f725f;
-  --forecast: #a06a34;
-  --external: #849493;
+  --model: #2f6a82;
+  --observation: #266a56;
+  --forecast: #9a6128;
+  --external: #7b8d8c;
   --muted-data: #8b9691;
 
   /* status (reserved — never reused as a series colour) */
-  --ok: #33745f;
-  --warning: #9b681d;
-  --error: #9a3b33;
-  --accent: #236f82;
-  --accent-soft: #dcebee;
+  --ok: #2b6d57;
+  --warning: #93611a;
+  --error: #93352d;
+  --accent: #1d6779;
+  --accent-soft: #d4e5ea;
 
   /* ── chrome ───────────────────────────────────────────── */
-  --rail: #18211e;
-  --rail-muted: #aab5b0;
+  --rail: #131d19;
+  --rail-muted: #a3b1ab;
 
-  --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  --mono: "Cascadia Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -80,9 +99,9 @@ body {
   background: var(--canvas);
   color: var(--ink);
   font-size: var(--fs-body);
-  line-height: 1.52;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  text-rendering: geometricPrecision;
+  text-rendering: optimizeLegibility;
 }
 
 html { scrollbar-color: var(--hairline-strong) var(--canvas); }
@@ -97,7 +116,15 @@ html { scrollbar-color: var(--hairline-strong) var(--canvas); }
 
 button, select, input { font: inherit; }
 button, a, select { outline-offset: 3px; }
-::selection { background: #c7dfe4; color: #10201f; }
+::selection { background: #bcd6dd; color: #0b1a18; }
+
+/* Display type: station-board voice. Titles and section heads only — never
+   body copy, never a hero figure. */
+.display-face {
+  font-family: var(--font-display);
+  font-weight: var(--fw-display);
+  letter-spacing: var(--track-display);
+}
 
 .app-shell {
   min-height: 100vh;
@@ -121,7 +148,7 @@ button, a, select { outline-offset: 3px; }
   height: 76px;
   display: grid;
   place-items: center;
-  border-bottom: 1px solid #303a37;
+  border-bottom: 1px solid #2b3833;
   color: #eef5f1;
   text-decoration: none;
 }
@@ -139,7 +166,7 @@ button, a, select { outline-offset: 3px; }
   display: grid;
   place-items: center;
   gap: 5px;
-  border-radius: 9px;
+  border-radius: 8px;
   color: var(--rail-muted);
   text-decoration: none;
   font-size: var(--fs-label);
@@ -149,13 +176,13 @@ button, a, select { outline-offset: 3px; }
 .rail-link:hover,
 .rail-method:hover {
   color: white;
-  background: #222e2a;
+  background: #1e2a26;
 }
 
 .rail-link.router-link-active,
 .rail-method.router-link-active {
-  color: #15201c;
-  background: #edf2ee;
+  color: #101c18;
+  background: #e9efec;
 }
 
 .rail-method {
@@ -172,7 +199,7 @@ button, a, select { outline-offset: 3px; }
   gap: 18px;
   padding: 0 28px;
   border-bottom: 1px solid var(--hairline);
-  background: rgba(251, 252, 250, .98);
+  background: var(--sheet);
 }
 
 .context-title {
@@ -184,15 +211,17 @@ button, a, select { outline-offset: 3px; }
 
 .product-name {
   color: var(--muted);
+  font-family: var(--font-display);
   font-size: var(--fs-body);
   font-weight: var(--fw-strong);
-  letter-spacing: -.01em;
+  letter-spacing: .04em;
 }
 
 .context-title strong {
   padding-left: 14px;
   border-left: 1px solid var(--hairline);
-  font-size: 18px;
+  font-family: var(--font-display);
+  font-size: 19px;
   font-weight: var(--fw-display);
   letter-spacing: var(--track-title);
 }
@@ -216,7 +245,7 @@ button, a, select { outline-offset: 3px; }
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #6ba88f;
+  background: #4e9a7d;
 }
 
 .city-context select {
@@ -224,7 +253,7 @@ button, a, select { outline-offset: 3px; }
   max-width: 140px;
   padding: 0 8px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   color: var(--ink);
   font-size: var(--fs-label);
@@ -232,7 +261,7 @@ button, a, select { outline-offset: 3px; }
   cursor: pointer;
 }
 
-.city-context select:hover { background: var(--soft); }
+.city-context select:hover { background: var(--sheet-soft); }
 .city-context select:focus-visible { outline: 2px solid var(--accent); }
 
 .sr-only {

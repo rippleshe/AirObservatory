@@ -54,6 +54,18 @@ function crispDevicePixelRatio() {
   return Math.min(Math.max(window.devicePixelRatio || 1, 1.75), 3);
 }
 
+/* ECharts paints its own SVG and never resolves var(). Reading the token back
+   off the document keeps base.css the single source of truth, so a colour
+   change lands in one file instead of being hunted through every chart
+   option. Call it at render time, not at module load: the stylesheet must
+   already be applied. */
+export function token(name: string, fallback = "#000000") {
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+  return value || fallback;
+}
+
 /* Every chart is SVG: DESIGN.md asks for vector-crisp geography and for core
    charts that hold up at projector distance and in print. Call sites pass the
    renderer explicitly so the choice is never accidental. */

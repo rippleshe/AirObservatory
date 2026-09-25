@@ -6,16 +6,39 @@ const browser = await chromium.launch({
   headless: true,
 });
 
+/* Smoke assertions hang on what the shell promises, never on what the data
+   says. The context-bar title is the router's meta.title (全国总览 / 城市详情 /
+   数据与方法) and the per-route anchor is a node the view only renders once its
+   data has landed. The <h1>s became data-derived conclusions ("武汉 AQI 207
+   重度污染 · 11 省需要关注"), so pinning one would pin today's weather. */
+/* Screenshots are namespaced check-* on purpose: scripts/shot.mjs writes
+   overview.png / city.png / system.png as full-page 2× design captures, and
+   two harnesses sharing a filename meant running one silently invalidated the
+   other's evidence. */
 const routes = [
-  ["/overview", "全国空气态势", "overview.png"],
-  ["/city/1", "过去发生了什么，接下来会怎样？", "city.png"],
-  ["/system", "数据从哪里来？", "system.png"],
+  ["/overview", "全国总览", ".severity-band", "check-overview.png"],
+  ["/city/1", "城市详情", ".hero-title h1", "check-city.png"],
+  ["/system", "数据与方法", ".provider-state", "check-system.png"],
 ];
 
 await mkdir(".review", { recursive: true });
 const report = [];
 
-for (const [route, expectedText, screenshot] of routes) {
+/* The city view re-renders whenever the location catalog or one of its queries
+   lands, so a locator-driven scroll can meet its node mid-swap and fail the
+   whole run with "element is not attached to the DOM". Waiting for the section
+   and then scrolling by id inside the page re-resolves the node at call time,
+   and a section that is genuinely gone still throws. */
+async function scrollToSection(page, id) {
+  await page.locator("#" + id).waitFor({ state: "visible", timeout: 15000 });
+  await page.evaluate((section) => {
+    const target = document.getElementById(section);
+    if (!target) throw new Error("section #" + section + " is not in the DOM");
+    target.scrollIntoView({ block: "start" });
+  }, id);
+}
+
+for (const [route, expectedTitle, viewContent, screenshot] of routes) {
   const page = await browser.newPage({
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
@@ -29,20 +52,25 @@ for (const [route, expectedText, screenshot] of routes) {
   const response = await page.goto(`http://127.0.0.1:5173${route}`, {
     waitUntil: "networkidle",
   });
-  await page.getByText(expectedText, { exact: false }).first().waitFor({
+  const contextTitle = page.locator(".context-title strong");
+  await contextTitle.filter({ hasText: expectedTitle }).first().waitFor({
     state: "visible",
     timeout: 15000,
   });
+  await page.locator(viewContent).first().waitFor({ state: "visible", timeout: 15000 });
   await page.waitForTimeout(700);
   await page.screenshot({
     path: `.review/${screenshot}`,
     fullPage: false,
   });
 
+  const titleText = (await contextTitle.innerText()).trim();
   report.push({
     route,
     status: response?.status(),
-    expectedTextVisible: true,
+    expectedTitle,
+    titleText,
+    expectedTextVisible: titleText === expectedTitle,
     bodyHasAirObservatory: (await page.locator("body").innerText()).includes(
       "Air Observatory",
     ),
@@ -121,20 +149,49 @@ const deepAnalysis = fingerprint.locator(".deep-analysis");
 await deepAnalysis.locator("summary").click();
 const fingerprintPanel = fingerprint.locator(".fingerprint-panel");
 await fingerprintPanel.scrollIntoViewIfNeeded();
-await fingerprintPanel.getByText("60 座城市的长期变化，分成几种模式？", { exact: true }).waitFor({
+/* The panel headline is computed from the data ("31 个省各取一城的长期变化
+   分成 3 种模式"), so the wait is structural: its h2, then the group ledger
+   that only exists once the fingerprint has landed. */
+await fingerprintPanel.locator(".panel-header h2").waitFor({
+  state: "visible",
+  timeout: 15000,
+});
+await fingerprintPanel.locator(".cluster-row").first().waitFor({
   state: "visible",
   timeout: 15000,
 });
 await fingerprint.waitForTimeout(500);
 await fingerprintPanel.screenshot({ path: ".review/fingerprint.png" });
+
+const fingerprintHeading = (
+  await fingerprintPanel.locator(".panel-header h2").innerText()
+).trim();
+const fingerprintMeta = await fingerprintPanel.locator(".panel-meta").innerText();
+const clusterSizes = (await fingerprintPanel.locator(".cluster-title").allInnerTexts())
+  .map((row) => Number(/(\d+)\s*城/.exec(row)?.[1]))
+  .filter((count) => Number.isFinite(count));
+/* "60 城" stopped being the unit when the national layer converged to one city
+   per province. What still has to hold is that the panel states the size of
+   the set it grouped and that its groups add up to exactly that set — a
+   partial ledger would misreport the scale of the pattern split. How many
+   patterns that split has is the data's business, not this gate's. */
+const statedUnits = Number(/^(\d+)\s*城$/m.exec(fingerprintMeta)?.[1]);
 report.push({
   route: "/overview fingerprint",
   status: 200,
-  expectedTextVisible: true,
+  expectedTextVisible: fingerprintHeading.length > 0 && clusterSizes.length >= 1,
   bodyHasAirObservatory: true,
   consoleErrors: fingerprintErrors,
   chartCount: await fingerprintPanel.locator("svg").count(),
-  pointTextVisible: (await fingerprintPanel.innerText()).includes("60 城"),
+  heading: fingerprintHeading,
+  statedUnits,
+  clusterSizes,
+  pointTextVisible:
+    fingerprintHeading.length > 0 &&
+    Number.isFinite(statedUnits) &&
+    statedUnits > 0 &&
+    clusterSizes.length >= 1 &&
+    clusterSizes.reduce((sum, count) => sum + count, 0) === statedUnits,
 });
 await fingerprint.close();
 
@@ -148,12 +205,19 @@ mobile.on("console", (msg) => {
 });
 mobile.on("pageerror", (err) => mobileErrors.push(err.message));
 await mobile.goto("http://127.0.0.1:5173/overview", { waitUntil: "networkidle" });
-await mobile.getByText("全国空气态势", { exact: true }).first().waitFor({ state: "visible" });
+await mobile.locator(".context-title strong").filter({ hasText: "全国总览" }).waitFor({
+  state: "visible",
+  timeout: 15000,
+});
+await mobile.locator(".severity-band").waitFor({ state: "visible", timeout: 15000 });
 await mobile.screenshot({ path: ".review/overview-mobile.png", fullPage: false });
+const mobileTitle = (await mobile.locator(".context-title strong").innerText()).trim();
 report.push({
   route: "/overview mobile",
   status: 200,
-  expectedTextVisible: true,
+  expectedTitle: "全国总览",
+  titleText: mobileTitle,
+  expectedTextVisible: mobileTitle === "全国总览",
   bodyHasAirObservatory: true,
   consoleErrors: mobileErrors,
   horizontalOverflow:
@@ -207,8 +271,7 @@ const citySections = await browser.newPage({
 });
 await citySections.goto("http://127.0.0.1:5173/city/1", { waitUntil: "networkidle" });
 for (const section of ["trend", "pollutants", "rhythm", "structure"]) {
-  const target = citySections.locator("#" + section);
-  await target.scrollIntoViewIfNeeded();
+  await scrollToSection(citySections, section);
   if (section === "pollutants") {
     await citySections.locator(".pollutant-grid article").first().waitFor({
       state: "visible",
@@ -272,9 +335,8 @@ await gates.waitForTimeout(500);
 const overviewFonts = await measureFonts(gates);
 
 await gates.goto("http://127.0.0.1:5173/city/1", { waitUntil: "networkidle" });
-await gates.locator(".hero-title h1").waitFor({ state: "visible", timeout: 15000 });
 for (const section of ["trend", "pollutants", "rhythm", "structure", "trust"]) {
-  await gates.locator("#" + section).scrollIntoViewIfNeeded();
+  await scrollToSection(gates, section);
   await gates.waitForTimeout(250);
 }
 const cityFonts = await measureFonts(gates);
@@ -288,7 +350,7 @@ report.push({
   belowTwelvePx: [...overviewFonts, ...cityFonts],
 });
 
-// Gate 2 — the 60-city table twin: every value reachable without hover.
+// Gate 2 — the table twin: every value on the deck is reachable without hover.
 await gates.goto("http://127.0.0.1:5173/overview", { waitUntil: "networkidle" });
 await gates.locator(".table-toggle").scrollIntoViewIfNeeded();
 await gates.locator(".table-toggle").click();
@@ -296,76 +358,210 @@ const table = gates.locator(".matrix-table");
 await table.waitFor({ state: "visible", timeout: 15000 });
 const tableRows = await table.locator("tbody tr").count();
 const tableText = await table.innerText();
+/* The caption declares both scopes: the roster the table carries and the
+   provincial set the charts plot. A twin that drops rows, or that covers less
+   than the deck plots, is not a twin — checked against the declaration instead
+   of a row-count constant, which only ever tracked one data vintage. */
+const tableCaption = (await gates.locator(".matrix-card caption").textContent()) ?? "";
+const declaredRoster = Number(/全部\s*(\d+)\s*城/.exec(tableCaption)?.[1]);
+const declaredPlotted = Number(/(\d+)\s*省代表城市/.exec(tableCaption)?.[1]);
 await table.screenshot({ path: ".review/overview-table.png" });
 report.push({
-  route: "design gate · 60 城表格孪生",
+  route: "design gate · 表格孪生",
   status: 200,
-  expectedTextVisible: tableRows >= 50 && tableText.includes("轻度污染"),
+  expectedTextVisible:
+    tableRows === declaredRoster &&
+    declaredRoster >= declaredPlotted &&
+    tableText.includes("轻度污染"),
   bodyHasAirObservatory: true,
   consoleErrors: [],
   tableRows,
+  declaredRoster,
+  declaredPlotted,
   hasLevelWord: tableText.includes("轻度污染") || tableText.includes("优"),
 });
 
-// Gate 3 — the map names its hotspots without hover, and does not collide.
+// Gate 3 — the map names its cities without hover, and the names do not collide.
+/* One representative per province is plotted (31 today). The floor says most
+   of that layer is named on the map itself; it leaves room for the crowded
+   east to cull a few, and it is far above the 6 the gate used to accept. */
+const DIRECT_LABEL_FLOOR = 24;
 await gates.goto("http://127.0.0.1:5173/overview", { waitUntil: "networkidle" });
 await gates.locator(".metric-switch").waitFor({ state: "visible", timeout: 15000 });
 await gates.waitForTimeout(700);
 const mapLabels = await gates.evaluate(() => {
   const svg = document.querySelector(".national-map svg");
-  if (!svg) return { count: 0, overlapping: 0, names: [] };
-  // City value labels ("轻度污染 · AQI 128") always carry a digit; province
-  // names never do. Measure collisions between city labels only.
-  const boxes = [...svg.querySelectorAll("text, tspan")]
-    .map((t) => {
-      const r = t.getBoundingClientRect();
-      return { text: (t.textContent || "").trim(), x: r.x, y: r.y, w: r.width, h: r.height };
-    })
-    .filter((b) => b.text && b.w > 4 && /\d/.test(b.text));
+  if (!svg) {
+    return {
+      count: 0,
+      overlapping: 0,
+      collided: [],
+      minGap: null,
+      readings: 0,
+      unmatchedReadings: 1,
+      provinceCollisions: 0,
+      names: [],
+    };
+  }
+  /* Filter by layer, never by "does the text carry a digit". A quiet province's
+     city label is the bare name — the reading line only appears where there is
+     something to read — so a digit test now catches readings and misses names,
+     which is the opposite of what this gate measures. City labels are set in
+     --ink (name) and --ink-soft (reading); province names are --map-name. */
+  const tokenRgb = (name) => {
+    const probe = document.createElement("span");
+    probe.style.color = `var(${name})`;
+    document.body.appendChild(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  };
+  const CITY_NAME = tokenRgb("--ink");
+  const CITY_READING = tokenRgb("--ink-soft");
+  const PROVINCE_NAME = tokenRgb("--map-name");
+
+  /* Rich text splits one label into one node per line; leaves only, so a label
+     is never counted twice. */
+  const lines = [];
+  for (const node of svg.querySelectorAll("text, tspan")) {
+    if (node.querySelector("text, tspan")) continue;
+    const text = (node.textContent || "").trim();
+    const rect = node.getBoundingClientRect();
+    if (!text || rect.width <= 4 || rect.height <= 0) continue;
+    lines.push({
+      text,
+      fill: getComputedStyle(node).fill,
+      x: rect.x,
+      y: rect.y,
+      w: rect.width,
+      h: rect.height,
+    });
+  }
+
+  /* One annotation = a city name plus the reading line the map stacks directly
+     under it. Pairing the two lines by their own geometry keeps a label's
+     second row from reading as a collision without excusing a collision
+     between two cities. */
+  const annotations = lines
+    .filter((line) => line.fill === CITY_NAME)
+    .map((line) => ({ name: line.text, x: line.x, y: line.y, w: line.w, h: line.h }));
+  const readings = lines.filter((line) => line.fill === CITY_READING);
+  let unmatchedReadings = 0;
+  for (const reading of readings) {
+    const host = annotations
+      .filter(
+        (box) =>
+          Math.abs(box.x - reading.x) <= 1.5 && Math.abs(box.y + box.h - reading.y) <= 1.5,
+      )
+      .sort((a, b) => Math.abs(a.y + a.h - reading.y) - Math.abs(b.y + b.h - reading.y))[0];
+    if (!host) {
+      unmatchedReadings += 1;
+      continue;
+    }
+    host.w = Math.max(host.w, reading.w);
+    host.h = Math.max(host.h, reading.y + reading.h - host.y);
+  }
+
   let overlapping = 0;
-  for (let i = 0; i < boxes.length; i += 1) {
-    for (let j = i + 1; j < boxes.length; j += 1) {
-      const a = boxes[i];
-      const b = boxes[j];
-      const hit =
-        a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-      if (hit) overlapping += 1;
+  let minGap = Infinity;
+  const collided = [];
+  for (let i = 0; i < annotations.length; i += 1) {
+    for (let j = i + 1; j < annotations.length; j += 1) {
+      const a = annotations[i];
+      const b = annotations[j];
+      const dx = Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w));
+      const dy = Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h));
+      minGap = Math.min(minGap, Math.max(dx, dy));
+      if (dx < 0 && dy < 0) {
+        overlapping += 1;
+        collided.push(a.name + " × " + b.name);
+      }
     }
   }
+
+  /* Province names are the layer underneath, not a colliding peer: a city name
+     printed over one is context replaced, not a read that cannot be made. */
+  const provinces = lines.filter((line) => line.fill === PROVINCE_NAME);
+  let provinceCollisions = 0;
+  for (const box of annotations) {
+    for (const province of provinces) {
+      if (
+        box.x < province.x + province.w &&
+        province.x < box.x + box.w &&
+        box.y < province.y + province.h &&
+        province.y < box.y + box.h
+      ) {
+        provinceCollisions += 1;
+      }
+    }
+  }
+
   return {
-    count: boxes.length,
+    count: annotations.length,
     overlapping,
-    names: boxes.map((b) => b.text),
+    collided,
+    minGap: Number.isFinite(minGap) ? Number(minGap.toFixed(2)) : null,
+    readings: readings.length,
+    unmatchedReadings,
+    provinceCollisions,
+    names: annotations.map((box) => box.name),
   };
 });
 await gates.screenshot({ path: ".review/overview-map-labels.png", fullPage: false });
 report.push({
   route: "design gate · 地图直接标注",
-  // Ten candidates are offered; crowding decides how many survive. The gate
-  // is that the hotspots are named and nothing is printed over anything else.
+  // Crowding decides how many of the plotted provinces keep a label; the gate
+  // is that the national layer is named on the map itself, and that no two of
+  // those names are printed over each other. An unpaired reading line would sit
+  // outside the collision set, so it is a failure rather than a silent gap.
   status: 200,
-  expectedTextVisible: mapLabels.count >= 6 && mapLabels.overlapping === 0,
+  expectedTextVisible:
+    mapLabels.count >= DIRECT_LABEL_FLOOR &&
+    mapLabels.overlapping === 0 &&
+    mapLabels.unmatchedReadings === 0,
   bodyHasAirObservatory: true,
   consoleErrors: [],
-  labelledTexts: mapLabels.count,
+  labelledCities: mapLabels.count,
   overlappingLabels: mapLabels.overlapping,
+  overlappingPairs: mapLabels.collided,
+  closestLabelGap: mapLabels.minGap,
+  readingLines: mapLabels.readings,
+  unmatchedReadingLines: mapLabels.unmatchedReadings,
+  provinceNameCollisions: mapLabels.provinceCollisions,
   labels: mapLabels.names,
 });
 
-// Gate 4 — with N this small the backtest must not draw error-vs-horizon curves.
+// Gate 4 — with N this small the backtest must state its evidence and must not
+// draw error-vs-horizon curves.
 await gates.goto("http://127.0.0.1:5173/city/1", { waitUntil: "networkidle" });
-await gates.locator("#trust").scrollIntoViewIfNeeded();
+await scrollToSection(gates, "trust");
 await gates.locator("summary", { hasText: "查看预测回测与误差" }).first().click();
 await gates.waitForTimeout(600);
-const backtestText = await gates.locator(".backtest-panel").innerText();
-const curvesDrawn = (await gates.locator(".backtest-panel .metric-chart svg").count()) > 0;
+const backtestPanel = gates.locator(".backtest-panel");
+const backtestText = await backtestPanel.innerText();
+const curvesDrawn = (await backtestPanel.locator(".metric-chart svg").count()) > 0;
+/* The refusal now reads as a reading: the headline carries how many prediction
+   /observation pairs were aligned, the body still says that is too few to
+   conclude from. Both halves are required — a panel that draws a curve from
+   too few points fails on curvesDrawn, and a panel that admits the shortage
+   without ever stating the sample size fails on the count. */
+const statesAlignedCount = /已对齐\s*\d+\s*组/.test(backtestText);
+const statesInsufficiency = /还不够|不足以|数据不足|样本太少|不给结论|暂不给/.test(backtestText);
+const alignedSamples = Number(/已对齐\s*(\d+)\s*组/.exec(backtestText)?.[1]);
+const declaredSampleSize = Number(/N=(\d+)/.exec(await backtestPanel.locator(".panel-meta").innerText())?.[1]);
 report.push({
   route: "design gate · 回测诚实陈述",
   status: 200,
-  expectedTextVisible: backtestText.includes("样本还不够") && !curvesDrawn,
+  expectedTextVisible: statesAlignedCount && statesInsufficiency && !curvesDrawn,
   bodyHasAirObservatory: true,
   consoleErrors: [],
   curvesDrawn,
+  statesAlignedCount,
+  statesInsufficiency,
+  emptyStateRendered: (await backtestPanel.locator(".not-enough").count()) === 1,
+  alignedSamples,
+  declaredSampleSize,
+  countsAgree: Number.isFinite(alignedSamples) && alignedSamples === declaredSampleSize,
   statesSampleSize: /已对齐样本/.test(backtestText),
 });
 await gates.screenshot({ path: ".review/city-trust.png", fullPage: false });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { components } from "../api/schema";
 import { init, type ECharts } from "../lib/charts";
 import { clusterColor } from "../lib/palette";
@@ -45,11 +45,130 @@ function featureLabel(name: string) {
   return FEATURE_LABELS[name] ?? name;
 }
 
-const retainedShare = () => {
-  const ev = props.fingerprint.explained_variance;
-  const pick = ev[1]?.cumulative_ratio ?? ev[0]?.cumulative_ratio ?? 0;
-  return (pick * 100).toFixed(1);
-};
+/* Deviation from the mean of the provincial representatives is polarity, not
+   status: the diverging pair is cool↔warm with a neutral grey midpoint,
+   deliberately not the good/bad status green↔red. */
+const SIGMA_COOL = "#2b6b86";
+const SIGMA_WARM = "#a35f22";
+const SIGMA_ZERO = "#9aa8a2";
+
+function sigmaColor(z: number) {
+  if (z <= -0.05) return SIGMA_COOL;
+  if (z >= 0.05) return SIGMA_WARM;
+  return SIGMA_ZERO;
+}
+
+/** Widest |z| in the whole profile set — one shared scale across groups. */
+const sigmaMax = computed(() => {
+  let max = 1;
+  for (const cluster of props.fingerprint.cluster_profiles) {
+    for (const feature of cluster.top_features) {
+      max = Math.max(max, Math.abs(feature.zscore));
+    }
+  }
+  return max;
+});
+
+const components_ = computed(() => props.fingerprint.explained_variance);
+
+/** Share of structure the first two dimensions keep, or null when absent. */
+const retainedShare = computed(() => {
+  const ev = components_.value;
+  const cumulative = ev[1]?.cumulative_ratio ?? ev[0]?.cumulative_ratio;
+  return typeof cumulative === "number" && Number.isFinite(cumulative) ? cumulative : null;
+});
+
+const cityCount = computed(() => {
+  const declared = props.fingerprint.meta.city_count;
+  return Number.isFinite(declared) && declared > 0 ? declared : props.fingerprint.points.length;
+});
+
+const provinceCount = computed(
+  () => new Set(props.fingerprint.points.map((point) => point.province || point.city)).size,
+);
+
+/* One city per province is the analysis unit; the wording follows the data so a
+   multi-city artifact is never described as provincial. */
+const onePerProvince = computed(
+  () => cityCount.value > 0 && provinceCount.value === cityCount.value,
+);
+const countLabel = computed(
+  () => `${cityCount.value} ${onePerProvince.value ? "个省的代表城市" : "座城市"}`,
+);
+const unitLabel = computed(() =>
+  onePerProvince.value ? `${cityCount.value} 个省各取一城` : countLabel.value,
+);
+
+const headline = computed(() => {
+  if (cityCount.value <= 0) return "当前没有可用的城市结构指纹";
+  const clusters = props.fingerprint.meta.cluster_count;
+  if (!Number.isFinite(clusters) || clusters < 2) {
+    return `${unitLabel.value}的长期变化没有分出可分辨的模式`;
+  }
+  return `${unitLabel.value}的长期变化分成 ${clusters} 种模式`;
+});
+
+const largestCluster = computed(() => {
+  const profiles = props.fingerprint.cluster_profiles;
+  if (!profiles.length) return null;
+  return profiles.reduce((best, profile) =>
+    profile.city_count > best.city_count ||
+    (profile.city_count === best.city_count && profile.cluster < best.cluster)
+      ? profile
+      : best,
+  );
+});
+
+const scatterHeadline = computed(() => {
+  if (cityCount.value <= 0) return "结构指纹里没有城市";
+  const largest = largestCluster.value;
+  if (!largest) return "结构指纹没有可分组的结果";
+  const clusters = props.fingerprint.meta.cluster_count;
+  if (!Number.isFinite(clusters) || clusters < 2) {
+    return `第 1 组概括全部 ${cityCount.value} 城`;
+  }
+  const share = Math.round((largest.city_count / Math.max(cityCount.value, 1)) * 100);
+  return `${largest.city_count} 城（${share}%）结构最接近，归为第 ${largest.cluster} 组`;
+});
+
+const varianceHeadline = computed(() => {
+  const share = retainedShare.value;
+  if (share == null) return "解释方差暂不可用";
+  const percent = Math.round(share * 100);
+  if (percent >= 80) return `前两维保留 ${percent}%，结构差异基本完整`;
+  if (percent >= 60) return `前两维保留 ${percent}%，主要结构差异已保留`;
+  if (percent >= 40) return `前两维保留 ${percent}%，约半数结构差异被压缩`;
+  return `前两维保留 ${percent}%，大部分结构差异被压缩`;
+});
+
+/** Largest |z| across every group — the strongest deviation on screen. */
+const topDeviation = computed(() => {
+  let best: { cluster: number; feature: string; zscore: number } | null = null;
+  for (const cluster of props.fingerprint.cluster_profiles) {
+    for (const feature of cluster.top_features) {
+      if (!Number.isFinite(feature.zscore)) continue;
+      if (!best || Math.abs(feature.zscore) > Math.abs(best.zscore)) {
+        best = { cluster: cluster.cluster, feature: feature.feature, zscore: feature.zscore };
+      }
+    }
+  }
+  return best;
+});
+
+const clusterHeadline = computed(() => {
+  const top = topDeviation.value;
+  if (!top) return "各组没有可读的偏离特征";
+  const sign = top.zscore > 0 ? "+" : "";
+  return `第 ${top.cluster} 组 ${featureLabel(top.feature)}偏离最大：${sign}${top.zscore.toFixed(1)}σ`;
+});
+
+const scatterAria = computed(() =>
+  cityCount.value <= 0
+    ? "没有可用的城市结构指纹二维投影。"
+    : `${countLabel.value}长期结构指纹二维投影。每点一个${
+        onePerProvince.value ? "省的代表城市" : "城市"
+      }，颜色为探索性分组。`,
+);
 
 function render() {
   if (!scatter || !variance) return;
@@ -57,33 +176,33 @@ function render() {
   const clusters = Array.from(
     new Set(props.fingerprint.points.map((point) => point.cluster)),
   ).sort((a, b) => a - b);
-  const axisInk = "#5b6d64";
+  const axisInk = "#566a61";
   const axisSize = 12;
+  const ev = components_.value;
 
   scatter.setOption(
     {
       animation: !reducedMotion,
       aria: {
         enabled: true,
-        description:
-          "60 城共同时间窗的城市结构指纹二维图。每个点是一座城市，颜色表示探索性分组。",
+        description: scatterAria.value,
       },
-      grid: { left: 60, right: 24, top: 34, bottom: 52 },
+      grid: { left: 58, right: 28, top: 26, bottom: 54 },
       tooltip: {
         backgroundColor: "rgba(255,255,255,.985)",
-        borderColor: "#c5d1cb",
+        borderColor: "#8fa39b",
         borderWidth: 1,
         padding: [11, 13],
-        textStyle: { color: "#17231e", fontSize: 13, lineHeight: 21 },
-        extraCssText: "box-shadow:0 12px 32px rgba(21,36,30,.12);border-radius:10px;",
+        textStyle: { color: "#0b1512", fontSize: 13, lineHeight: 21 },
+        extraCssText: "box-shadow:0 12px 32px rgba(11,21,18,.14);border-radius:8px;",
         formatter(params: any) {
           const row = params.data;
           return [
             `<b>${row.city}</b> · ${row.region}`,
             `第 ${row.cluster} 组`,
-            `变化方向 1 <b>${Number(row.value[0]).toFixed(2)}</b>`,
-            `变化方向 2 <b>${Number(row.value[1]).toFixed(2)}</b>`,
-            `样本 ${row.sampleHours} 小时 · 点击进入城市`,
+            `主成分 1 <b>${Number(row.value[0]).toFixed(2)}</b>`,
+            `主成分 2 <b>${Number(row.value[1]).toFixed(2)}</b>`,
+            `样本 ${row.sampleHours} 小时`,
           ].join("<br/>");
         },
       },
@@ -97,27 +216,29 @@ function render() {
       },
       xAxis: {
         type: "value",
-        name: "变化方向 1 →",
+        name: `主成分 1 · ${Math.round((ev[0]?.variance_ratio ?? 0) * 100)}%`,
         nameLocation: "middle",
         nameGap: 32,
-        nameTextStyle: { color: axisInk, fontSize: axisSize },
+        nameTextStyle: { color: "#243530", fontSize: axisSize, fontWeight: 650 },
         axisLabel: { color: axisInk, fontSize: axisSize },
-        axisLine: { lineStyle: { color: "#c9d3cd" } },
-        splitLine: { lineStyle: { color: "#dde4e0" } },
+        axisLine: { lineStyle: { color: "#a7b8b0" } },
+        splitLine: { lineStyle: { color: "#c3d1cb" } },
       },
       yAxis: {
         type: "value",
-        name: "变化方向 2 ↑",
-        nameTextStyle: { color: axisInk, fontSize: axisSize, padding: [0, 0, 8, 0] },
+        name: `主成分 2 · ${Math.round((ev[1]?.variance_ratio ?? 0) * 100)}%`,
+        nameTextStyle: {
+          color: "#243530",
+          fontSize: axisSize,
+          fontWeight: 650,
+          padding: [0, 0, 8, 0],
+        },
         axisLabel: { color: axisInk, fontSize: axisSize },
-        axisLine: { lineStyle: { color: "#c9d3cd" } },
-        splitLine: { lineStyle: { color: "#dde4e0" } },
+        axisLine: { lineStyle: { color: "#a7b8b0" } },
+        splitLine: { lineStyle: { color: "#c3d1cb" } },
       },
-      series: clusters.map((cluster) => ({
-        name: "第 " + cluster + " 组",
-        type: "scatter",
-        symbolSize: 11,
-        data: props.fingerprint.points
+      series: clusters.map((cluster) => {
+        const rows = props.fingerprint.points
           .filter((point) => point.cluster === cluster)
           .map((point) => ({
             value: [point.values.PC1 ?? 0, point.values.PC2 ?? 0],
@@ -126,30 +247,52 @@ function render() {
             region: point.region,
             cluster: point.cluster,
             sampleHours: point.sample_hours,
-          })),
-        itemStyle: {
-          color: clusterColor(cluster),
-          opacity: 0.85,
-          borderColor: "#ffffff",
-          borderWidth: 2,
-        },
-        emphasis: {
-          scale: 1.5,
+          }));
+        return {
+          name: "第 " + cluster + " 组",
+          type: "scatter",
+          symbolSize: 15,
+          data: rows,
+          itemStyle: {
+            color: clusterColor(cluster),
+            opacity: 0.95,
+            borderColor: "#fbfcfb",
+            borderWidth: 2,
+          },
+          // Names on as many points as the canvas can seat; the resolver culls
+          // the rest rather than printing them over each other.
           label: {
             show: true,
             formatter: (params: any) => params.data.city,
-            position: "top",
-            color: "#10221a",
-            fontSize: 13,
-            fontWeight: 700,
-            backgroundColor: "rgba(255,255,255,.96)",
-            borderColor: "#c5d1cb",
-            borderWidth: 1,
-            borderRadius: 6,
-            padding: [5, 8],
+            position: "right",
+            distance: 4,
+            color: "#243530",
+            fontSize: 12,
+            fontWeight: 650,
+            textBorderColor: "#fbfcfb",
+            textBorderWidth: 3,
           },
-        },
-      })),
+          labelLayout: { moveOverlap: "shiftY", hideOverlap: true },
+          emphasis: {
+            scale: 1.5,
+            itemStyle: { borderColor: "#0b1512", borderWidth: 2 },
+            label: {
+              show: true,
+              formatter: (params: any) => params.data.city,
+              position: "top",
+              color: "#0b1512",
+              fontSize: 13,
+              fontWeight: 700,
+              backgroundColor: "rgba(255,255,255,.96)",
+              borderColor: "#8fa39b",
+              borderWidth: 1,
+              borderRadius: 5,
+              padding: [5, 8],
+              textBorderWidth: 0,
+            },
+          },
+        };
+      }),
     },
     true,
   );
@@ -165,15 +308,15 @@ function render() {
   variance.setOption(
     {
       animation: !reducedMotion,
-      aria: { enabled: true, description: "各变化方向解释比例与累计解释比例。" },
+      aria: { enabled: true, description: "各主成分单独与累计解释比例。" },
       grid: { left: 44, right: 14, top: 30, bottom: 34 },
       tooltip: {
         trigger: "axis",
         backgroundColor: "rgba(255,255,255,.985)",
-        borderColor: "#c5d1cb",
+        borderColor: "#8fa39b",
         borderWidth: 1,
-        textStyle: { color: "#17231e", fontSize: 13 },
-        extraCssText: "box-shadow:0 12px 32px rgba(21,36,30,.12);border-radius:10px;",
+        textStyle: { color: "#0b1512", fontSize: 13 },
+        extraCssText: "box-shadow:0 12px 32px rgba(11,21,18,.14);border-radius:8px;",
       },
       legend: {
         top: 0,
@@ -184,9 +327,9 @@ function render() {
       },
       xAxis: {
         type: "category",
-        data: props.fingerprint.explained_variance.map((item) => item.component),
+        data: ev.map((item) => item.component),
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: "#c9d3cd" } },
+        axisLine: { lineStyle: { color: "#a7b8b0" } },
         axisLabel: { color: axisInk, fontSize: axisSize },
       },
       yAxis: {
@@ -198,24 +341,41 @@ function render() {
           fontSize: axisSize,
           formatter: (value: number) => Math.round(value * 100) + "%",
         },
-        splitLine: { lineStyle: { color: "#dde4e0" } },
+        splitLine: { lineStyle: { color: "#c3d1cb" } },
       },
       series: [
         {
           name: "单独解释",
           type: "bar",
           barMaxWidth: 24,
-          data: props.fingerprint.explained_variance.map((item) => item.variance_ratio),
-          itemStyle: { color: "#356f87", borderRadius: [4, 4, 0, 0] },
+          data: ev.map((item) => item.variance_ratio),
+          itemStyle: { color: "#2f6a82", borderRadius: [3, 3, 0, 0] },
+          label: {
+            show: true,
+            position: "top",
+            color: "#243530",
+            fontSize: 12,
+            fontWeight: 650,
+            formatter: (params: any) =>
+              Math.round(Number(params.value) * 100) + "%",
+          },
         },
         {
           name: "累计解释",
           type: "line",
-          data: props.fingerprint.explained_variance.map((item) => item.cumulative_ratio),
+          data: ev.map((item) => item.cumulative_ratio),
           showSymbol: true,
           symbolSize: 6,
-          lineStyle: { color: "#a06a34", width: 2 },
-          itemStyle: { color: "#a06a34", borderColor: "#fff", borderWidth: 2 },
+          lineStyle: { color: "#9a6128", width: 2 },
+          itemStyle: { color: "#9a6128", borderColor: "#fbfcfb", borderWidth: 2 },
+          endLabel: {
+            show: true,
+            formatter: (params: any) => Math.round(Number(params.value) * 100) + "%",
+            color: "#9a6128",
+            fontSize: 12,
+            fontWeight: 700,
+            distance: 4,
+          },
         },
       ],
     },
@@ -247,25 +407,17 @@ onBeforeUnmount(() => {
 <template>
   <section class="fingerprint-panel">
     <header class="panel-header">
-      <div>
-        <h2>60 座城市的长期变化，分成几种模式？</h2>
-        <p>
-          同一段 {{ fingerprint.meta.sample_hours_min }} 小时时间窗，21 项污染与气象摘要特征。
-          在这张图上靠得越近的城市，长期变化方式越像。
-        </p>
-      </div>
+      <h2 class="display-face">{{ headline }}</h2>
       <div class="panel-meta data-mono">
-        <b>{{ fingerprint.meta.city_count }} 城</b>
-        <span>{{ fingerprint.meta.cluster_count }} 组</span>
+        <span>{{ fingerprint.meta.window_start.slice(0, 10) }} → {{ fingerprint.meta.window_end.slice(0, 10) }}</span>
+        <b>{{ cityCount }} 城</b>
       </div>
     </header>
 
     <div class="fingerprint-layout">
       <article class="scatter-cell">
         <div class="chart-heading">
-          <h3>哪些城市的长期变化更像？</h3>
-          <p>每个点是一座城市，颜色只是探索性分组，不代表城市有固定类别。点击城市继续看它的具体变化。</p>
-          <span class="retained data-mono">{{ retainedShare() }}% 信息保留</span>
+          <h3 class="display-face">{{ scatterHeadline }}</h3>
         </div>
         <div ref="scatterEl" class="scatter-chart"></div>
       </article>
@@ -273,16 +425,14 @@ onBeforeUnmount(() => {
       <aside class="fingerprint-ledger">
         <section>
           <div class="chart-heading">
-            <h3>二维图保留了多少信息？</h3>
-            <p>柱子是每个方向单独解释的变化，折线是累计。</p>
+            <h3 class="display-face">{{ varianceHeadline }}</h3>
           </div>
           <div ref="varianceEl" class="variance-chart"></div>
         </section>
 
         <section class="cluster-section">
           <div class="chart-heading">
-            <h3>每一组城市最突出的特征是什么？</h3>
-            <p>用来理解它们为什么会聚在一起。σ 表示相对全国 60 城的偏离程度。</p>
+            <h3 class="display-face">{{ clusterHeadline }}</h3>
           </div>
           <div class="cluster-list">
             <div
@@ -295,27 +445,36 @@ onBeforeUnmount(() => {
                 <b>第 {{ cluster.cluster }} 组</b>
                 <span>{{ cluster.city_count }} 城</span>
               </div>
-              <div class="feature-list">
-                <span v-for="feature in cluster.top_features" :key="feature.feature">
-                  {{ featureLabel(feature.feature) }}
-                  <b class="data-mono">
-                    {{ feature.zscore > 0 ? "+" : "" }}{{ feature.zscore.toFixed(2) }}σ
+
+              <div class="sigma-list">
+                <div
+                  v-for="feature in cluster.top_features"
+                  :key="feature.feature"
+                  class="sigma-row"
+                >
+                  <span class="sigma-name">{{ featureLabel(feature.feature) }}</span>
+                  <div class="sigma-track">
+                    <i class="sigma-zero"></i>
+                    <i
+                      class="sigma-bar"
+                      :style="{
+                        background: sigmaColor(feature.zscore),
+                        left: feature.zscore >= 0 ? '50%' : undefined,
+                        right: feature.zscore < 0 ? '50%' : undefined,
+                        width: (Math.abs(feature.zscore) / sigmaMax) * 50 + '%',
+                      }"
+                    ></i>
+                  </div>
+                  <b class="sigma-value data-mono" :style="{ color: sigmaColor(feature.zscore) }">
+                    {{ feature.zscore > 0 ? "+" : "" }}{{ feature.zscore.toFixed(1) }}σ
                   </b>
-                </span>
+                </div>
               </div>
             </div>
           </div>
         </section>
       </aside>
     </div>
-
-    <footer class="panel-footer">
-      <span class="data-mono">
-        {{ fingerprint.meta.window_start.slice(0, 10) }} → {{ fingerprint.meta.window_end.slice(0, 10) }}
-      </span>
-      <span>统一标准化后比较</span>
-      <span>分组只用于探索，不是给城市定性</span>
-    </footer>
   </section>
 </template>
 
@@ -325,13 +484,12 @@ onBeforeUnmount(() => {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   background: var(--sheet);
-  box-shadow: 0 10px 30px rgba(24, 41, 34, .045);
 }
 .panel-header {
-  min-height: 86px;
-  padding: 18px 20px 12px;
+  min-height: 62px;
+  padding: 16px 20px 12px;
   display: flex;
-  align-items: start;
+  align-items: baseline;
   justify-content: space-between;
   gap: 20px;
   border-bottom: 1px solid var(--hairline-soft);
@@ -339,16 +497,8 @@ onBeforeUnmount(() => {
 .panel-header h2 {
   margin: 0;
   color: var(--ink);
-  font-size: var(--fs-title);
-  font-weight: var(--fw-display);
-  letter-spacing: var(--track-display);
-}
-.panel-header p {
-  max-width: 76ch;
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: var(--fs-body);
-  line-height: 1.65;
+  font-size: var(--fs-sub);
+  letter-spacing: var(--track-title);
 }
 .panel-meta {
   display: flex;
@@ -364,7 +514,7 @@ onBeforeUnmount(() => {
 
 .fingerprint-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(320px, .85fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, .85fr);
 }
 .scatter-cell {
   min-width: 0;
@@ -372,37 +522,21 @@ onBeforeUnmount(() => {
   border-right: 1px solid var(--hairline-soft);
 }
 .chart-heading {
-  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
   margin-bottom: 10px;
 }
 .chart-heading h3 {
   margin: 0;
   color: var(--ink);
   font-size: var(--fs-body);
-  font-weight: var(--fw-strong);
   letter-spacing: var(--track-title);
-}
-.chart-heading p {
-  max-width: 62ch;
-  margin: 5px 0 0;
-  color: var(--muted);
-  font-size: var(--fs-label);
-  line-height: 1.55;
-}
-.retained {
-  display: inline-block;
-  margin-top: 7px;
-  padding: 4px 9px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
-  background: var(--sheet-soft);
-  color: var(--ink-soft);
-  font-family: var(--mono);
-  font-size: var(--fs-label);
 }
 .scatter-chart {
   width: 100%;
-  height: 480px;
+  height: 470px;
 }
 
 .fingerprint-ledger {
@@ -423,7 +557,7 @@ onBeforeUnmount(() => {
   display: grid;
 }
 .cluster-row {
-  padding: 12px 0;
+  padding: 14px 0;
   border-top: 1px solid var(--hairline-soft);
 }
 .cluster-row:first-child {
@@ -450,37 +584,52 @@ onBeforeUnmount(() => {
   color: var(--muted);
   font-size: var(--fs-label);
 }
-.feature-list {
-  margin-top: 8px;
+
+/* σ as a diverging bar on a shared scale — polarity read off position,
+   value read off the number. Replaces a table of ±σ digits. */
+.sigma-list {
+  margin-top: 10px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 12px;
+  gap: 7px;
 }
-.feature-list span {
-  min-width: 0;
-  display: flex;
-  justify-content: space-between;
-  gap: 6px;
+.sigma-row {
+  display: grid;
+  grid-template-columns: 8.5em minmax(0, 1fr) 3.6em;
+  align-items: center;
+  gap: 10px;
+}
+.sigma-name {
   color: var(--muted);
-  font-size: var(--fs-label);
-}
-.feature-list b {
-  color: var(--ink);
-  font-family: var(--mono);
   font-size: var(--fs-label);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-
-.panel-footer {
-  min-height: 48px;
-  padding: 12px 20px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  color: var(--muted);
+.sigma-track {
+  position: relative;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--sheet-sunken);
+}
+.sigma-zero {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 1px;
+  background: var(--hairline-strong);
+}
+.sigma-bar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 2px;
+}
+.sigma-value {
+  color: var(--ink);
   font-size: var(--fs-label);
-  line-height: 1.4;
+  text-align: right;
+  white-space: nowrap;
 }
 
 @media (max-width: 980px) {
@@ -492,8 +641,7 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 680px) {
   .panel-header { display: grid; }
-  .panel-meta { justify-content: start; }
   .scatter-chart { height: 400px; }
-  .feature-list { grid-template-columns: 1fr; }
+  .sigma-row { grid-template-columns: 7em minmax(0, 1fr) 3.4em; }
 }
 </style>

@@ -98,15 +98,22 @@ def materialize_city_fingerprint(
         "window_start": artifact.window_start,
         "window_end": artifact.window_end,
         "city_count": artifact.city_count,
+        "eligible_city_count": artifact.eligible_city_count,
+        "representative_rule": artifact.representative_rule,
         "sample_hours_min": artifact.sample_hours_min,
         "sample_hours_max": artifact.sample_hours_max,
         "features": list(artifact.features),
         "standardization": "z-score across cities",
+        "missing_strategy": "complete_case_no_interpolation",
+        "pollution_source": "CAMS model analysis",
+        "weather_source": "Open-Meteo historical weather/reanalysis",
         "local_structure_warning": (
             "National fingerprint PCA is fit on common city-level summary features; "
             "city-local PCA axes are not compared across cities."
         ),
-        "cluster_method": "KMeans; k selected by maximum silhouette over k=2..6",
+        "cluster_method": (
+            f"KMeans; k selected by maximum silhouette over k=2..{max_clusters}"
+        ),
         "cluster_count": artifact.cluster_count,
         "silhouette": artifact.silhouette,
         "explained_variance": artifact.explained_variance,
@@ -122,7 +129,7 @@ def materialize_city_fingerprint(
                 run_id, analysis_type, version, window_start, window_end,
                 created_at, config_json, metrics_json, artifact_path, status
             ) VALUES (
-                ?, 'city_fingerprint', 'city-summary-pca-kmeans',
+                ?, 'city_fingerprint', 'province-representative-summary-pca-kmeans',
                 ?, ?, ?, ?, ?, NULL, 'success'
             )
             """,
@@ -137,7 +144,15 @@ def materialize_city_fingerprint(
                         "max_components": max_components,
                         "max_clusters": max_clusters,
                         "standardization": "z-score across cities",
-                        "cluster_selection": "max silhouette for k=2..6",
+                        "missing_strategy": "complete_case_no_interpolation",
+                        "city_selection": (
+                            "one city per province by highest window-mean PM2.5 "
+                            "(pm25_mean), ties to the lower location_id; applied after "
+                            "the summary features and before PCA/KMeans"
+                        ),
+                        "cluster_selection": (
+                            f"max silhouette for k=2..{max_clusters}"
+                        ),
                     },
                     ensure_ascii=False,
                 ),

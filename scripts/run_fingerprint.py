@@ -30,6 +30,8 @@ def main() -> None:
             "window_start",
             "window_end",
             "city_count",
+            "eligible_city_count",
+            "representative_rule",
             "sample_hours_min",
             "sample_hours_max",
             "cluster_count",

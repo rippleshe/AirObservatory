@@ -14,6 +14,14 @@ from backend.repository import active_location_rows
 
 from .features import PCA_FEATURES, load_city_feature_frame
 
+REPRESENTATIVE_RULE = (
+    "One city per province: among the cities that clear the >=168 complete-hour guard "
+    "in the common window, the province's highest window-mean PM2.5 (pm25_mean) is the "
+    "province representative; ties fall to the lower location_id. Selection happens "
+    "after the summary features and before PCA/KMeans, so every statistic below "
+    "describes the provincial representatives only."
+)
+
 FINGERPRINT_FEATURES = (
     "pm25_mean",
     "pm25_p90",
@@ -45,6 +53,8 @@ class CityFingerprintArtifact:
     window_start: str
     window_end: str
     city_count: int
+    eligible_city_count: int
+    representative_rule: str
     sample_hours_min: int
     sample_hours_max: int
     explained_variance: list[dict]
@@ -106,6 +116,14 @@ def _city_summary(frame: pd.DataFrame) -> dict[str, float]:
     }
 
 
+def _province_representatives(rows: list[dict]) -> list[dict]:
+    """Highest window-mean PM2.5 per province, ties to the lower location_id."""
+    best: dict[str, dict] = {}
+    for row in sorted(rows, key=lambda item: (-item["pm25_mean"], item["location_id"])):
+        best.setdefault(row["province"] or row["city"], row)
+    return sorted(best.values(), key=lambda row: row["location_id"])
+
+
 def fit_city_fingerprint(
     *,
     hours: int = 24 * 90,
@@ -136,7 +154,6 @@ def fit_city_fingerprint(
         raise ValueError("Cities do not share a common analysis window")
 
     rows: list[dict] = []
-    sample_counts: list[int] = []
     location_by_id = {int(row["location_id"]): row for row in locations}
 
     for location_id, frame in frames.items():
@@ -156,12 +173,16 @@ def fit_city_fingerprint(
                 **summary,
             }
         )
-        sample_counts.append(complete_count)
 
     if len(rows) < 3:
         raise ValueError("Fewer than three cities have enough complete rows in the common window")
 
-    city_frame = pd.DataFrame(rows)
+    eligible_city_count = len(rows)
+    representatives = _province_representatives(rows)
+    if len(representatives) < 3:
+        raise ValueError("Fewer than three provinces have an eligible representative city")
+
+    city_frame = pd.DataFrame(representatives)
     matrix = city_frame[list(FINGERPRINT_FEATURES)].astype(float)
     scaler = StandardScaler()
     standardized = scaler.fit_transform(matrix)
@@ -248,8 +269,10 @@ def fit_city_fingerprint(
         window_start=common_start.isoformat(),
         window_end=common_end.isoformat(),
         city_count=len(points),
-        sample_hours_min=min(sample_counts),
-        sample_hours_max=max(sample_counts),
+        eligible_city_count=eligible_city_count,
+        representative_rule=REPRESENTATIVE_RULE,
+        sample_hours_min=int(city_frame["sample_hours"].min()),
+        sample_hours_max=int(city_frame["sample_hours"].max()),
         explained_variance=explained_variance,
         loadings=loadings,
         points=points,

@@ -41,12 +41,7 @@ function retry() {
 <template>
   <section class="system-workspace">
     <header class="system-header">
-      <div>
-        <h1>数据从哪里来？</h1>
-        <p>
-          这里保留数据来源、最近更新时间、采集记录和站点绑定，方便核查作品背后的真实数据链。
-        </p>
-      </div>
+      <h1 class="display-face">数据来源与更新记录</h1>
       <button type="button" class="refresh-button" @click="retry">
         <RefreshCw :size="14" />
         刷新
@@ -78,15 +73,15 @@ function retry() {
         <dl>
           <div>
             <dt>OBS</dt>
-            <dd class="data-mono">{{ status.data.value?.counts.air_observations ?? 0 }}</dd>
+            <dd class="data-mono">{{ status.data.value?.counts.air_observations ?? "—" }}</dd>
           </div>
           <div>
             <dt>MODEL</dt>
-            <dd class="data-mono">{{ status.data.value?.counts.air_model_analysis ?? 0 }}</dd>
+            <dd class="data-mono">{{ status.data.value?.counts.air_model_analysis ?? "—" }}</dd>
           </div>
           <div>
             <dt>FCST</dt>
-            <dd class="data-mono">{{ status.data.value?.counts.forecasts ?? 0 }}</dd>
+            <dd class="data-mono">{{ status.data.value?.counts.forecasts ?? "—" }}</dd>
           </div>
         </dl>
       </section>
@@ -95,10 +90,9 @@ function retry() {
     <section class="system-panel">
       <header>
         <Database :size="15" />
-        <div>
-          <h2>城市与地面观测站点</h2>
-          <p>哪些城市确实有地面观测，以及数据来自哪个站点。</p>
-        </div>
+        <h2 class="display-face">
+          {{ system.data.value?.bindings.length ?? 0 }} 个城市绑定地面观测站点
+        </h2>
       </header>
       <div class="table-scroll">
         <table>
@@ -133,10 +127,9 @@ function retry() {
     <section class="system-panel">
       <header>
         <RefreshCw :size="15" />
-        <div>
-          <h2>最近的数据更新记录</h2>
-          <p>每次采集是否成功、更新到了什么时间，以及有没有错误。</p>
-        </div>
+        <h2 class="display-face">
+          {{ system.data.value?.ingestions.length ?? 0 }} 次数据更新记录
+        </h2>
       </header>
       <div class="table-scroll">
         <table>
@@ -190,13 +183,6 @@ function retry() {
   font-size: clamp(26px, 3vw, 42px);
   font-weight: var(--fw-display);
   letter-spacing: -.03em;
-}
-.system-header p {
-  max-width: 700px;
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.65;
 }
 .refresh-button {
   min-height: 40px;

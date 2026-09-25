@@ -37,7 +37,77 @@ const evidence = computed(() => {
 
 const horizonSpan = computed(() => {
   const h = evidence.value.horizons;
-  return h.length ? `${h[0]}–${h[h.length - 1]} 小时` : "暂无";
+  return h.length ? `${h[0]}–${h[h.length - 1]} 小时` : "—";
+});
+
+/* Every heading below is built from the same rows the chart plots, so no
+   reading instructions are needed under them. */
+const overallError = computed(() => {
+  const samples = evidence.value.samples;
+  if (!samples.length) return null;
+  return samples.reduce((sum, row) => sum + Math.abs(row.error), 0) / samples.length;
+});
+
+const backtestHeadline = computed(() => {
+  const count = evidence.value.samples.length;
+  const error = overallError.value;
+  if (!count || error == null) return "还没有可与地面观测对齐的预测样本";
+  return `已对齐 ${count} 组预测与实测，平均误差 ${error.toFixed(1)} µg/m³`;
+});
+
+const maeHeadline = computed(() => {
+  const byHorizon = new Map<number, number[]>();
+  (props.backtest?.metrics ?? []).forEach((row) => {
+    const bucket = byHorizon.get(row.horizon_hours) ?? [];
+    bucket.push(row.mae);
+    byHorizon.set(row.horizon_hours, bucket);
+  });
+  const horizons = [...byHorizon.keys()].sort((a, b) => a - b);
+  if (horizons.length < 2) return "只有一档预测时长，无法比较误差变化";
+  const mean = (horizon: number) => {
+    const values = byHorizon.get(horizon) ?? [];
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  };
+  const first = horizons[0];
+  const last = horizons[horizons.length - 1];
+  const verb = mean(last) >= mean(first) ? "升到" : "降到";
+  return `提前 ${first} 小时平均误差 ${mean(first).toFixed(1)} µg/m³，提前 ${last} 小时${verb} ${mean(
+    last,
+  ).toFixed(1)} µg/m³`;
+});
+
+const rmseHeadline = computed(() => {
+  const samples = evidence.value.samples;
+  if (!samples.length) return "还没有可与地面观测对齐的预测样本";
+  const worst = samples.reduce(
+    (best, row) => (Math.abs(row.error) > Math.abs(best.error) ? row : best),
+    samples[0],
+  );
+  return `最大单次偏差 ${Math.abs(worst.error).toFixed(1)} µg/m³，出现在提前 ${
+    worst.horizon_hours
+  } 小时`;
+});
+
+const fitHeadline = computed(() => {
+  const samples = evidence.value.samples;
+  if (samples.length < 3) return `${samples.length} 组预测与实测对照`;
+  const predicted = samples.map((row) => row.predicted_value);
+  const observed = samples.map((row) => row.observed_value);
+  const meanPredicted = predicted.reduce((sum, value) => sum + value, 0) / predicted.length;
+  const meanObserved = observed.reduce((sum, value) => sum + value, 0) / observed.length;
+  let covariance = 0;
+  let variancePredicted = 0;
+  let varianceObserved = 0;
+  for (let index = 0; index < predicted.length; index += 1) {
+    const dx = predicted[index] - meanPredicted;
+    const dy = observed[index] - meanObserved;
+    covariance += dx * dy;
+    variancePredicted += dx * dx;
+    varianceObserved += dy * dy;
+  }
+  if (!variancePredicted || !varianceObserved) return `${samples.length} 组预测与实测对照`;
+  const r = covariance / Math.sqrt(variancePredicted * varianceObserved);
+  return `${samples.length} 组预测与实测的相关系数 r = ${r.toFixed(2)}`;
 });
 
 function lineOption(metric: "mae" | "rmse") {
@@ -53,9 +123,9 @@ function lineOption(metric: "mae" | "rmse") {
     tooltip: {
       trigger: "axis",
       backgroundColor: "rgba(255,255,255,.985)",
-      borderColor: "#c5d1cb",
+      borderColor: "#8fa39b",
       borderWidth: 1,
-      textStyle: { color: "#17231e", fontSize: 13 },
+      textStyle: { color: "#0b1512", fontSize: 13 },
       extraCssText: "box-shadow:0 12px 32px rgba(21,36,30,.12);border-radius:10px;",
     },
     xAxis: {
@@ -63,20 +133,20 @@ function lineOption(metric: "mae" | "rmse") {
       name: "预测时长（小时）",
       nameLocation: "middle",
       nameGap: 28,
-      nameTextStyle: { color: "#5b6d64", fontSize: 12 },
+      nameTextStyle: { color: "#566a61", fontSize: 12 },
       axisTick: { show: false },
-      axisLine: { lineStyle: { color: "#c9d3cd" } },
-      axisLabel: { color: "#5b6d64", fontSize: 12 },
+      axisLine: { lineStyle: { color: "#a7b8b0" } },
+      axisLabel: { color: "#566a61", fontSize: 12 },
       splitLine: { show: false },
     },
     yAxis: {
       type: "value",
       name: metric === "mae" ? "平均误差 MAE" : "均方根误差 RMSE",
-      nameTextStyle: { color: "#5b6d64", fontSize: 12, padding: [0, 0, 6, 0] },
+      nameTextStyle: { color: "#566a61", fontSize: 12, padding: [0, 0, 6, 0] },
       axisTick: { show: false },
       axisLine: { show: false },
-      axisLabel: { color: "#5b6d64", fontSize: 12 },
-      splitLine: { lineStyle: { color: "#dde4e0" } },
+      axisLabel: { color: "#566a61", fontSize: 12 },
+      splitLine: { lineStyle: { color: "#c3d1cb" } },
     },
     series: models.map((model, index) => ({
       name: model,
@@ -90,7 +160,7 @@ function lineOption(metric: "mae" | "rmse") {
       lineStyle: { width: 2, color: seriesColors[index % seriesColors.length] },
       itemStyle: {
         color: seriesColors[index % seriesColors.length],
-        borderColor: "#fff",
+        borderColor: "#fbfcfb",
         borderWidth: 2,
       },
     })),
@@ -106,14 +176,14 @@ function scatterOption() {
     animation: false,
     aria: {
       enabled: true,
-      description: "预测值与地面观测真值对照，含一比一参考线。",
+      description: "预测值与地面观测真值对照，含 1:1 参考线。",
     },
     grid: { left: 56, right: 24, top: 26, bottom: 48 },
     tooltip: {
       backgroundColor: "rgba(255,255,255,.985)",
-      borderColor: "#c5d1cb",
+      borderColor: "#8fa39b",
       borderWidth: 1,
-      textStyle: { color: "#17231e", fontSize: 13 },
+      textStyle: { color: "#0b1512", fontSize: 13 },
       extraCssText: "box-shadow:0 12px 32px rgba(21,36,30,.12);border-radius:10px;",
       formatter(params: any) {
         const raw = params.data;
@@ -132,9 +202,9 @@ function scatterOption() {
       nameGap: 28,
       min: 0,
       max,
-      nameTextStyle: { color: "#5b6d64", fontSize: 12 },
-      axisLabel: { color: "#5b6d64", fontSize: 12 },
-      splitLine: { lineStyle: { color: "#dde4e0" } },
+      nameTextStyle: { color: "#566a61", fontSize: 12 },
+      axisLabel: { color: "#566a61", fontSize: 12 },
+      splitLine: { lineStyle: { color: "#c3d1cb" } },
     },
     yAxis: {
       type: "value",
@@ -143,9 +213,9 @@ function scatterOption() {
       nameGap: 40,
       min: 0,
       max,
-      nameTextStyle: { color: "#5b6d64", fontSize: 12 },
-      axisLabel: { color: "#5b6d64", fontSize: 12 },
-      splitLine: { lineStyle: { color: "#dde4e0" } },
+      nameTextStyle: { color: "#566a61", fontSize: 12 },
+      axisLabel: { color: "#566a61", fontSize: 12 },
+      splitLine: { lineStyle: { color: "#c3d1cb" } },
     },
     series: [
       ...models.map((model, index) => ({
@@ -161,7 +231,7 @@ function scatterOption() {
         itemStyle: {
           color: seriesColors[index % seriesColors.length],
           opacity: 0.72,
-          borderColor: "#fff",
+          borderColor: "#fbfcfb",
           borderWidth: 2,
         },
       })),
@@ -211,10 +281,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="backtest-panel">
     <header class="panel-header">
-      <div>
-        <h2>预测过去表现得怎么样？</h2>
-        <p>只用已经到达的真实观测检验过去的预测，不用未来信息「作弊」。</p>
-      </div>
+      <h2 class="display-face">{{ backtestHeadline }}</h2>
       <span class="panel-meta data-mono">N={{ evidence.samples.length }}</span>
     </header>
 
@@ -239,7 +306,7 @@ onBeforeUnmount(() => {
         </div>
         <div>
           <dt>参与模型</dt>
-          <dd>{{ evidence.models.length ? evidence.models.join(" / ") : "—" }}</dd>
+          <dd>{{ evidence.models.length ? evidence.models.join(" / ") : "暂无" }}</dd>
         </div>
         <div>
           <dt>对齐口径</dt>
@@ -247,26 +314,21 @@ onBeforeUnmount(() => {
         </div>
       </dl>
       <p class="why">
-        为什么这里不画误差曲线：样本少、时长档位少时，连线会看起来像一个稳定的规律，
-        但那只是几个点连起来的形状。等样本到 {{ MIN_SAMPLES }} 组以上、时长覆盖
-        {{ MIN_HORIZONS }} 档以上，这里会自动换成误差随预测时长的对照图。
+        样本少于 {{ MIN_SAMPLES }} 组、时长覆盖不足 {{ MIN_HORIZONS }} 档时不给连线，避免把几个点读成稳定规律。
       </p>
     </div>
 
     <div v-else class="backtest-grid">
       <article>
-        <h3>预测得越远，平均误差越大吗？</h3>
-        <p class="chart-note">纵轴是平均误差（MAE），单位 µg/m³。</p>
+        <h3>{{ maeHeadline }}</h3>
         <div ref="maeEl" class="metric-chart"></div>
       </article>
       <article>
-        <h3>极端偏差随预测时长怎么变？</h3>
-        <p class="chart-note">纵轴是均方根误差（RMSE），对大偏差更敏感。</p>
+        <h3>{{ rmseHeadline }}</h3>
         <div ref="rmseEl" class="metric-chart"></div>
       </article>
       <article class="scatter-article">
-        <h3>预测和真实观测有多接近？</h3>
-        <p class="chart-note">越贴近中间的虚线（1:1），说明预测与实测越一致。</p>
+        <h3>{{ fitHeadline }}</h3>
         <div ref="scatterEl" class="scatter-chart"></div>
       </article>
     </div>
@@ -296,12 +358,6 @@ onBeforeUnmount(() => {
   font-size: var(--fs-sub);
   font-weight: var(--fw-display);
   letter-spacing: var(--track-title);
-}
-.panel-header p {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: var(--fs-label);
-  line-height: 1.55;
 }
 .panel-meta {
   color: var(--muted);
@@ -359,9 +415,9 @@ onBeforeUnmount(() => {
 .why {
   margin-top: 18px;
   padding: 13px 15px;
-  border-left: 3px solid var(--hairline-strong);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius-sm);
   background: var(--sheet-sunken);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   color: var(--muted);
   font-size: var(--fs-label);
   line-height: 1.7;
@@ -380,16 +436,11 @@ onBeforeUnmount(() => {
   border-right: 1px solid var(--hairline-soft);
 }
 .backtest-grid h3 {
-  margin: 0;
+  margin: 0 0 10px;
   color: var(--ink);
   font-size: var(--fs-body);
   font-weight: var(--fw-strong);
   letter-spacing: var(--track-title);
-}
-.chart-note {
-  margin: 4px 0 10px;
-  color: var(--muted);
-  font-size: var(--fs-label);
 }
 .metric-chart {
   width: 100%;

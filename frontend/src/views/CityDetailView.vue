@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useQuery } from "@tanstack/vue-query";
 import { useRoute } from "vue-router";
 import { Activity, BarChart3, Clock3, Database, Layers3, ShieldCheck } from "lucide-vue-next";
@@ -21,7 +21,18 @@ const context = useContextStore();
 const { locations } = useLocationCatalog();
 
 const locationId = computed(() => Number(route.params.locationId));
+const heatmap = ref<InstanceType<typeof HourDayHeatmap> | null>(null);
 const POLLUTANTS = ["pm25", "pm10", "no2", "o3", "so2", "co"] as const;
+const POLLUTANT_LABELS: Record<string, string> = {
+  pm25: "PM2.5",
+  pm10: "PM10",
+  no2: "NO₂",
+  o3: "O₃",
+  so2: "SO₂",
+  co: "CO",
+};
+/* The forecast gap has one wording on this page. */
+const FORECAST_PENDING = "未来预测尚未就绪";
 
 watch(
   [locationId, () => locations.data.value],
@@ -198,35 +209,125 @@ const pm25Trend = computed(() => {
 
 const trendSentence = computed(() => {
   const delta = pm25Trend.value.delta;
-  if (delta == null) return "历史不足";
+  if (delta == null) return "样本不足";
   if (Math.abs(delta) < 2) return "基本持平";
   return `${delta > 0 ? "上升" : "下降"} ${Math.abs(delta).toFixed(1)}`;
 });
 
+const trendHeadline = computed(() => {
+  const recentAvg = pm25Trend.value.recentAvg;
+  if (recentAvg == null) return "近 24 小时 PM2.5 样本不足，暂不给出趋势";
+  const base = `近 24 小时 PM2.5 日均 ${recentAvg.toFixed(1)} µg/m³`;
+  const delta = pm25Trend.value.delta;
+  if (delta == null) return `${base}，缺少前一日对照`;
+  if (Math.abs(delta) < 2) return `${base}，与前一日基本持平`;
+  return `${base}，较前一日${delta > 0 ? "上升" : "下降"} ${Math.abs(delta).toFixed(1)} µg/m³`;
+});
+
+const pollutantStandings = computed(() =>
+  (pulse.data.value ?? []).flatMap((item) => {
+    const values = item.points
+      .filter((point) => point.value != null)
+      .map((point) => Number(point.value));
+    if (values.length < 2) return [];
+    const latest = values[values.length - 1];
+    return [
+      {
+        variable: item.variable,
+        label: POLLUTANT_LABELS[item.variable] ?? item.variable,
+        percentile: (values.filter((value) => value <= latest).length / values.length) * 100,
+      },
+    ];
+  }),
+);
+
+const pollutantHeadline = computed(() => {
+  const rows = pollutantStandings.value;
+  if (!rows.length) return "污染物历史样本不足，暂不判断当前高低";
+  const focus = rows.find((row) => row.variable === "pm25") ?? rows[0];
+  const high = rows.filter((row) => row.percentile >= 65).length;
+  const total = pulse.data.value?.length ?? rows.length;
+  const share = Math.min(99, Math.round(focus.percentile));
+  const tail = high
+    ? `${total} 项污染物中 ${high} 项进入高位`
+    : `${total} 项污染物均未进入高位`;
+  return `近 30 天：${focus.label} 高于 ${share}% 的时刻，${tail}`;
+});
+
+const rhythmHeadline = computed(
+  () => heatmap.value?.peakCopy ?? "近 30 天样本不足，暂无法判断高值时段",
+);
+
+const structureHeadline = computed(() => {
+  const item = structure.data.value;
+  const samples = item?.meta.sample_count ?? 0;
+  const features = item?.meta.features.length ?? 0;
+  const explained = item?.explained_variance ?? [];
+  if (!item || !samples || !features || !explained.length) {
+    return "结构分析样本不足，暂不生成结论";
+  }
+  let used = 0;
+  let covered = 0;
+  for (const step of explained) {
+    used += 1;
+    covered = step.cumulative_ratio;
+    if (covered >= 0.8) break;
+  }
+  const prefix = `${samples} 小时样本 × ${features} 个变量`;
+  const percent = Math.round(covered * 100);
+  return covered >= 0.8
+    ? `${prefix}：前 ${used} 个方向覆盖 ${percent}% 的波动`
+    : `${prefix}：${used} 个方向合计覆盖 ${percent}% 的波动`;
+});
+
+const trustHeadline = computed(() => {
+  const days = coverage.data.value?.coverage ?? [];
+  if (!days.length) return "近 30 天覆盖记录尚未生成";
+  const mean = (key: "observation_coverage" | "model_coverage" | "weather_coverage") =>
+    Math.round((days.reduce((sum, day) => sum + day[key], 0) / days.length) * 100);
+  return `近 30 天：地面实测覆盖 ${mean("observation_coverage")}%，模式数据 ${mean(
+    "model_coverage",
+  )}%，网格气象 ${mean("weather_coverage")}%`;
+});
+
+/* Model-vs-observation is only a statement about model bias when both readings
+   describe the same hour. 武汉's newest ground reading is from 2025-08 while its
+   model field is current, and differencing them printed a "模式偏高 119.3 µg/m³"
+   claim that was arithmetic across thirteen months, not a comparison.
+   Comparability is a precondition of the claim, not a nicety. */
+const COMPARABLE_HOURS = 3;
+
+const observationTime = computed(() => snapshot.data.value?.observation?.source_time);
+
+const observationLag = computed(() => {
+  const observed = observationTime.value;
+  const model = snapshot.data.value?.model_analysis?.source_time;
+  if (!observed || !model) return null;
+  return Math.abs(new Date(model).getTime() - new Date(observed).getTime()) / 3_600_000;
+});
+
+const observationComparable = computed(
+  () => observationLag.value != null && observationLag.value <= COMPARABLE_HOURS,
+);
+
 const sourceGap = computed(() => {
+  if (!observationComparable.value) return null;
   if (modelPm25.value == null || observedPm25.value == null) return null;
   return Number(modelPm25.value) - Number(observedPm25.value);
 });
 
-const heroSentence = computed(() => {
-  const level = nationalCity.value?.china_aqi_level;
-  const primary = nationalCity.value?.primary_pollutants?.[0];
-  if (!level) return "正在读取当前空气状态。";
-  if (primary) return `当前${level}，主要污染物为 ${primary.toUpperCase()}。`;
-  return `当前空气质量为${level}。`;
-});
-
 const forecastOutlook = computed(() => {
   const points = forecast.data.value?.series?.[0]?.points ?? [];
-  if (!points.length) return "未来预测正在准备";
+  if (!points.length) return FORECAST_PENDING;
   const first = points[0]?.value;
   const last = points.at(-1)?.value;
   const peak = Math.max(...points.map((point) => point.value));
-  if (first == null || last == null) return `未来峰值约 ${peak.toFixed(1)} µg/m³`;
+  if (first == null || last == null) return `预测峰值 ${peak.toFixed(1)} µg/m³`;
+  const hours = points.at(-1)?.horizon_hours ?? points.length;
   const delta = last - first;
   const direction =
     Math.abs(delta) < 2 ? "整体平稳" : delta > 0 ? "仍有上升压力" : "有望逐步改善";
-  return `${direction} · 预测峰值 ${peak.toFixed(1)} µg/m³`;
+  return `未来 ${hours} 小时${direction}，预测峰值 ${peak.toFixed(1)} µg/m³`;
 });
 </script>
 
@@ -234,9 +335,8 @@ const forecastOutlook = computed(() => {
   <section class="city-detail">
     <header class="city-hero">
       <div class="hero-title">
-        <span class="city-kicker">{{ snapshot.data.value?.province ?? "—" }} · 城市空气画像</span>
-        <h1>{{ snapshot.data.value?.city ?? context.selectedCityName }}</h1>
-        <p>{{ heroSentence }}</p>
+        <h1 class="display-face">{{ snapshot.data.value?.city ?? context.selectedCityName }}</h1>
+        <span class="city-kicker">{{ snapshot.data.value?.province ?? "—" }}</span>
       </div>
 
       <section
@@ -258,17 +358,18 @@ const forecastOutlook = computed(() => {
           <p>µg/m³ · {{ fmtTime(snapshot.data.value?.model_analysis?.source_time) }}</p>
         </article>
         <article>
-          <small>过去 24h</small>
+          <small>近 24 小时</small>
           <strong :class="{ bad: (pm25Trend.delta ?? 0) > 0, good: (pm25Trend.delta ?? 0) < 0 }">
             {{ trendSentence }}
           </strong>
           <p>日均约 {{ fmt(pm25Trend.recentAvg) }} µg/m³</p>
         </article>
         <article>
-          <small>近期地面观测</small>
+          <small>{{ observationComparable ? "近期地面观测" : "最近一次地面观测" }}</small>
           <strong>{{ fmt(observedPm25) }}</strong>
           <p v-if="sourceGap != null">模式{{ sourceGap > 0 ? "偏高" : "偏低" }} {{ Math.abs(sourceGap).toFixed(1) }} µg/m³</p>
-          <p v-else>当前暂无同屏对照</p>
+          <p v-else-if="observedPm25 != null">{{ fmtTime(observationTime) }} · 与模式不同时段</p>
+          <p v-else>暂无地面观测</p>
         </article>
       </section>
     </header>
@@ -291,10 +392,7 @@ const forecastOutlook = computed(() => {
 
     <section id="trend" class="detail-section first-section">
       <div class="section-heading">
-        <div>
-          <h2>过去发生了什么，接下来会怎样？</h2>
-          <p>模式历史、真实地面观测、当前时刻、未来预测和浓度等级都放在同一条时间线上；可切换 24 小时、7 天和 30 天。</p>
-        </div>
+        <h2 class="display-face">{{ trendHeadline }}</h2>
         <span class="forecast-note">{{ forecastOutlook }}</span>
       </div>
       <TraceDeck
@@ -306,10 +404,7 @@ const forecastOutlook = computed(() => {
 
     <section id="pollutants" class="detail-section">
       <div class="section-heading">
-        <div>
-          <h2>当前数值放到过去 30 天里，才知道它算不算高</h2>
-          <p>每张卡同时给出当前值、24 小时变化、近 30 天历史位置、中位数、P90 与最近 7 天趋势。</p>
-        </div>
+        <h2 class="display-face">{{ pollutantHeadline }}</h2>
       </div>
       <PollutantSmallMultiples
         v-if="pulse.data.value?.length"
@@ -320,22 +415,19 @@ const forecastOutlook = computed(() => {
 
     <section id="rhythm" class="detail-section">
       <div class="section-heading">
-        <div>
-          <h2>污染高值集中在什么时段？</h2>
-          <p>把最近 30 天每一天的 24 小时铺开，既能看到稳定的日内规律，也能看到某几天的异常污染过程。</p>
-        </div>
+        <h2 class="display-face">{{ rhythmHeadline }}</h2>
       </div>
 
       <div class="change-summary">
         <article>
-          <span>24h 相对前一天</span>
+          <span>近 24 小时较前一日</span>
           <strong v-if="pm25Trend.delta != null">
             {{ pm25Trend.delta > 0 ? "↑" : "↓" }} {{ Math.abs(pm25Trend.delta).toFixed(1) }} µg/m³
           </strong>
-          <strong v-else>历史不足</strong>
+          <strong v-else>样本不足</strong>
         </article>
         <article>
-          <span>最近 24h 峰值</span>
+          <span>近 24 小时峰值</span>
           <strong>{{ fmt(pm25Trend.peak) }} <small>µg/m³</small></strong>
           <p>{{ fmtTime(pm25Trend.peakTime) }}</p>
         </article>
@@ -345,35 +437,28 @@ const forecastOutlook = computed(() => {
             {{ sourceGap > 0 ? "模式偏高" : "模式偏低" }} {{ Math.abs(sourceGap).toFixed(1) }}
             <small>µg/m³</small>
           </strong>
-          <strong v-else>暂无同时段对照</strong>
-          <p>两种来源保持分开，不互相补值</p>
+          <strong v-else-if="observedPm25 != null">不同时段，不做对照</strong>
+          <strong v-else>暂无同时段地面观测</strong>
         </article>
       </div>
 
-      <HourDayHeatmap :series="pm25Series" />
+      <HourDayHeatmap ref="heatmap" :series="pm25Series" />
     </section>
 
     <section id="structure" class="detail-section">
       <div class="section-heading">
-        <div>
-          <h2>哪些污染与气象因素经常一起变化？</h2>
-          <p>这一层服务于深入探索：看共同变化、相关结构和空气状态分布，但不把相关性解释成因果。</p>
-        </div>
-        <span class="advanced-label">深度分析</span>
+        <h2 class="display-face">{{ structureHeadline }}</h2>
       </div>
       <PCAStructurePanel
         v-if="structure.data.value"
         :structure="structure.data.value"
       />
-      <div v-else class="section-state">当前城市还没有足够的数据生成结构分析。</div>
+      <div v-else class="section-state">当前城市还没有足够样本做结构分析。</div>
     </section>
 
     <section id="trust" class="detail-section trust-section">
       <div class="section-heading">
-        <div>
-          <h2>这些判断值得信到什么程度？</h2>
-          <p>把回测、覆盖率、站点来源和离线分析产物留在最后一层，让老师可以追溯，但不干扰普通用户先读懂空气变化。</p>
-        </div>
+        <h2 class="display-face">{{ trustHeadline }}</h2>
       </div>
 
       <div class="trust-accordions">
@@ -531,21 +616,12 @@ const forecastOutlook = computed(() => {
   gap: 24px;
 }
 .section-heading h2 {
-  margin: 4px 0 0;
+  margin: 0;
   color: var(--ink);
   font-size: var(--fs-title);
-  font-weight: var(--fw-display);
-  letter-spacing: var(--track-display);
+  letter-spacing: var(--track-title);
 }
-.section-heading p {
-  max-width: 780px;
-  margin: 7px 0 0;
-  color: var(--muted);
-  font-size: var(--fs-body);
-  line-height: 1.65;
-}
-.forecast-note,
-.advanced-label {
+.forecast-note {
   max-width: 260px;
   min-height: 34px;
   padding: 8px 12px;
@@ -663,8 +739,7 @@ const forecastOutlook = computed(() => {
   }
   .section-heading { display: grid; }
   .section-heading h2 { font-size: 23px; }
-  .forecast-note,
-  .advanced-label { justify-self: start; }
+  .forecast-note { justify-self: start; }
   .change-summary { grid-template-columns: 1fr; }
   .change-summary article + article,
   .change-summary article:nth-child(3) {

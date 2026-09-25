@@ -21,7 +21,7 @@ defineProps<{
       <span class="risk-dot" aria-hidden="true"></span>
       <div>
         <h3 v-if="compact">{{ city ? `当前最需要关注：${city}` : "当前健康提示" }}</h3>
-        <h3 v-else>对健康意味着什么？</h3>
+        <h3 v-else>当前等级下的健康影响与建议</h3>
         <span>{{ level }}</span>
       </div>
       <ShieldAlert :size="compact ? 15 : 17" />
@@ -33,7 +33,7 @@ defineProps<{
         <span>{{ healthEffect }}</span>
       </p>
       <p v-if="advice">
-        <b>{{ compact ? "建议" : "现在可以怎么做" }}</b>
+        <b>建议</b>
         <span>{{ advice }}</span>
       </p>
     </div>

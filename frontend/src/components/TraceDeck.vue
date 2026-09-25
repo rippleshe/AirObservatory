@@ -28,17 +28,40 @@ const activeForecast = computed(() => props.forecast?.series?.[0]);
 const windowLabel = computed(() =>
   windowHours.value === 24 ? "24 小时" : windowHours.value === 168 ? "7 天" : "30 天",
 );
-const forecastSummary = computed(() => {
-  const points = activeForecast.value?.points ?? [];
-  if (!points.length) return "未来预测正在准备";
-  const first = points[0]?.value;
-  const last = points.at(-1)?.value;
-  const peak = Math.max(...points.map((point) => point.value));
-  if (first == null || last == null) return "已有未来预测路径";
-  const delta = last - first;
-  const direction =
-    Math.abs(delta) < 2 ? "整体变化不大" : delta > 0 ? "整体呈上升趋势" : "整体呈下降趋势";
-  return `未来 ${points.at(-1)?.horizon_hours ?? points.length} 小时${direction}，峰值约 ${peak.toFixed(1)} µg/m³`;
+
+function fmtTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
+
+const windowEndMs = computed(() => {
+  const lastTime = props.history?.points?.at(-1)?.time;
+  return lastTime ? new Date(lastTime).getTime() : Date.now();
+});
+const windowStartMs = computed(() => windowEndMs.value - windowHours.value * 3600 * 1000);
+
+const windowPeakCopy = computed(() => {
+  const points = (props.history?.points ?? []).filter(
+    (point) => point.value != null && new Date(point.time).getTime() >= windowStartMs.value,
+  );
+  if (!points.length) return "当前窗口没有可用的模式历史";
+  const peak = points.reduce(
+    (best, point) => (Number(point.value) > Number(best.value) ? point : best),
+    points[0],
+  );
+  return `当前窗口峰值 ${Number(peak.value).toFixed(1)} µg/m³，出现在 ${fmtTime(peak.time)}`;
+});
+
+const observationCopy = computed(() => {
+  const points = (props.observations?.points ?? []).filter((point) => point.value != null);
+  if (!points.length) return "当前窗口没有地面观测，图上只有模式历史与未来预测";
+  const latest = points[points.length - 1];
+  return `当前窗口有 ${points.length} 小时地面观测，最新一次 ${Number(latest.value).toFixed(1)} µg/m³`;
 });
 
 function setWindow(value: WindowHours) {
@@ -50,9 +73,7 @@ function render() {
   if (!chart) return;
 
   const fullHistory = props.history?.points ?? [];
-  const lastHistoryTime = fullHistory.at(-1)?.time;
-  const endMs = lastHistoryTime ? new Date(lastHistoryTime).getTime() : Date.now();
-  const startMs = endMs - windowHours.value * 3600 * 1000;
+  const startMs = windowStartMs.value;
   const history = fullHistory.filter((point) => new Date(point.time).getTime() >= startMs);
   const observations = (props.observations?.points ?? []).filter(
     (point) => new Date(point.time).getTime() >= startMs,
@@ -89,7 +110,7 @@ function render() {
         borderColor: "#b5c1bb",
         borderWidth: 1,
         padding: [12, 14],
-        textStyle: { color: "#17231e", fontSize: 13, lineHeight: 22 },
+        textStyle: { color: "#0b1512", fontSize: 13, lineHeight: 22 },
         extraCssText:
           "box-shadow:0 14px 36px rgba(21,37,30,.12);border-radius:10px;",
         formatter(params: any) {
@@ -116,10 +137,10 @@ function render() {
       },
       xAxis: {
         type: "time",
-        axisLine: { lineStyle: { color: "#a9b6af" } },
+        axisLine: { lineStyle: { color: "#7f968c" } },
         axisTick: { show: false },
         axisLabel: {
-          color: "#5b6d64",
+          color: "#566a61",
           fontSize: 12,
           hideOverlap: true,
           formatter(value: number) {
@@ -136,16 +157,16 @@ function render() {
         type: "value",
         min: 0,
         axisLabel: {
-          color: "#5b6d64",
+          color: "#566a61",
           fontSize: 12,
           formatter: (value: number) => String(Math.round(value)),
         },
         axisLine: { show: false },
         axisTick: { show: false },
         splitNumber: 5,
-        splitLine: { lineStyle: { color: "#dde4e0", width: 1 } },
+        splitLine: { lineStyle: { color: "#c3d1cb", width: 1 } },
         name: "PM2.5 µg/m³",
-        nameTextStyle: { color: "#5b6d64", fontSize: 12, padding: [0, 0, 6, 0] },
+        nameTextStyle: { color: "#566a61", fontSize: 12, padding: [0, 0, 6, 0] },
       },
       series: [
         ...(lower.length
@@ -229,7 +250,7 @@ function render() {
               {
                 type: "max",
                 name: "窗口峰值",
-                itemStyle: { color: "#86251a", borderColor: "#fff", borderWidth: 2 },
+                itemStyle: { color: "#86251a", borderColor: "#fbfcfb", borderWidth: 2 },
                 label: {
                   show: true,
                   formatter(params: any) {
@@ -295,14 +316,14 @@ onBeforeUnmount(() => {
   <section class="trace-deck">
     <header class="trace-header">
       <div>
-        <h3>PM2.5 主趋势</h3>
-        <p>{{ forecastSummary }}</p>
+        <h3>{{ windowPeakCopy }}</h3>
+        <p>{{ observationCopy }}</p>
       </div>
       <div class="header-tools">
         <div class="window-switch" aria-label="时间范围">
-          <button :class="{ active: windowHours === 24 }" @click="setWindow(24)">24h</button>
-          <button :class="{ active: windowHours === 168 }" @click="setWindow(168)">7天</button>
-          <button :class="{ active: windowHours === 720 }" @click="setWindow(720)">30天</button>
+          <button :class="{ active: windowHours === 24 }" @click="setWindow(24)">24 小时</button>
+          <button :class="{ active: windowHours === 168 }" @click="setWindow(168)">7 天</button>
+          <button :class="{ active: windowHours === 720 }" @click="setWindow(720)">30 天</button>
         </div>
         <div class="trace-legend" aria-label="图例">
           <span><i class="observation-line"></i>地面观测</span>
@@ -431,7 +452,7 @@ onBeforeUnmount(() => {
   min-width: 44px;
   padding: 3px 7px;
   border-radius: 3px;
-  color: #fff;
+  color: #fbfcfb;
   font-size: var(--fs-label);
   font-style: normal;
   font-weight: 600;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { components } from "../api/schema";
 import { init, type ECharts } from "../lib/charts";
 
@@ -40,6 +40,95 @@ function featureLabel(name: string) {
   return FEATURE_LABELS[name] ?? name;
 }
 
+/* Headings read the same numbers the charts draw, so the finding never needs
+   a paragraph of instructions underneath it. */
+const leadingComponent = computed(
+  () => props.structure.explained_variance[0]?.component ?? "PC1",
+);
+
+const topPair = computed<{ a: string; b: string; value: number } | null>(() => {
+  const features = props.structure.meta.features;
+  let best: { a: string; b: string; value: number } | null = null;
+  for (let y = 0; y < props.structure.correlation.length; y += 1) {
+    const row = props.structure.correlation[y];
+    for (let x = y + 1; x < features.length; x += 1) {
+      const value = row.values[features[x]];
+      if (value == null || !Number.isFinite(value)) continue;
+      if (!best || Math.abs(value) > Math.abs(best.value)) {
+        best = { a: features[y], b: features[x], value };
+      }
+    }
+  }
+  return best;
+});
+
+const topPairCopy = computed(() => {
+  const pair = topPair.value;
+  const city = props.structure.meta.city;
+  if (!pair) {
+    return `${city}：${props.structure.meta.sample_count} 小时样本的结构分解`;
+  }
+  return `${city}：${featureLabel(pair.a)} 与 ${featureLabel(pair.b)} ${
+    pair.value > 0 ? "同向最强" : "反向最强"
+  } r = ${pair.value.toFixed(2)}`;
+});
+
+const screeCopy = computed(() => {
+  const explained = props.structure.explained_variance;
+  if (!explained.length) return "解释比例尚未生成";
+  const first = explained[0].variance_ratio;
+  const rest = explained[explained.length - 1].cumulative_ratio - first;
+  if (explained.length === 1) return `只有一个方向，解释 ${(first * 100).toFixed(1)}%`;
+  return `第一个方向解释 ${(first * 100).toFixed(1)}%，其余 ${
+    explained.length - 1
+  } 个合计 ${(rest * 100).toFixed(1)}%`;
+});
+
+const loadingCopy = computed(() => {
+  const component = leadingComponent.value;
+  let high: { feature: string; value: number } | null = null;
+  let low: { feature: string; value: number } | null = null;
+  for (const row of props.structure.loadings) {
+    const value = row.values[component];
+    if (value == null || !Number.isFinite(value)) continue;
+    if (!high || value > high.value) high = { feature: row.feature, value };
+    if (!low || value < low.value) low = { feature: row.feature, value };
+  }
+  if (!high || !low) return "权重尚未生成";
+  return `第一个方向上 ${featureLabel(high.feature)} 权重最高（${high.value.toFixed(
+    2,
+  )}），${featureLabel(low.feature)} 最低（${low.value.toFixed(2)}）`;
+});
+
+const scoreCopy = computed(() => {
+  const values = props.structure.scores
+    .map((row) => row.values[leadingComponent.value])
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b);
+  if (!values.length) return "主成分取值尚未生成";
+  const at = (q: number) => values[Math.min(values.length - 1, Math.round((values.length - 1) * q))];
+  return `主成分 1 有 90% 的时刻落在 ${at(0.05).toFixed(2)}～${at(0.95).toFixed(
+    2,
+  )} 之间，中位 ${at(0.5).toFixed(2)}`;
+});
+
+const correlationCopy = computed(() => {
+  const features = props.structure.meta.features;
+  let strong = 0;
+  let inverse = 0;
+  props.structure.correlation.forEach((row, y) => {
+    features.forEach((feature, x) => {
+      if (x <= y) return;
+      const value = row.values[feature];
+      if (value == null || !Number.isFinite(value) || Math.abs(value) < 0.6) return;
+      strong += 1;
+      if (value < 0) inverse += 1;
+    });
+  });
+  if (!strong) return `${features.length} 个变量里没有一对相关超过 |r| = 0.6`;
+  return `${features.length} 个变量里有 ${strong} 对相关超过 |r| = 0.6，其中 ${inverse} 对反向`;
+});
+
 function makeChart(el: HTMLDivElement | null) {
   if (!el) return null;
   const chart = init(el, undefined, { renderer: "svg" });
@@ -50,10 +139,10 @@ function makeChart(el: HTMLDivElement | null) {
 function tooltipBase() {
   return {
     backgroundColor: "rgba(255,255,255,.985)",
-    borderColor: "#c5d1cb",
+    borderColor: "#8fa39b",
     borderWidth: 1,
     padding: [11, 13],
-    textStyle: { color: "#17231e", fontSize: 13, lineHeight: 21 },
+    textStyle: { color: "#0b1512", fontSize: 13, lineHeight: 21 },
     extraCssText: "box-shadow:0 12px 32px rgba(21,36,30,.12);border-radius:10px;",
   };
 }
@@ -65,7 +154,7 @@ function render() {
   const components = explained.map((item) => item.component);
   const features = props.structure.meta.features;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const axisInk = "#5b6d64";
+  const axisInk = "#566a61";
   const axisSize = 12;
 
   scree.setOption(
@@ -97,7 +186,7 @@ function render() {
         type: "category",
         data: components,
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: "#c9d3cd" } },
+        axisLine: { lineStyle: { color: "#a7b8b0" } },
         axisLabel: { color: axisInk, fontSize: axisSize },
       },
       yAxis: {
@@ -109,7 +198,7 @@ function render() {
           fontSize: axisSize,
           formatter: (value: number) => Math.round(value * 100) + "%",
         },
-        splitLine: { lineStyle: { color: "#dde4e0" } },
+        splitLine: { lineStyle: { color: "#c3d1cb" } },
       },
       series: [
         {
@@ -126,7 +215,7 @@ function render() {
           showSymbol: true,
           symbolSize: 6,
           lineStyle: { color: "#a06a34", width: 2 },
-          itemStyle: { color: "#a06a34", borderColor: "#fff", borderWidth: 2 },
+          itemStyle: { color: "#a06a34", borderColor: "#fbfcfb", borderWidth: 2 },
         },
       ],
     },
@@ -159,7 +248,7 @@ function render() {
         type: "category",
         data: components,
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: "#c9d3cd" } },
+        axisLine: { lineStyle: { color: "#a7b8b0" } },
         axisLabel: { color: axisInk, fontSize: axisSize },
       },
       yAxis: {
@@ -167,7 +256,7 @@ function render() {
         data: features.map(featureLabel),
         axisTick: { show: false },
         axisLine: { show: false },
-        axisLabel: { color: "#2a3d34", fontSize: axisSize },
+        axisLabel: { color: "#243530", fontSize: axisSize },
       },
       visualMap: {
         min: -loadingMax,
@@ -185,8 +274,8 @@ function render() {
         {
           type: "heatmap",
           data: loadingValues,
-          itemStyle: { borderWidth: 2, borderColor: "#ffffff" },
-          emphasis: { itemStyle: { borderColor: "#10221a", borderWidth: 1 } },
+          itemStyle: { borderWidth: 2, borderColor: "#fbfcfb" },
+          emphasis: { itemStyle: { borderColor: "#0b1512", borderWidth: 1 } },
         },
       ],
     },
@@ -218,28 +307,28 @@ function render() {
           }).format(new Date(params.data.time));
           return [
             `<b>${time}</b>`,
-            `变化方向 1 <b>${Number(params.value[0]).toFixed(2)}</b>`,
-            `变化方向 2 <b>${Number(params.value[1]).toFixed(2)}</b>`,
+            `主成分 1 <b>${Number(params.value[0]).toFixed(2)}</b>`,
+            `主成分 2 <b>${Number(params.value[1]).toFixed(2)}</b>`,
           ].join("<br/>");
         },
       },
       xAxis: {
         type: "value",
-        name: "变化方向 1 →",
+        name: `主成分 1 · ${Math.round((explained[0]?.variance_ratio ?? 0) * 100)}%`,
         nameLocation: "middle",
         nameGap: 30,
         nameTextStyle: { color: axisInk, fontSize: axisSize },
         axisLabel: { color: axisInk, fontSize: axisSize },
-        axisLine: { lineStyle: { color: "#c9d3cd" } },
-        splitLine: { lineStyle: { color: "#dde4e0" } },
+        axisLine: { lineStyle: { color: "#a7b8b0" } },
+        splitLine: { lineStyle: { color: "#c3d1cb" } },
       },
       yAxis: {
         type: "value",
-        name: "变化方向 2 ↑",
+        name: `主成分 2 · ${Math.round((explained[1]?.variance_ratio ?? 0) * 100)}%`,
         nameTextStyle: { color: axisInk, fontSize: axisSize, padding: [0, 0, 8, 0] },
         axisLabel: { color: axisInk, fontSize: axisSize },
-        axisLine: { lineStyle: { color: "#c9d3cd" } },
-        splitLine: { lineStyle: { color: "#dde4e0" } },
+        axisLine: { lineStyle: { color: "#a7b8b0" } },
+        splitLine: { lineStyle: { color: "#c3d1cb" } },
       },
       series: [
         {
@@ -249,10 +338,10 @@ function render() {
           itemStyle: {
             color: "#356f87",
             opacity: 0.5,
-            borderColor: "#fff",
+            borderColor: "#fbfcfb",
             borderWidth: 1,
           },
-          emphasis: { itemStyle: { color: "#10221a", opacity: 1 } },
+          emphasis: { itemStyle: { color: "#0b1512", opacity: 1 } },
         },
       ],
     },
@@ -285,14 +374,14 @@ function render() {
         data: features.map(featureLabel),
         axisTick: { show: false },
         axisLine: { show: false },
-        axisLabel: { color: "#2a3d34", fontSize: axisSize, rotate: 48 },
+        axisLabel: { color: "#243530", fontSize: axisSize, rotate: 48 },
       },
       yAxis: {
         type: "category",
         data: features.map(featureLabel),
         axisTick: { show: false },
         axisLine: { show: false },
-        axisLabel: { color: "#2a3d34", fontSize: axisSize },
+        axisLabel: { color: "#243530", fontSize: axisSize },
       },
       visualMap: {
         min: -1,
@@ -310,7 +399,7 @@ function render() {
         {
           type: "heatmap",
           data: correlationValues,
-          itemStyle: { borderWidth: 2, borderColor: "#ffffff" },
+          itemStyle: { borderWidth: 2, borderColor: "#fbfcfb" },
         },
       ],
     },
@@ -341,54 +430,42 @@ onBeforeUnmount(() => {
 <template>
   <section class="structure-panel">
     <header class="panel-header">
-      <div>
-        <h2>{{ structure.meta.city }}：哪些因素经常一起变化？</h2>
-        <p>把污染物和气象变量压缩成几个主要变化方向，再看它们怎么协同。</p>
-      </div>
+      <h2 class="display-face">{{ topPairCopy }}</h2>
       <span class="panel-meta data-mono">{{ structure.meta.sample_count }} 小时样本</span>
     </header>
 
     <div class="structure-grid">
       <article>
         <div class="chart-heading">
-          <h3>压缩之后，还保留了多少信息？</h3>
-          <p>柱子是每个方向单独解释的变化，折线是累计解释。前两个方向合计就是散点图保留的信息量。</p>
+          <h3 class="display-face">{{ screeCopy }}</h3>
         </div>
         <div ref="screeEl" class="structure-chart"></div>
       </article>
 
       <article>
         <div class="chart-heading">
-          <h3>哪些变量总是一起变？</h3>
-          <p>颜色越偏暖，该变量在这个方向上抬得越高；越偏冷则压得越低。</p>
+          <h3 class="display-face">{{ loadingCopy }}</h3>
         </div>
         <div ref="loadingEl" class="structure-chart tall"></div>
       </article>
 
       <article>
         <div class="chart-heading">
-          <h3>这座城市的空气状态落在哪些区间？</h3>
-          <p>每个点是一个小时。点靠得近，说明当时的污染与气象组合更相似。</p>
+          <h3 class="display-face">{{ scoreCopy }}</h3>
         </div>
         <div ref="scoreEl" class="structure-chart"></div>
       </article>
 
       <article>
         <div class="chart-heading">
-          <h3>谁和谁同向，谁和谁反向？</h3>
-          <p>暖色同向、冷色反向、近白几乎不同步。这只说明它们一起动，不说明谁导致了谁。</p>
+          <h3 class="display-face">{{ correlationCopy }}</h3>
         </div>
         <div ref="correlationEl" class="structure-chart tall"></div>
       </article>
     </div>
 
-    <footer class="panel-footer">
-      <span class="data-mono">
-        {{ structure.meta.window_start.slice(0, 10) }} → {{ structure.meta.window_end.slice(0, 10) }}
-      </span>
-      <span>污染用模式历史，气象用网格历史数据</span>
-      <span>缺失小时不补值</span>
-      <span>相关不等于因果</span>
+    <footer class="panel-footer data-mono">
+      {{ structure.meta.window_start.slice(0, 10) }} → {{ structure.meta.window_end.slice(0, 10) }}
     </footer>
   </section>
 </template>
@@ -417,13 +494,6 @@ onBeforeUnmount(() => {
   font-weight: var(--fw-display);
   letter-spacing: var(--track-title);
 }
-.panel-header p {
-  margin: 6px 0 0;
-  max-width: 72ch;
-  color: var(--muted);
-  font-size: var(--fs-label);
-  line-height: 1.55;
-}
 .panel-meta {
   color: var(--muted);
   font-size: var(--fs-label);
@@ -451,13 +521,6 @@ onBeforeUnmount(() => {
   font-size: var(--fs-body);
   font-weight: var(--fw-strong);
   letter-spacing: var(--track-title);
-}
-.chart-heading p {
-  max-width: 60ch;
-  margin: 5px 0 0;
-  color: var(--muted);
-  font-size: var(--fs-label);
-  line-height: 1.55;
 }
 .structure-chart {
   width: 100%;

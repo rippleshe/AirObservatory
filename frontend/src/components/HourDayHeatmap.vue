@@ -10,47 +10,85 @@ const el = ref<HTMLDivElement | null>(null);
 let chart: ECharts | null = null;
 let observer: ResizeObserver | null = null;
 
-const peakHour = computed(() => {
+/* Buckets, axis and tooltip all read the browser's local hour, the same
+   timezone every other timestamp on the site is formatted in. */
+const dayKeyFormatter = new Intl.DateTimeFormat("zh-CN", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function dayKey(time: string) {
+  return dayKeyFormatter.format(new Date(time));
+}
+
+function hourRange(hour: number) {
+  const next = (hour + 1) % 24;
+  return `${String(hour).padStart(2, "0")}:00–${String(next).padStart(2, "0")}:00`;
+}
+
+const hourMeans = computed(() => {
   const buckets = Array.from({ length: 24 }, () => [] as number[]);
   (props.series?.points ?? []).forEach((point) => {
     if (point.value == null) return;
-    buckets[new Date(point.time).getUTCHours()].push(Number(point.value));
+    buckets[new Date(point.time).getHours()].push(Number(point.value));
   });
-  const means = buckets.map((values) =>
-    values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : -1,
+  return buckets.map((values) =>
+    values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null,
   );
-  const max = Math.max(...means);
-  if (max < 0) return null;
-  return means.indexOf(max);
+});
+
+const peakHour = computed(() => {
+  const means = hourMeans.value;
+  let best: number | null = null;
+  for (let hour = 0; hour < means.length; hour += 1) {
+    const mean = means[hour];
+    if (mean == null) continue;
+    if (best == null || mean > (means[best] ?? 0)) best = hour;
+  }
+  return best;
+});
+
+const windowCopy = computed(() => {
+  const days = new Set((props.series?.points ?? []).map((point) => dayKey(point.time))).size;
+  return days >= 30 ? "近 30 天" : `近 ${days} 天`;
 });
 
 const peakCopy = computed(() => {
-  if (peakHour.value == null) return "数据不足，暂时无法判断高值时段";
-  const next = (peakHour.value + 1) % 24;
-  return `最近 30 天，${String(peakHour.value).padStart(2, "0")}:00–${String(next).padStart(2, "0")}:00 平均浓度最高`;
+  if (peakHour.value == null) return "近 30 天样本不足，暂无法判断高值时段";
+  return `${windowCopy.value}，${hourRange(peakHour.value)} 平均浓度最高`;
 });
+
+const peakRangeCopy = computed(() => {
+  const peak = peakHour.value;
+  if (peak == null) return "日内分时均值待生成";
+  const filled = hourMeans.value.filter((mean): mean is number => mean != null);
+  return `${hourRange(peak)} 均值 ${(hourMeans.value[peak] ?? 0).toFixed(1)} µg/m³，最低时段 ${Math.min(...filled).toFixed(1)} µg/m³`;
+});
+
+defineExpose({ peakCopy });
 
 function render() {
   if (!chart) return;
   const points = (props.series?.points ?? []).filter((point) => point.value != null);
-  const dates = [...new Set(points.map((point) => String(point.time).slice(0, 10)))];
+  const dates = [...new Set(points.map((point) => dayKey(point.time)))];
   const dateIndex = new Map(dates.map((day, index) => [day, index]));
   const values = points.map((point) => {
     const date = new Date(point.time);
-    return [date.getUTCHours(), dateIndex.get(String(point.time).slice(0, 10)) ?? 0, Number(point.value)];
+    return [date.getHours(), dateIndex.get(dayKey(point.time)) ?? 0, Number(point.value)];
   });
   const max = Math.max(1, ...values.map((item) => Number(item[2])));
 
   chart.setOption({
     animation: false,
-    aria: { enabled: true, description: "近 30 天 PM2.5 在一天不同小时的变化热力图。" },
+    aria: { enabled: true, description: `${windowCopy.value} PM2.5 按小时与日期的分布热力图。` },
     grid: { left: 52, right: 76, top: 14, bottom: 32 },
     tooltip: {
       backgroundColor: "rgba(255,255,255,.985)",
-      borderColor: "#c5d1cb",
+      borderColor: "#8fa39b",
       borderWidth: 1,
       padding: [11, 13],
-      textStyle: { color: "#17231e", fontSize: 13, lineHeight: 21 },
+      textStyle: { color: "#0b1512", fontSize: 13, lineHeight: 21 },
       extraCssText: "box-shadow:0 12px 32px rgba(21,36,30,.12);border-radius:10px;",
       formatter(params: any) {
         const [hour, dayIndex, value] = params.data;
@@ -63,7 +101,7 @@ function render() {
       axisTick: { show: false },
       axisLine: { show: false },
       axisLabel: {
-        color: "#5b6d64",
+        color: "#566a61",
         fontSize: 12,
         // Keep the round-the-clock landmarks readable at projector distance.
         interval: (index: number) => index % 6 === 0 || index === 23,
@@ -76,7 +114,7 @@ function render() {
       axisTick: { show: false },
       axisLine: { show: false },
       axisLabel: {
-        color: "#5b6d64",
+        color: "#566a61",
         fontSize: 12,
         interval: Math.max(0, Math.floor(dates.length / 6) - 1),
         formatter: (value: string) => value.slice(5),
@@ -94,14 +132,14 @@ function render() {
       itemWidth: 10,
       itemHeight: 110,
       text: ["高", "低"],
-      textStyle: { color: "#5b6d64", fontSize: 12 },
+      textStyle: { color: "#566a61", fontSize: 12 },
       inRange: { color: ["#eef2ee", "#9fc4b8", "#c9a521", "#c8702b", "#86251a"] },
     },
     series: [{
       type: "heatmap",
       data: values,
-      itemStyle: { borderColor: "#ffffff", borderWidth: 2 },
-      emphasis: { itemStyle: { borderColor: "#10221a", borderWidth: 1 } },
+      itemStyle: { borderColor: "#fbfcfb", borderWidth: 2 },
+      emphasis: { itemStyle: { borderColor: "#0b1512", borderWidth: 1 } },
     }],
   }, true);
 }
@@ -125,13 +163,9 @@ onBeforeUnmount(() => {
 <template>
   <section class="hour-day-panel">
     <header>
-      <div>
-        <h3>一天中，什么时候更容易出现高值？</h3>
-        <p>{{ peakCopy }}</p>
-      </div>
+      <h3 class="display-face">{{ peakRangeCopy }}</h3>
     </header>
     <div ref="el" class="hour-day-chart"></div>
-    <footer>横向看一天 24 小时，纵向看最近 30 天；颜色越暖，PM2.5 越高。</footer>
   </section>
 </template>
 
@@ -155,20 +189,8 @@ onBeforeUnmount(() => {
   font-weight: var(--fw-display);
   letter-spacing: var(--track-title);
 }
-.hour-day-panel p {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: var(--fs-body);
-}
 .hour-day-chart {
   width: 100%;
   height: 370px;
-}
-.hour-day-panel footer {
-  padding: 11px 20px 13px;
-  border-top: 1px solid var(--hairline-soft);
-  color: var(--muted);
-  font-size: var(--fs-label);
-  line-height: 1.5;
 }
 </style>

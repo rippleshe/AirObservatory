@@ -15,20 +15,34 @@ function tone(value: number, kind: "obs" | "model" | "weather") {
   return "rgba(" + rgb + "," + alpha.toFixed(2) + ")";
 }
 
-/* Read the coverage out in words — the colour blocks alone would gate the
-   numbers behind a hover. */
+/* The heading carries how many days are complete, the line under it carries
+   the gap policy — no paragraph about how to read the colour blocks. */
+const coverageHeadline = computed(() => {
+  const days = props.coverage?.coverage ?? [];
+  if (!days.length) return "覆盖记录尚未生成";
+  const full = days.filter((day) => day.observation_coverage >= 0.95).length;
+  return `${full} / ${days.length} 天地面实测基本完整`;
+});
+
 const coverageSummary = computed(() => {
   const days = props.coverage?.coverage ?? [];
-  if (!days.length) return "这段窗口里还没有可统计的记录。";
-  const mean = (key: "observation_coverage" | "model_coverage" | "weather_coverage") =>
-    days.reduce((sum, day) => sum + day[key], 0) / days.length;
-  const fullObs = days.filter((day) => day.observation_coverage >= 0.95).length;
-  return [
-    `最近 ${days.length} 天，模式数据平均覆盖 ${pct(mean("model_coverage"))}，网格气象 ${pct(mean("weather_coverage"))}。`,
-    fullObs
-      ? `地面实测有 ${fullObs} 天基本完整，平均覆盖 ${pct(mean("observation_coverage"))}。`
-      : `地面实测平均覆盖 ${pct(mean("observation_coverage"))}，缺口保留为空，不用模式数据补齐。`,
-  ].join("");
+  if (!days.length) return "这一窗口还没有可统计的覆盖记录。";
+  const gap = days.filter((day) => day.observation_coverage < 0.95).length;
+  if (!gap) return "地面实测逐小时完整，没有用模式数据填补空缺。";
+  return `${gap} 天地面实测存在缺口，缺口保留为空，没有用模式数据补齐。`;
+});
+
+const bindingCopy = computed(() => {
+  const bindings = props.coverage?.bindings ?? [];
+  if (!bindings.length) return "当前城市还没有地面实测站点接入";
+  const authoritative = bindings.filter((item) => item.is_authoritative).length;
+  return `接入 ${bindings.length} 个地面实测站点，其中 ${authoritative} 个权威源`;
+});
+
+const analysisCopy = computed(() => {
+  const analyses = props.coverage?.analyses ?? [];
+  if (!analyses.length) return "当前城市还没有可复用的离线分析结果";
+  return `已生成 ${analyses.length} 项离线分析`;
 });
 
 const columns = computed(() => {
@@ -40,10 +54,7 @@ const columns = computed(() => {
 <template>
   <section class="trust-panel">
     <header class="panel-header">
-      <div>
-        <h2>这些数据有多完整？</h2>
-        <p>缺失数据会保留为空；这里可以查看最近 {{ coverage?.days ?? 30 }} 天的覆盖情况和真实来源。</p>
-      </div>
+      <h2 class="display-face">{{ coverageHeadline }}</h2>
       <span class="panel-meta data-mono">{{ coverage?.days ?? 30 }} 天</span>
     </header>
 
@@ -87,7 +98,7 @@ const columns = computed(() => {
 
     <div class="trust-grid">
       <article>
-        <h3>地面实测来自哪里？</h3>
+        <h3>{{ bindingCopy }}</h3>
         <div v-if="coverage?.bindings.length" class="binding-list">
           <div v-for="binding in coverage.bindings" :key="binding.external_location_id">
             <span>
@@ -102,11 +113,11 @@ const columns = computed(() => {
             </span>
           </div>
         </div>
-        <p v-else class="empty-copy">当前城市还没有可用的地面实测站点，图上只显示模式数据。</p>
+        <p v-else class="empty-copy">图上只显示模式数据。</p>
       </article>
 
       <article>
-        <h3>已经生成哪些分析？</h3>
+        <h3>{{ analysisCopy }}</h3>
         <div v-if="coverage?.analyses.length" class="analysis-list">
           <div v-for="item in coverage.analyses" :key="item.run_id">
             <span>
@@ -118,7 +129,6 @@ const columns = computed(() => {
             <span class="data-mono">{{ item.version }}</span>
           </div>
         </div>
-        <p v-else class="empty-copy">当前城市还没有生成可复用的离线分析结果。</p>
       </article>
     </div>
   </section>
@@ -147,12 +157,6 @@ const columns = computed(() => {
   font-size: var(--fs-sub);
   font-weight: var(--fw-display);
   letter-spacing: var(--track-title);
-}
-.panel-header p {
-  margin: 6px 0 0;
-  color: var(--muted);
-  font-size: var(--fs-label);
-  line-height: 1.55;
 }
 .panel-meta {
   color: var(--muted);

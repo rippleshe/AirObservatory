@@ -81,19 +81,24 @@ function meta(item: SeriesResponse) {
 
 function trendText(item: SeriesResponse) {
   const change = meta(item).change;
-  if (change == null) return "24h 对比不足";
-  if (Math.abs(change) < 1) return "与 24h 前接近";
-  return `${change > 0 ? "↑" : "↓"} ${Math.abs(change).toFixed(1)} / 24h`;
+  if (change == null) return "近 24 小时对比不足";
+  if (Math.abs(change) < 1) return "与 24 小时前接近";
+  return `较 24 小时前${change > 0 ? "↑" : "↓"} ${Math.abs(change).toFixed(1)}`;
 }
 
 function percentileText(item: SeriesResponse) {
   const percentile = meta(item).percentile;
-  if (percentile == null) return "历史位置不足";
-  if (percentile >= 85) return "近30天高位";
-  if (percentile >= 65) return "近30天偏高";
-  if (percentile <= 15) return "近30天低位";
-  if (percentile <= 35) return "近30天偏低";
-  return "接近30天常态";
+  if (percentile == null) return "近 30 天样本不足";
+  if (percentile >= 85) return "近 30 天高位";
+  if (percentile >= 65) return "近 30 天偏高";
+  if (percentile <= 15) return "近 30 天低位";
+  if (percentile <= 35) return "近 30 天偏低";
+  return "处于近 30 天常态";
+}
+
+function percentileShare(item: SeriesResponse) {
+  const percentile = meta(item).percentile;
+  return percentile == null ? null : Math.min(99, Math.round(percentile));
 }
 
 function render() {
@@ -106,7 +111,10 @@ function render() {
     chart.setOption(
       {
         animation: false,
-        aria: { enabled: true, description: `${LABELS[item.variable]} 最近7天变化趋势，并标出30天中位数。` },
+        aria: {
+          enabled: true,
+          description: `${LABELS[item.variable]} 近 7 天变化趋势，并标出近 30 天中位数。`,
+        },
         grid: { left: 4, right: 4, top: 12, bottom: 4 },
         tooltip: {
           trigger: "axis",
@@ -114,7 +122,7 @@ function render() {
           backgroundColor: "rgba(255,255,255,.985)",
           borderColor: "#bec9c3",
           padding: [9, 11],
-          textStyle: { color: "#17231e", fontSize: 13 },
+          textStyle: { color: "#0b1512", fontSize: 13 },
           formatter(params: any) {
             const row = Array.isArray(params) ? params[0] : params;
             const time = new Intl.DateTimeFormat("zh-CN", {
@@ -148,9 +156,9 @@ function render() {
                     lineStyle: { color: "#8f9d96", width: 1, type: "dashed" },
                     label: {
                       show: true,
-                      formatter: "30天中位",
+                      formatter: "近 30 天中位",
                       position: "insideStartTop",
-                      color: "#5b6d64",
+                      color: "#566a61",
                       fontSize: 12,
                       backgroundColor: "rgba(255,255,255,.88)",
                       borderRadius: 3,
@@ -204,8 +212,8 @@ onBeforeUnmount(() => {
         </div>
         <div class="relative-state">
           <b>{{ percentileText(item) }}</b>
-          <span v-if="meta(item).percentile != null">
-            高于近30天 {{ Math.round(meta(item).percentile ?? 0) }}% 的时刻
+          <span v-if="percentileShare(item) != null">
+            高于近 30 天 {{ percentileShare(item) }}% 的时刻
           </span>
         </div>
       </div>
@@ -218,9 +226,9 @@ onBeforeUnmount(() => {
       <div :ref="(el) => setEl(el, index)" class="mini-chart"></div>
 
       <footer>
-        <span>30天中位 <b>{{ meta(item).median == null ? "—" : meta(item).median?.toFixed(1) }}</b></span>
+        <span>近 30 天中位 <b>{{ meta(item).median == null ? "—" : meta(item).median?.toFixed(1) }}</b></span>
         <span>P90 <b>{{ meta(item).p90 == null ? "—" : meta(item).p90?.toFixed(1) }}</b></span>
-        <span>24h峰值 <b>{{ meta(item).peak == null ? "—" : meta(item).peak?.toFixed(1) }}</b></span>
+        <span>近 24 小时峰值 <b>{{ meta(item).peak == null ? "—" : meta(item).peak?.toFixed(1) }}</b></span>
       </footer>
     </article>
   </div>

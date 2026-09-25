@@ -18,3 +18,4 @@ frontend/vite.config.d.ts
 .pytest_cache/
 .ruff_cache/
 .claude/settings.local.json
+.claude/launch.json

@@ -14,8 +14,8 @@ flowchart LR
     E --> N[National Overview<br/>全国哪里值得关注]
     E --> P[City Pulse<br/>城市现在与过去]
     E --> S[Structure<br/>城市 PCA / 气象 / 相关结构]
-    E --> G[City Fingerprint<br/>60 城统一特征 PCA / 聚类]
-    E --> F[Forecast<br/>Baseline / XGBoost / LSTM]
+    E --> G[City Fingerprint<br/>31 省统一特征 PCA / 聚类]
+    E --> F[Forecast<br/>Baseline：Persistence / Rolling Mean]
 
     F --> Q[预测快照]
     Q --> E
@@ -44,7 +44,7 @@ flowchart LR
    ├─ 区域剖面
    ├─ AQI 等级结构
    ├─ 24h 变化
-   └─ 60 城结构指纹 PCA / 探索性聚类
+   └─ 31 省结构指纹 PCA / 探索性聚类
         │
         ▼
 /city/:locationId
@@ -58,7 +58,9 @@ flowchart LR
    Provider / Binding / Ingestion / Storage
 ```
 
-当前全国层使用 **60 个稳定城市引用点**。CAMS 提供完整空间比较；OpenAQ 只在确有可用地面数据的城市标记真值覆盖。二者不会为了“全国都有实测”的视觉完整性而混合。
+CAMS 覆盖 60 个稳定城市引用点，提供完整空间比较；OpenAQ 只在确有可用地面数据的城市标记真值覆盖。二者不会为了“全国都有实测”的视觉完整性而混合。
+
+**全国层以省为单位阅读。** 60 城读数在东部挤成一团，因此全国页每条读数都归约到 31 个省代表——每省取该省当前 AQI 最高的城市。归约只有一处实现（`frontend/src/lib/provinces.ts`），页面装配层算一次再分发给色带、地图与分析层，所以标题里的省数、色带格数、地图点数、矩阵点数永远描述同一个集合。全部 60 城仍通过分析层的表格孪生可达。
 
 ## 数据为什么既实时又能分析
 
@@ -122,6 +124,6 @@ repository → services → FastAPI
 
 ## 当前边界
 
-已实现：60 城 CAMS 当前模式场与 90 天统一历史窗、OpenAQ 真值标记、Open-Meteo 网格气象、国家→城市钻取、历史持久化、HJ 633-2026 健康指引、基线预测与回测、城市级离线 PCA，以及基于 21 个统一城市摘要特征的 60 城结构指纹 PCA / 探索性聚类。所有分析先离线物化，HTTP 只读取产物。
+已实现：60 城 CAMS 当前模式场与 90 天统一历史窗、OpenAQ 真值标记、Open-Meteo 网格气象、国家→城市钻取、历史持久化、HJ 633-2026 健康指引、基线预测与回测、城市级离线 PCA，以及基于 21 个统一城市摘要特征的 31 省结构指纹 PCA / 探索性聚类。所有分析先离线物化，HTTP 只读取产物。
 
 下一层：**以真实 OpenAQ PM2.5 为监督目标，在真值覆盖足够的城市做 XGBoost / LSTM，并进入 rolling backtest；真值不足的城市继续只展示 CAMS 预测，不伪装成本项目模型。**

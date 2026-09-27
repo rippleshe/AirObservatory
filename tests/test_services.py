@@ -11,6 +11,7 @@ from backend.services import (
     get_city_fingerprint,
     get_city_structure,
     get_forecast,
+    get_national_series,
     get_series,
     get_snapshot,
 )
@@ -146,6 +147,50 @@ def test_forecast_returns_latest_snapshot_for_each_model(isolated_db):
         "Persistence",
         "Rolling Mean",
     }
+
+
+def test_national_series_aligns_cities_and_keeps_holes(isolated_db):
+    beijing = _city_id("北京")
+    shanghai = _city_id("上海")
+    source = get_source("air_observatory_baseline")
+    assert source is not None
+    now = datetime.now(UTC).replace(microsecond=0)
+
+    def insert(location_id: int, hours_back: int, value: float | None) -> None:
+        with transaction() as con:
+            con.execute(
+                """
+                INSERT INTO air_model_analysis(
+                    location_id, source_id, valid_at, fetched_at,
+                    pm25, quality_flag
+                ) VALUES (?, ?, ?, ?, ?, 'ok')
+                """,
+                (
+                    location_id,
+                    source["source_id"],
+                    (now - timedelta(hours=hours_back)).isoformat(),
+                    now.isoformat(),
+                    value,
+                ),
+            )
+
+    insert(beijing, 3, 10.0)
+    insert(beijing, 2, 30.0)
+    insert(beijing, 1, 50.0)
+    insert(shanghai, 2, 8.0)
+    # Shanghai is missing the newest hour: the hole must survive, not become 0.
+    insert(shanghai, 1, None)
+
+    response = get_national_series(variable="pm25", hours=6)
+    by_name = {city.name: city for city in response.cities}
+    assert len(response.times) == 3
+    assert by_name["北京"].values == [10.0, 30.0, 50.0]
+    assert by_name["上海"].values == [None, 8.0, None]
+
+    with TestClient(app) as client:
+        payload = client.get("/api/overview/national/series?hours=6").json()
+    assert payload["variable"] == "pm25"
+    assert len(payload["cities"]) == 2
 
 
 def test_public_api_has_no_project_version_prefix(isolated_db):

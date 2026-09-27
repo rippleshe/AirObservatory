@@ -236,6 +236,25 @@ class NationalOverviewResponse(BaseModel):
     regions: list[NationalRegion]
     cities: list[NationalCity]
 
+
+class NationalSeriesCity(BaseModel):
+    location_id: int
+    name: str
+    province: str | None = None
+    lat: float
+    lon: float
+    values: list[float | None]
+
+
+class NationalSeriesResponse(BaseModel):
+    variable: str
+    unit: str
+    hours: int
+    data_kind: DataKind = "model_analysis"
+    times: list[datetime]
+    cities: list[NationalSeriesCity]
+
+
 class PCAExplainedVariance(BaseModel):
     component: str
     variance_ratio: float

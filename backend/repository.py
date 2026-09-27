@@ -395,3 +395,21 @@ def latest_city_fingerprint_row() -> sqlite3.Row | None:
             LIMIT 1
             """
         ).fetchone()
+
+
+def national_series_rows(value_column: str, since: str) -> list[sqlite3.Row]:
+    """Hourly model field for every active city since `since`, oldest first."""
+    with connect() as con:
+        return con.execute(
+            f"""
+            SELECT a.location_id, l.name, l.province, l.city, l.latitude, l.longitude,
+                   a.valid_at AS source_time, a.{value_column} AS value
+            FROM air_model_analysis a
+            JOIN locations l ON l.location_id=a.location_id
+            WHERE l.active=1 AND l.station_type='city_reference'
+              AND a.{value_column} IS NOT NULL
+              AND a.valid_at>=?
+            ORDER BY a.location_id, a.valid_at
+            """,
+            (since,),
+        ).fetchall()

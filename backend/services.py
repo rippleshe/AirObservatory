@@ -21,6 +21,7 @@ from .repository import (
     location_binding_rows,
     location_row,
     national_model_rows,
+    national_series_rows,
     overview_rows,
     provider_binding_rows,
     recent_ingestion_rows,
@@ -54,6 +55,8 @@ from .schemas import (
     NationalCity,
     NationalOverviewResponse,
     NationalRegion,
+    NationalSeriesCity,
+    NationalSeriesResponse,
     NationalSummary,
     OverviewLocation,
     OverviewResponse,
@@ -506,6 +509,64 @@ def get_locations() -> list[LocationSummary]:
         )
         for row in active_location_rows()
     ]
+
+def get_national_series(
+    variable: str = "pm25",
+    hours: int = 720,
+    data_kind: str = "model_analysis",
+) -> NationalSeriesResponse:
+    """Aligned hourly field across every active city.
+
+    One request replaces N × /locations/{id}/series calls, so the national
+    layer can draw evolution forms (ridgeline, stream, horizon) without the
+    client stitching a panel by hand. Values stay missing when missing —
+    the response is an aligned matrix with holes, never an interpolated field.
+    """
+    if variable not in ALLOWED_VARIABLES:
+        raise ValueError(f"Unsupported variable: {variable}")
+    if data_kind != "model_analysis":
+        raise ValueError(f"Unsupported data kind: {data_kind}")
+    if not 1 <= hours <= 8760:
+        raise ValueError("hours must be between 1 and 8760")
+
+    value_col = "reference_aqi" if variable in {"aqi", "reference_aqi"} else variable
+    since = (_now() - timedelta(hours=hours)).isoformat()
+    rows = national_series_rows(value_col, since)
+    if not rows:
+        raise LookupError("No national series available")
+
+    times: list[datetime] = []
+    seen_times: dict[str, int] = {}
+    for row in rows:
+        stamp = row["source_time"]
+        if stamp not in seen_times:
+            seen_times[stamp] = len(times)
+            times.append(_dt(stamp))
+
+    cities: dict[int, NationalSeriesCity] = {}
+    for row in rows:
+        location_id = int(row["location_id"])
+        city = cities.get(location_id)
+        if city is None:
+            city = NationalSeriesCity(
+                location_id=location_id,
+                name=row["name"],
+                province=row["province"],
+                lat=float(row["latitude"]),
+                lon=float(row["longitude"]),
+                values=[None] * len(times),
+            )
+            cities[location_id] = city
+        city.values[seen_times[row["source_time"]]] = float(row["value"])
+
+    return NationalSeriesResponse(
+        variable=variable,
+        unit=UNITS.get(value_col, UNITS.get(variable, "")),
+        hours=hours,
+        times=times,
+        cities=list(cities.values()),
+    )
+
 
 def get_national_overview() -> NationalOverviewResponse:
     rows = national_model_rows()

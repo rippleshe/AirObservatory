@@ -1,9 +1,11 @@
 import {
   BarChart,
+  CustomChart,
   EffectScatterChart,
   HeatmapChart,
   LineChart,
   ScatterChart,
+  ThemeRiverChart,
 } from "echarts/charts";
 import {
   AriaComponent,
@@ -12,6 +14,8 @@ import {
   LegendComponent,
   MarkAreaComponent,
   MarkLineComponent,
+  PolarComponent,
+  SingleAxisComponent,
   TooltipComponent,
   VisualMapComponent,
 } from "echarts/components";
@@ -27,6 +31,7 @@ use([
   AriaComponent,
   BarChart,
   CanvasRenderer,
+  CustomChart,
   EffectScatterChart,
   HeatmapChart,
   GeoComponent,
@@ -35,8 +40,11 @@ use([
   LineChart,
   MarkAreaComponent,
   MarkLineComponent,
+  PolarComponent,
   ScatterChart,
+  SingleAxisComponent,
   SVGRenderer,
+  ThemeRiverChart,
   TooltipComponent,
   VisualMapComponent,
 ]);

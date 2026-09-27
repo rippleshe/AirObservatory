@@ -287,34 +287,10 @@ onBeforeUnmount(() => {
 
     <div v-if="!evidence.enough" class="not-enough">
       <h3>样本还不够，暂时不给结论</h3>
-      <p>
-        目前只有 <b>{{ evidence.samples.length }}</b> 组「预测 ↔ 实测」成功对齐的样本，
-        预测时长只覆盖 <b>{{ horizonSpan }}</b>
-        <template v-if="evidence.horizons.length > 1">
-          （{{ evidence.horizons.length }} 档）
-        </template>
-        ，还不足以判断预测得准不准。
-      </p>
-      <dl class="evidence-facts">
-        <div>
-          <dt>已对齐样本</dt>
-          <dd class="data-mono">{{ evidence.samples.length }}</dd>
-        </div>
-        <div>
-          <dt>预测时长覆盖</dt>
-          <dd class="data-mono">{{ horizonSpan }}</dd>
-        </div>
-        <div>
-          <dt>参与模型</dt>
-          <dd>{{ evidence.models.length ? evidence.models.join(" / ") : "暂无" }}</dd>
-        </div>
-        <div>
-          <dt>对齐口径</dt>
-          <dd>预测时刻与地面实测小时精确对齐</dd>
-        </div>
-      </dl>
-      <p class="why">
-        样本少于 {{ MIN_SAMPLES }} 组、时长覆盖不足 {{ MIN_HORIZONS }} 档时不给连线，避免把几个点读成稳定规律。
+      <p class="evidence-line">
+        <b class="data-mono">已对齐样本 {{ evidence.samples.length }}</b>
+        <span>时长 {{ horizonSpan }}</span>
+        <span>{{ evidence.models.length ? evidence.models.join(" / ") : "暂无" }}</span>
       </p>
     </div>
 
@@ -385,42 +361,15 @@ onBeforeUnmount(() => {
   color: var(--ink);
   font-weight: var(--fw-strong);
 }
-.evidence-facts {
-  margin: 18px 0 0;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  background: var(--hairline);
+.evidence-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  align-items: baseline;
+  font-size: var(--fs-data);
 }
-.evidence-facts > div {
-  padding: 13px 15px;
-  display: grid;
-  gap: 5px;
-  background: var(--sheet-soft);
-}
-.evidence-facts dt {
+.evidence-line span {
   color: var(--muted);
-  font-size: var(--fs-label);
-}
-.evidence-facts dd {
-  margin: 0;
-  color: var(--ink);
-  font-size: var(--fs-body);
-  font-weight: var(--fw-strong);
-  line-height: 1.4;
-}
-.why {
-  margin-top: 18px;
-  padding: 13px 15px;
-  border: 1px solid var(--hairline-soft);
-  border-radius: var(--radius-sm);
-  background: var(--sheet-sunken);
-  color: var(--muted);
-  font-size: var(--fs-label);
-  line-height: 1.7;
 }
 
 .backtest-grid {
@@ -459,9 +408,5 @@ onBeforeUnmount(() => {
   .backtest-grid { grid-template-columns: 1fr; }
   .backtest-grid article:nth-child(odd) { border-right: 0; }
   .scatter-article { grid-column: auto; }
-  .evidence-facts { grid-template-columns: 1fr 1fr; }
-}
-@media (max-width: 520px) {
-  .evidence-facts { grid-template-columns: 1fr; }
 }
 </style>

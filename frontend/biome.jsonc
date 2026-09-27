@@ -1,0 +1,27 @@
+// Biome runs on this repo's JS/TS and Vue sources.
+//
+// `correctness/noUnusedVariables` and `noUnusedImports` are disabled for
+// `*.vue` only: Biome's analyzer does not resolve `<template>` bindings in
+// SFCs, so every symbol that the template reads (handlers, computed views,
+// refs) reports as unused — proved against HourRing.vue (10 false findings)
+// and TimeRibbon.vue (12). oxlint, which does link template usage, stays the
+// unused-binding check of record for components; run it from frontend/ with
+// `npx oxlint src`.
+{
+  "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+  "linter": {
+    "enabled": true,
+    "rules": { "recommended": true },
+    "overrides": [
+      {
+        "includes": ["**/*.vue"],
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "off",
+            "noUnusedImports": "off"
+          }
+        }
+      }
+    ]
+  }
+}

@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/overview/national/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** National Series */
+        get: operations["national_series_api_overview_national_series_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analysis/city-fingerprint": {
         parameters: {
             query?: never;
@@ -768,6 +785,40 @@ export interface components {
             /** Mean China Aqi */
             mean_china_aqi?: number | null;
         };
+        /** NationalSeriesCity */
+        NationalSeriesCity: {
+            /** Location Id */
+            location_id: number;
+            /** Name */
+            name: string;
+            /** Province */
+            province?: string | null;
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
+            /** Values */
+            values: (number | null)[];
+        };
+        /** NationalSeriesResponse */
+        NationalSeriesResponse: {
+            /** Variable */
+            variable: string;
+            /** Unit */
+            unit: string;
+            /** Hours */
+            hours: number;
+            /**
+             * Data Kind
+             * @default model_analysis
+             * @enum {string}
+             */
+            data_kind: "observation" | "model_analysis";
+            /** Times */
+            times: string[];
+            /** Cities */
+            cities: components["schemas"]["NationalSeriesCity"][];
+        };
         /** NationalSummary */
         NationalSummary: {
             /** City Count */
@@ -1067,6 +1118,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NationalOverviewResponse"];
+                };
+            };
+        };
+    };
+    national_series_api_overview_national_series_get: {
+        parameters: {
+            query?: {
+                variable?: string;
+                hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalSeriesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

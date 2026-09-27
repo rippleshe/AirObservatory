@@ -116,12 +116,13 @@ const namedProvinces = computed(
 );
 
 /* Mark area tracks the metric so the eye reads magnitude before colour.
-   2px surface ring separates overlapping discs by whitespace, not a stroke. */
+   Sizes stay compact — big discs pile up in the eastern cluster and read as
+   bubblegum; a thin surface ring separates neighbours by whitespace. */
 function markSize(city: NationalCity) {
   const raw = metricValue(city);
-  if (raw == null || !Number.isFinite(raw)) return 24;
+  if (raw == null || !Number.isFinite(raw)) return 11;
   const scale = props.metric === "change" ? 40 : props.metric === "pm25" ? 120 : 160;
-  return Math.max(24, Math.min(46, 24 + 22 * Math.min(1, Math.abs(raw) / scale)));
+  return Math.max(11, Math.min(24, 11 + 13 * Math.min(1, Math.abs(raw) / scale)));
 }
 
 /* ── label collision ──────────────────────────────────────────────────
@@ -216,9 +217,9 @@ function labelLayout(params: any) {
   const boxH = labelRect.height || info.h;
   geom.set(params.dataIndex, {
     cx: (rect.x ?? 0) + half,
-    cy: (rect.y ?? 0) + (rect.height ?? 24) / 2,
+    cy: (rect.y ?? 0) + (rect.height ?? 16) / 2,
     half,
-    w: labelRect.width || Math.max(textWidth(info.name, 14), textWidth(info.subLabel, 13)) + 20,
+    w: labelRect.width || Math.max(textWidth(info.name, 13), textWidth(info.subLabel, 12)) + 16,
     h: boxH,
   });
 
@@ -261,7 +262,7 @@ function render() {
       : props.metric === "change"
         ? `${state.label} ${metricLabel(city)}`
         : `${city.china_aqi_level ?? "暂无"} ${metricLabel(city)}`;
-    labelInfo.set(index, { name: city.name, subLabel, h: reading ? 38 : 21 });
+    labelInfo.set(index, { name: city.name, subLabel, h: reading ? 33 : 18 });
     return {
       name: city.name,
       value: [
@@ -289,7 +290,7 @@ function render() {
     .filter((item) => item.ground)
     .map((item) => ({
       ...item,
-      symbolSize: Number(item.symbolSize) + 9,
+      symbolSize: Number(item.symbolSize) + 7,
       itemStyle: {
         color: "rgba(0,0,0,0)",
         borderColor: token("--ink"),
@@ -317,11 +318,18 @@ function render() {
     },
   }));
 
+  /* One light chart world: the stage field is the map's own sea and land, so
+     no second skin exists. */
   const ink = token("--ink");
   const land = token("--map-land");
   const border = token("--map-border");
   const provinceName = token("--map-name");
   const muted = token("--muted");
+  const ring = land;
+  const labelHalo = land;
+  const panelBg = "rgba(255,255,255,.985)";
+  const panelEdge = token("--hairline-strong");
+  const hoverGround = token("--sheet-sunken");
 
   chart.setOption(
     {
@@ -331,13 +339,14 @@ function render() {
           "全国省级空气质量地图，一省一点，取该省当前 AQI 最高的城市。可切换 AQI、PM2.5 与 24 小时变化，点击进入城市详情。",
       },
       animation: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-      animationDurationUpdate: 220,
+      animationDurationUpdate: 320,
+      animationEasingUpdate: "cubicOut",
       tooltip: {
         trigger: "item",
         confine: true,
         padding: [14, 15],
-        backgroundColor: "rgba(255,255,255,.985)",
-        borderColor: token("--hairline-strong"),
+        backgroundColor: panelBg,
+        borderColor: panelEdge,
         borderWidth: 1,
         textStyle: { color: ink, fontSize: 13, lineHeight: 23 },
         extraCssText: "box-shadow:0 16px 40px rgba(11,21,18,.16);border-radius:10px;",
@@ -400,7 +409,7 @@ function render() {
         },
         emphasis: {
           itemStyle: {
-            areaColor: token("--sheet-sunken"),
+            areaColor: hoverGround,
             borderColor: ink,
             borderWidth: 1.6,
           },
@@ -454,15 +463,15 @@ function render() {
               color: ink,
               fontSize: 14,
               fontWeight: 700,
-              backgroundColor: "rgba(255,255,255,.98)",
-              borderColor: token("--hairline-strong"),
+              backgroundColor: panelBg,
+              borderColor: panelEdge,
               borderWidth: 1,
               borderRadius: 6,
               padding: [5, 8],
             },
           },
           itemStyle: {
-            borderColor: land,
+            borderColor: ring,
             borderWidth: 2,
             opacity: 1,
           },
@@ -478,22 +487,22 @@ function render() {
                 ? `{city|${params.data.name}}\n{value|${line2}}`
                 : `{city|${params.data.name}}`;
             },
-            // A paper-coloured halo, not a white glow: letters stay legible
+            // A ground-coloured halo, not a white glow: letters stay legible
             // over the sea without the sticker outline.
-            textBorderColor: land,
+            textBorderColor: labelHalo,
             textBorderWidth: 3,
             rich: {
               city: {
                 color: ink,
-                fontSize: 14,
-                fontWeight: 700,
-                lineHeight: 19,
+                fontSize: 13,
+                fontWeight: 650,
+                lineHeight: 17,
               },
               value: {
                 color: token("--ink-soft"),
-                fontSize: 13,
-                fontWeight: 600,
-                lineHeight: 17,
+                fontSize: 12,
+                fontWeight: 500,
+                lineHeight: 15,
               },
             },
           },
@@ -566,7 +575,11 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="national-map-shell">
-    <div ref="el" class="national-map" aria-label="全国省级空气质量地图"></div>
+    <div
+      ref="el"
+      class="national-map"
+      aria-label="全国省级空气质量地图"
+    ></div>
 
     <div class="map-actions" aria-label="地图缩放控制">
       <button type="button" aria-label="放大地图" @click="setZoom(zoom + 0.22)">

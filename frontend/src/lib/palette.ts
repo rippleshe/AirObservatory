@@ -91,6 +91,26 @@ export function aqiColor(level: string | null | undefined) {
   return level ? AQI_LEVEL_COLORS[level] ?? MUTED_DATA_COLOR : MUTED_DATA_COLOR;
 }
 
+/** HJ 633-2026 level boundaries over IAQI — mirrors backend/analytics/aqi.py
+ *  `level_of` so the time-machine projection and the server agree on words. */
+export function levelOfAqi(aqi: number | null | undefined): AqiLevel | null {
+  if (aqi == null || !Number.isFinite(aqi)) return null;
+  if (aqi <= 50) return "优";
+  if (aqi <= 100) return "良";
+  if (aqi <= 150) return "轻度污染";
+  if (aqi <= 200) return "中度污染";
+  if (aqi <= 300) return "重度污染";
+  return "严重污染";
+}
+
+/* ── stage variants ───────────────────────────────────────
+   The chart field is the same light world as the cards, so marks keep the
+   validated ramp exactly as published. The indirection stays as a single
+   hook for any future surface that needs a lifted rendering variant. */
+export function stageColor(hex: string | null | undefined) {
+  return hex ?? MUTED_DATA_COLOR;
+}
+
 /** Redundant channel: the level word always travels with its colour. */
 export function aqiLevelText(level: string | null | undefined) {
   return level ?? "暂无";
@@ -118,13 +138,15 @@ export function changeState(value: number | null | undefined): {
   return { label: "明显上升", arrow: "↑" };
 }
 
-export function pm25Color(value: number | null | undefined) {
+export function pm25Color(value: number | null | undefined, stage = false) {
   if (value == null) return MUTED_DATA_COLOR;
-  if (value <= 35) return PM25_BANDS[0][1];
-  if (value <= 75) return PM25_BANDS[1][1];
-  if (value <= 115) return PM25_BANDS[2][1];
-  if (value <= 150) return PM25_BANDS[3][1];
-  return PM25_BANDS[4][1];
+  let hex: string;
+  if (value <= 35) hex = PM25_BANDS[0][1];
+  else if (value <= 75) hex = PM25_BANDS[1][1];
+  else if (value <= 115) hex = PM25_BANDS[2][1];
+  else if (value <= 150) hex = PM25_BANDS[3][1];
+  else hex = PM25_BANDS[4][1];
+  return stage ? stageColor(hex) : hex;
 }
 
 export function clusterColor(cluster: number) {

@@ -145,7 +145,7 @@ function tickStyle(mark: { start: number }) {
       </div>
       <div class="band-rule">
         <dt>排列</dt>
-        <dd>一格一省 · 取该省 AQI 最高的城市，由低到高</dd>
+        <dd>一格一省，由低到高</dd>
       </div>
     </dl>
   </section>

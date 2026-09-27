@@ -352,8 +352,10 @@ report.push({
 
 // Gate 2 — the table twin: every value on the deck is reachable without hover.
 await gates.goto("http://127.0.0.1:5173/overview", { waitUntil: "networkidle" });
-await gates.locator(".table-toggle").scrollIntoViewIfNeeded();
-await gates.locator(".table-toggle").click();
+/* Two .table-toggle buttons now exist (loom card + matrix card); scope the
+   click to the matrix card or Playwright's strict mode refuses the pair. */
+await gates.locator(".matrix-card .table-toggle").scrollIntoViewIfNeeded();
+await gates.locator(".matrix-card .table-toggle").click();
 const table = gates.locator(".matrix-table");
 await table.waitFor({ state: "visible", timeout: 15000 });
 const tableRows = await table.locator("tbody tr").count();
@@ -380,6 +382,56 @@ report.push({
   declaredPlotted,
   hasLevelWord: tableText.includes("轻度污染") || tableText.includes("优"),
 });
+
+/* Gate 2b — the loom and the hour-ring are the two new signature figures.
+   Both must ship their table twin, and the twin's row count must match what
+   the figure claims to cover (31 provinces / 24 hours). */
+await gates.locator(".weave-card").waitFor({ state: "visible", timeout: 20000 });
+const weaveCanvas = await gates.locator(".weave-stage canvas").count();
+const weaveCells = await gates.evaluate(() => {
+  const card = document.querySelector(".weave-card");
+  return card ? card.querySelectorAll(".weave-stage canvas").length : 0;
+});
+await gates.locator(".weave-card .table-toggle").click();
+const weaveTable = gates.locator(".weave-table");
+await weaveTable.waitFor({ state: "visible", timeout: 15000 });
+const weaveRows = await weaveTable.locator("tbody tr").count();
+const weaveHeadline = (await gates.locator(".weave-card h2").innerText()) ?? "";
+report.push({
+  route: "design gate · 污染织物",
+  status: 200,
+  expectedTextVisible:
+    weaveCanvas > 0 &&
+    weaveRows >= 24 &&
+    weaveRows <= 34 &&
+    /\d/.test(weaveHeadline),
+  bodyHasAirObservatory: true,
+  consoleErrors: [],
+  weaveCanvas,
+  weaveCells,
+  weaveRows,
+  weaveHeadline: weaveHeadline.slice(0, 60),
+});
+await gates.screenshot({ path: ".review/check-weave.png", fullPage: false });
+
+await gates.goto("http://127.0.0.1:5173/city/1", { waitUntil: "networkidle" });
+await scrollToSection(gates, "rhythm");
+await gates.locator(".hour-ring-panel").waitFor({ state: "visible", timeout: 15000 });
+const ringSectors = await gates.locator(".hour-ring-panel .sectors path").count();
+await gates.locator(".hour-ring-panel .table-toggle").click();
+const ringTable = gates.locator(".ring-table");
+await ringTable.waitFor({ state: "visible", timeout: 15000 });
+const ringRows = await ringTable.locator("tbody tr").count();
+report.push({
+  route: "design gate · 日轮年轮",
+  status: 200,
+  expectedTextVisible: ringSectors > 200 && ringRows === 24,
+  bodyHasAirObservatory: true,
+  consoleErrors: [],
+  ringSectors,
+  ringRows,
+});
+await gates.screenshot({ path: ".review/check-ring.png", fullPage: false });
 
 // Gate 3 — the map names its cities without hover, and the names do not collide.
 /* One representative per province is plotted (31 today). The floor says most

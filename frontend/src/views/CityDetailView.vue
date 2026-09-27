@@ -7,7 +7,7 @@ import { api } from "../api/client";
 import { expectData } from "../api/request";
 import BacktestPanel from "../components/BacktestPanel.vue";
 import HealthRiskCard from "../components/HealthRiskCard.vue";
-import HourDayHeatmap from "../components/HourDayHeatmap.vue";
+import HourRing from "../components/HourRing.vue";
 import PCAStructurePanel from "../components/PCAStructurePanel.vue";
 import PollutantSmallMultiples from "../components/PollutantSmallMultiples.vue";
 import TraceDeck from "../components/TraceDeck.vue";
@@ -21,7 +21,7 @@ const context = useContextStore();
 const { locations } = useLocationCatalog();
 
 const locationId = computed(() => Number(route.params.locationId));
-const heatmap = ref<InstanceType<typeof HourDayHeatmap> | null>(null);
+const heatmap = ref<InstanceType<typeof HourRing> | null>(null);
 const POLLUTANTS = ["pm25", "pm10", "no2", "o3", "so2", "co"] as const;
 const POLLUTANT_LABELS: Record<string, string> = {
   pm25: "PM2.5",
@@ -347,29 +347,28 @@ const forecastOutlook = computed(() => {
         <article class="status-main">
           <span class="status-dot" aria-hidden="true"></span>
           <div>
-            <small>当前空气质量</small>
             <strong>{{ nationalCity?.china_aqi_level ?? "暂无" }}</strong>
             <p>AQI {{ nationalCity?.china_aqi ?? "—" }}</p>
           </div>
         </article>
         <article>
-          <small>PM2.5 当前</small>
+          <small>PM2.5</small>
           <strong>{{ fmt(modelPm25) }}</strong>
-          <p>µg/m³ · {{ fmtTime(snapshot.data.value?.model_analysis?.source_time) }}</p>
+          <p>µg/m³</p>
         </article>
         <article>
-          <small>近 24 小时</small>
+          <small>24h</small>
           <strong :class="{ bad: (pm25Trend.delta ?? 0) > 0, good: (pm25Trend.delta ?? 0) < 0 }">
             {{ trendSentence }}
           </strong>
-          <p>日均约 {{ fmt(pm25Trend.recentAvg) }} µg/m³</p>
+          <p>日均 {{ fmt(pm25Trend.recentAvg) }}</p>
         </article>
         <article>
-          <small>{{ observationComparable ? "近期地面观测" : "最近一次地面观测" }}</small>
+          <small>地面观测</small>
           <strong>{{ fmt(observedPm25) }}</strong>
-          <p v-if="sourceGap != null">模式{{ sourceGap > 0 ? "偏高" : "偏低" }} {{ Math.abs(sourceGap).toFixed(1) }} µg/m³</p>
-          <p v-else-if="observedPm25 != null">{{ fmtTime(observationTime) }} · 与模式不同时段</p>
-          <p v-else>暂无地面观测</p>
+          <p v-if="sourceGap != null">{{ sourceGap > 0 ? "偏高" : "偏低" }} {{ Math.abs(sourceGap).toFixed(1) }}</p>
+          <p v-else-if="observedPm25 != null">{{ fmtTime(observationTime) }}</p>
+          <p v-else>—</p>
         </article>
       </section>
     </header>
@@ -418,31 +417,7 @@ const forecastOutlook = computed(() => {
         <h2 class="display-face">{{ rhythmHeadline }}</h2>
       </div>
 
-      <div class="change-summary">
-        <article>
-          <span>近 24 小时较前一日</span>
-          <strong v-if="pm25Trend.delta != null">
-            {{ pm25Trend.delta > 0 ? "↑" : "↓" }} {{ Math.abs(pm25Trend.delta).toFixed(1) }} µg/m³
-          </strong>
-          <strong v-else>样本不足</strong>
-        </article>
-        <article>
-          <span>近 24 小时峰值</span>
-          <strong>{{ fmt(pm25Trend.peak) }} <small>µg/m³</small></strong>
-          <p>{{ fmtTime(pm25Trend.peakTime) }}</p>
-        </article>
-        <article>
-          <span>模式与地面观测</span>
-          <strong v-if="sourceGap != null">
-            {{ sourceGap > 0 ? "模式偏高" : "模式偏低" }} {{ Math.abs(sourceGap).toFixed(1) }}
-            <small>µg/m³</small>
-          </strong>
-          <strong v-else-if="observedPm25 != null">不同时段，不做对照</strong>
-          <strong v-else>暂无同时段地面观测</strong>
-        </article>
-      </div>
-
-      <HourDayHeatmap ref="heatmap" :series="pm25Series" />
+      <HourRing ref="heatmap" :series="pm25Series" />
     </section>
 
     <section id="structure" class="detail-section">
@@ -645,43 +620,6 @@ const forecastOutlook = computed(() => {
   font-size: var(--fs-body);
 }
 
-.change-summary {
-  display: grid;
-  grid-template-columns: 1.35fr .85fr 1fr;
-  margin-bottom: 14px;
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--sheet);
-}
-.change-summary article {
-  min-width: 0;
-  min-height: 100px;
-  padding: 16px 18px;
-  display: grid;
-  align-content: center;
-  gap: 5px;
-}
-.change-summary article + article { border-left: 1px solid var(--hairline-soft); }
-.change-summary span,
-.change-summary p {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--fs-label);
-}
-.change-summary strong {
-  color: var(--ink);
-  font-size: 18px;
-  font-weight: var(--fw-display);
-  line-height: 1.35;
-}
-.change-summary article:nth-child(2) strong { font-size: 27px; }
-.change-summary small {
-  color: var(--muted);
-  font-size: var(--fs-label);
-  font-weight: 500;
-}
-
 .trust-section { padding-bottom: 14px; }
 .trust-accordions {
   display: grid;
@@ -715,12 +653,6 @@ const forecastOutlook = computed(() => {
 
 @media (max-width: 1180px) {
   .city-hero { grid-template-columns: 1fr; }
-  .change-summary { grid-template-columns: 1fr 1fr; }
-  .change-summary article:nth-child(3) {
-    grid-column: 1 / -1;
-    border-left: 0;
-    border-top: 1px solid var(--hairline-soft);
-  }
 }
 @media (max-width: 760px) {
   .city-detail { padding: 18px 12px 36px; }
@@ -740,12 +672,5 @@ const forecastOutlook = computed(() => {
   .section-heading { display: grid; }
   .section-heading h2 { font-size: 23px; }
   .forecast-note { justify-self: start; }
-  .change-summary { grid-template-columns: 1fr; }
-  .change-summary article + article,
-  .change-summary article:nth-child(3) {
-    grid-column: auto;
-    border-left: 0;
-    border-top: 1px solid var(--hairline-soft);
-  }
 }
 </style>

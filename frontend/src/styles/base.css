@@ -47,6 +47,21 @@
   --map-border: #3d5a51;
   --map-name: #4b635b;
 
+  /* ── stage: the chart field ─────────────────────────────
+     The first viewport is one printed chart, not a card among cards: the
+     stage carries the sea tone so the map's water runs seamlessly to the
+     frame edge, and the land is paper white on top of it. Headline, legend
+     and the time ribbon are ink on that same field. */
+  --stage-bg: #b9cdc6;      /* == --map-sea: the chart field is the sea */
+  --stage-sea: #b9cdc6;
+  --stage-land: #fbfcfb;
+  --stage-border: #3d5a51;
+  --stage-name: #4b635b;
+  --stage-ink: #0b1512;
+  --stage-muted: #31473f;   /* ≥4.5:1 on --stage-bg */
+  --stage-hairline: rgba(61, 90, 81, .38);
+  --stage-panel: rgba(255, 255, 255, .72);
+
   /* ── radius: two steps, not one ───────────────────────── */
   --radius: 8px;       /* legacy alias of --radius-sm */
   --radius-sm: 8px;    /* inner controls, chips, tooltips */
@@ -116,6 +131,11 @@ html { scrollbar-color: var(--hairline-strong) var(--canvas); }
 
 button, select, input { font: inherit; }
 button, a, select { outline-offset: 3px; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
 ::selection { background: #bcd6dd; color: #0b1a18; }
 
 /* Display type: station-board voice. Titles and section heads only — never

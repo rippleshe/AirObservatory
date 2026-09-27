@@ -4,7 +4,6 @@ import type { components } from "../api/schema";
 import { init, type ECharts } from "../lib/charts";
 import {
   FORECAST_COLOR,
-  MODEL_COLOR,
   OBSERVATION_COLOR,
   PM25_BANDS,
 } from "../lib/palette";
@@ -25,9 +24,6 @@ let chart: ECharts | null = null;
 let observer: ResizeObserver | null = null;
 
 const activeForecast = computed(() => props.forecast?.series?.[0]);
-const windowLabel = computed(() =>
-  windowHours.value === 24 ? "24 小时" : windowHours.value === 168 ? "7 天" : "30 天",
-);
 
 function fmtTime(value: string) {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -91,6 +87,10 @@ function render() {
   const lower = forecast.filter(
     (point) => point.lower_bound != null && point.upper_bound != null,
   );
+  const hasBand = lower.length > 0;
+  /* Index of the model-history series inside the option below: the forecast
+     band prepends two invisible stacked lines when it exists. */
+  const historyIndex = hasBand ? 2 : 0;
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   chart.setOption(
@@ -103,7 +103,23 @@ function render() {
       animation: !reduceMotion,
       animationDurationUpdate: reduceMotion ? 0 : 220,
       animationEasingUpdate: "cubicOut",
-      grid: { left: 58, right: 34, top: 28, bottom: 46 },      tooltip: {
+      /* The band scale is rendered as chips in the header, right beside the
+         line legend: ECharts' own visualMap block parked over the y-axis. */
+      visualMap: {
+        type: "piecewise",
+        show: false,
+        seriesIndex: historyIndex,
+        dimension: 1,
+        pieces: [
+          { max: 35, color: PM25_BANDS[0][1] },
+          { min: 35, max: 75, color: PM25_BANDS[1][1] },
+          { min: 75, max: 115, color: PM25_BANDS[2][1] },
+          { min: 115, max: 150, color: PM25_BANDS[3][1] },
+          { min: 150, color: PM25_BANDS[4][1] },
+        ],
+      },
+      grid: { left: 58, right: 34, top: 28, bottom: 46 },
+      tooltip: {
         trigger: "axis",
         confine: true,
         backgroundColor: "rgba(255,255,255,.985)",
@@ -207,23 +223,11 @@ function render() {
           showSymbol: false,
           connectNulls: false,
           smooth: 0.1,
-          lineStyle: { color: MODEL_COLOR, width: 2 },
-          areaStyle: { color: "rgba(53,111,135,.055)" },
-          itemStyle: { color: MODEL_COLOR },
+          // No fixed line colour: visualMap paints each segment by its PM2.5
+          // band, so peaks actually turn orange/red the way the scale says.
+          lineStyle: { width: 2.4 },
+          areaStyle: { opacity: 0.12 },
           z: 3,
-          // Concentration bands as a faint wash, tinted by the same AQI
-          // severity ramp the map uses.
-          markArea: {
-            silent: true,
-            label: { show: false },
-            data: [
-              [{ yAxis: 0, itemStyle: { color: "rgba(69,162,116,.055)" } }, { yAxis: 35 }],
-              [{ yAxis: 35, itemStyle: { color: "rgba(201,165,33,.055)" } }, { yAxis: 75 }],
-              [{ yAxis: 75, itemStyle: { color: "rgba(200,112,43,.050)" } }, { yAxis: 115 }],
-              [{ yAxis: 115, itemStyle: { color: "rgba(134,37,26,.045)" } }, { yAxis: 150 }],
-              [{ yAxis: 150, itemStyle: { color: "rgba(112,61,136,.045)" } }, { yAxis: 250 }],
-            ],
-          },
           markLine: now
             ? {
                 symbol: ["none", "none"],
@@ -329,23 +333,20 @@ onBeforeUnmount(() => {
           <span><i class="observation-line"></i>地面观测</span>
           <span><i class="history-line"></i>模式历史</span>
           <span><i class="forecast-line"></i>未来预测</span>
+          <span v-if="activeForecast?.points?.some((point) => point.lower_bound != null)">
+            <i class="forecast-band"></i>预测区间
+          </span>
+          <span class="band-chips" aria-label="浓度带">
+            <i
+              v-for="([label, color]) in PM25_BANDS"
+              :key="label"
+              :style="{ background: color }"
+            >{{ label }}</i>
+          </span>
         </div>
       </div>
     </header>
     <div ref="el" class="trace-chart"></div>
-    <footer>
-      <span>当前窗口：{{ windowLabel }}</span>
-      <span v-if="activeForecast?.points?.some((point) => point.lower_bound != null)">淡色区域为预测区间</span>
-      <div class="band-key">
-        <span>背景浓度等级</span>
-        <i
-          v-for="([label, color]) in PM25_BANDS"
-          :key="label"
-          :style="{ background: color }"
-          :title="`PM2.5 ${label} µg/m³`"
-        >{{ label }}</i>
-      </div>
-    </footer>
   </section>
 </template>
 
@@ -419,45 +420,53 @@ onBeforeUnmount(() => {
 }
 .trace-legend span { display: flex; align-items: center; gap: 6px; }
 .trace-legend i { width: 19px; height: 0; border-top: 2px solid var(--model); }
+/* 模式历史线按浓度带变色，图例条同色阶，不冒充单色线。 */
+.trace-legend .history-line {
+  height: 4px;
+  border-top: 0;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    #45a274 0%,
+    #45a274 22%,
+    #c9a521 34%,
+    #c8702b 56%,
+    #86251a 78%,
+    #703d88 100%
+  );
+}
 .trace-legend .observation-line {
   border-top-color: var(--observation);
   border-top-width: 3px;
 }
 .trace-legend .forecast-line { border-top: 2px dashed var(--forecast); }
-.trace-chart {
-  width: 100%;
-  height: 390px;
+.trace-legend .forecast-band {
+  height: 10px;
+  border-top: 0;
+  border-radius: 2px;
+  background: rgba(160, 106, 52, .22);
 }
-.trace-deck footer {
-  min-height: 44px;
-  padding: 10px 18px;
+.band-chips {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 18px;
-  border-top: 1px solid var(--hairline-soft);
-  color: var(--muted);
-  font-size: var(--fs-label);
-}
-.band-key {
-  display: flex;
-  align-items: center;
   gap: 2px;
 }
-.band-key > span {
-  margin-right: 7px;
-  color: var(--ink-soft);
-}
-.band-key i {
-  min-width: 44px;
-  padding: 3px 7px;
-  border-radius: 3px;
+.band-chips i {
+  width: auto;
+  min-width: 38px;
+  height: 15px;
+  border-top: 0;
+  border-radius: 2px;
   color: #fbfcfb;
   font-size: var(--fs-label);
   font-style: normal;
   font-weight: 600;
   text-align: center;
+  line-height: 15px;
   text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
+}
+.trace-chart {
+  width: 100%;
+  height: 390px;
 }
 
 @media (max-width: 760px) {

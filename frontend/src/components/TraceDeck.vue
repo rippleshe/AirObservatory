@@ -45,19 +45,19 @@ const windowPeakCopy = computed(() => {
   const points = (props.history?.points ?? []).filter(
     (point) => point.value != null && new Date(point.time).getTime() >= windowStartMs.value,
   );
-  if (!points.length) return "当前窗口没有可用的模式历史";
+  if (!points.length) return "时序变化轨迹";
   const peak = points.reduce(
     (best, point) => (Number(point.value) > Number(best.value) ? point : best),
     points[0],
   );
-  return `当前窗口峰值 ${Number(peak.value).toFixed(1)} µg/m³，出现在 ${fmtTime(peak.time)}`;
+  return `窗口峰值 ${Number(peak.value).toFixed(1)} µg/m³ · ${fmtTime(peak.time)}`;
 });
 
 const observationCopy = computed(() => {
   const points = (props.observations?.points ?? []).filter((point) => point.value != null);
-  if (!points.length) return "当前窗口没有地面观测，图上只有模式历史与未来预测";
+  if (!points.length) return "模式历史与预测轨迹";
   const latest = points[points.length - 1];
-  return `当前窗口有 ${points.length} 小时地面观测，最新一次 ${Number(latest.value).toFixed(1)} µg/m³`;
+  return `地面观测最新 ${Number(latest.value).toFixed(1)} µg/m³`;
 });
 
 function setWindow(value: WindowHours) {

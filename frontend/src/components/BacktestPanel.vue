@@ -70,22 +70,17 @@ const maeHeadline = computed(() => {
   };
   const first = horizons[0];
   const last = horizons[horizons.length - 1];
-  const verb = mean(last) >= mean(first) ? "升到" : "降到";
-  return `提前 ${first} 小时平均误差 ${mean(first).toFixed(1)} µg/m³，提前 ${last} 小时${verb} ${mean(
-    last,
-  ).toFixed(1)} µg/m³`;
+  return `MAE 误差：+${first}h ${mean(first).toFixed(1)} → +${last}h ${mean(last).toFixed(1)} µg/m³`;
 });
 
 const rmseHeadline = computed(() => {
   const samples = evidence.value.samples;
-  if (!samples.length) return "还没有可与地面观测对齐的预测样本";
+  if (!samples.length) return "RMSE 样本不足";
   const worst = samples.reduce(
     (best, row) => (Math.abs(row.error) > Math.abs(best.error) ? row : best),
     samples[0],
   );
-  return `最大单次偏差 ${Math.abs(worst.error).toFixed(1)} µg/m³，出现在提前 ${
-    worst.horizon_hours
-  } 小时`;
+  return `最大单次偏差 ${Math.abs(worst.error).toFixed(1)} µg/m³ (+${worst.horizon_hours}h)`;
 });
 
 const fitHeadline = computed(() => {
@@ -107,7 +102,7 @@ const fitHeadline = computed(() => {
   }
   if (!variancePredicted || !varianceObserved) return `${samples.length} 组预测与实测对照`;
   const r = covariance / Math.sqrt(variancePredicted * varianceObserved);
-  return `${samples.length} 组预测与实测的相关系数 r = ${r.toFixed(2)}`;
+  return `相关性 r = ${r.toFixed(2)} · ${samples.length} 组对照`;
 });
 
 function lineOption(metric: "mae" | "rmse") {

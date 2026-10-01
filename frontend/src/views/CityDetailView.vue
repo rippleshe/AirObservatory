@@ -216,12 +216,10 @@ const trendSentence = computed(() => {
 
 const trendHeadline = computed(() => {
   const recentAvg = pm25Trend.value.recentAvg;
-  if (recentAvg == null) return "近 24 小时 PM2.5 样本不足，暂不给出趋势";
-  const base = `近 24 小时 PM2.5 日均 ${recentAvg.toFixed(1)} µg/m³`;
+  if (recentAvg == null) return "近 24 小时 PM2.5 趋势";
   const delta = pm25Trend.value.delta;
-  if (delta == null) return `${base}，缺少前一日对照`;
-  if (Math.abs(delta) < 2) return `${base}，与前一日基本持平`;
-  return `${base}，较前一日${delta > 0 ? "上升" : "下降"} ${Math.abs(delta).toFixed(1)} µg/m³`;
+  const change = delta == null ? "" : ` · 较昨日 ${delta > 0 ? "+" : ""}${delta.toFixed(1)}`;
+  return `24h 日均 ${recentAvg.toFixed(1)} µg/m³${change}`;
 });
 
 const pollutantStandings = computed(() =>
@@ -243,19 +241,15 @@ const pollutantStandings = computed(() =>
 
 const pollutantHeadline = computed(() => {
   const rows = pollutantStandings.value;
-  if (!rows.length) return "污染物历史样本不足，暂不判断当前高低";
+  if (!rows.length) return "多污染物动态监测";
   const focus = rows.find((row) => row.variable === "pm25") ?? rows[0];
   const high = rows.filter((row) => row.percentile >= 65).length;
-  const total = pulse.data.value?.length ?? rows.length;
-  const share = Math.min(99, Math.round(focus.percentile));
-  const tail = high
-    ? `${total} 项污染物中 ${high} 项进入高位`
-    : `${total} 项污染物均未进入高位`;
-  return `近 30 天：${focus.label} 高于 ${share}% 的时刻，${tail}`;
+  const tail = high ? `${high} 项偏高` : "全部正常";
+  return `${focus.label} 处于历史 ${Math.round(focus.percentile)}% 分位 · ${tail}`;
 });
 
 const rhythmHeadline = computed(
-  () => heatmap.value?.peakCopy ?? "近 30 天样本不足，暂无法判断高值时段",
+  () => heatmap.value?.peakCopy ?? "时段节律特征",
 );
 
 const structureHeadline = computed(() => {
@@ -264,7 +258,7 @@ const structureHeadline = computed(() => {
   const features = item?.meta.features.length ?? 0;
   const explained = item?.explained_variance ?? [];
   if (!item || !samples || !features || !explained.length) {
-    return "结构分析样本不足，暂不生成结论";
+    return "气象与污染物关联结构";
   }
   let used = 0;
   let covered = 0;
@@ -273,21 +267,15 @@ const structureHeadline = computed(() => {
     covered = step.cumulative_ratio;
     if (covered >= 0.8) break;
   }
-  const prefix = `${samples} 小时样本 × ${features} 个变量`;
-  const percent = Math.round(covered * 100);
-  return covered >= 0.8
-    ? `${prefix}：前 ${used} 个方向覆盖 ${percent}% 的波动`
-    : `${prefix}：${used} 个方向合计覆盖 ${percent}% 的波动`;
+  return `${samples}h 样本 · 前 ${used} 主成分解释 ${Math.round(covered * 100)}% 波动`;
 });
 
 const trustHeadline = computed(() => {
   const days = coverage.data.value?.coverage ?? [];
-  if (!days.length) return "近 30 天覆盖记录尚未生成";
+  if (!days.length) return "数据源可信度与覆盖度";
   const mean = (key: "observation_coverage" | "model_coverage" | "weather_coverage") =>
     Math.round((days.reduce((sum, day) => sum + day[key], 0) / days.length) * 100);
-  return `近 30 天：地面实测覆盖 ${mean("observation_coverage")}%，模式数据 ${mean(
-    "model_coverage",
-  )}%，网格气象 ${mean("weather_coverage")}%`;
+  return `近 30 天覆盖：实测 ${mean("observation_coverage")}% · 模式 ${mean("model_coverage")}%`;
 });
 
 /* Model-vs-observation is only a statement about model bias when both readings
@@ -318,16 +306,14 @@ const sourceGap = computed(() => {
 
 const forecastOutlook = computed(() => {
   const points = forecast.data.value?.series?.[0]?.points ?? [];
-  if (!points.length) return FORECAST_PENDING;
+  if (!points.length) return "";
   const first = points[0]?.value;
   const last = points.at(-1)?.value;
   const peak = Math.max(...points.map((point) => point.value));
-  if (first == null || last == null) return `预测峰值 ${peak.toFixed(1)} µg/m³`;
-  const hours = points.at(-1)?.horizon_hours ?? points.length;
+  if (first == null || last == null) return `预测峰值 ${peak.toFixed(1)}`;
   const delta = last - first;
-  const direction =
-    Math.abs(delta) < 2 ? "整体平稳" : delta > 0 ? "仍有上升压力" : "有望逐步改善";
-  return `未来 ${hours} 小时${direction}，预测峰值 ${peak.toFixed(1)} µg/m³`;
+  const trend = Math.abs(delta) < 2 ? "平稳" : delta > 0 ? "偏高" : "改善";
+  return `未来预测 ${trend} · 峰值 ${peak.toFixed(0)}`;
 });
 </script>
 

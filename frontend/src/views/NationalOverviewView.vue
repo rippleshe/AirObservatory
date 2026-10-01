@@ -137,21 +137,18 @@ const focusCity = computed(() =>
     .sort((a, b) => (b.china_aqi ?? -1) - (a.china_aqi ?? -1))[0] ?? null,
 );
 
-/* The first line is a readout of the finding, not a sentence about it. It
-   follows the playhead, so the headline is the conclusion of whatever hour
-   the stage is showing. */
+/* Awwwards / Editorial clean headline: concise, impactful, no rambling */
 const topLine = computed(() => {
   const worst = worstCity.value;
-  if (!worst || worst.china_aqi == null) return "全国省级空气态势";
-  return `${worst.name} AQI ${worst.china_aqi} ${worst.china_aqi_level ?? ""} · ${concernCount(
-    displayCities.value,
-  )} 省需要关注`;
+  if (!worst || worst.china_aqi == null) return "全国空气态势";
+  const concerns = concernCount(displayCities.value);
+  return `${worst.name} AQI ${worst.china_aqi} ${worst.china_aqi_level ?? ""} · ${concerns} 省关注`;
 });
 
 const fingerprintLine = computed(() => {
   const meta = fingerprint.data.value?.meta;
-  if (!meta) return "城市的长期结构指纹";
-  return `${meta.city_count} 个省代表分成 ${meta.cluster_count} 种长期模式`;
+  if (!meta) return "城市结构指纹";
+  return `${meta.city_count} 省代表 · ${meta.cluster_count} 类模式`;
 });
 
 const legendItems = computed<[string, string][]>(() => {

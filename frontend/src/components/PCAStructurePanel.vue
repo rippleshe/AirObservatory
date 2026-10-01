@@ -65,23 +65,17 @@ const topPair = computed<{ a: string; b: string; value: number } | null>(() => {
 const topPairCopy = computed(() => {
   const pair = topPair.value;
   const city = props.structure.meta.city;
-  if (!pair) {
-    return `${city}：${props.structure.meta.sample_count} 小时样本的结构分解`;
-  }
-  return `${city}：${featureLabel(pair.a)} 与 ${featureLabel(pair.b)} ${
-    pair.value > 0 ? "同向最强" : "反向最强"
-  } r = ${pair.value.toFixed(2)}`;
+  if (!pair) return `${city} · 变量结构分解`;
+  const rel = pair.value > 0 ? "同向相关" : "反向相关";
+  return `${featureLabel(pair.a)} × ${featureLabel(pair.b)} · ${rel} r=${pair.value.toFixed(2)}`;
 });
 
 const screeCopy = computed(() => {
   const explained = props.structure.explained_variance;
-  if (!explained.length) return "解释比例尚未生成";
+  if (!explained.length) return "解释方差比";
   const first = explained[0].variance_ratio;
   const rest = explained[explained.length - 1].cumulative_ratio - first;
-  if (explained.length === 1) return `只有一个方向，解释 ${(first * 100).toFixed(1)}%`;
-  return `第一个方向解释 ${(first * 100).toFixed(1)}%，其余 ${
-    explained.length - 1
-  } 个合计 ${(rest * 100).toFixed(1)}%`;
+  return `主成分 1 占比 ${(first * 100).toFixed(0)}% · 其余 ${(rest * 100).toFixed(0)}%`;
 });
 
 const loadingCopy = computed(() => {
@@ -94,39 +88,25 @@ const loadingCopy = computed(() => {
     if (!high || value > high.value) high = { feature: row.feature, value };
     if (!low || value < low.value) low = { feature: row.feature, value };
   }
-  if (!high || !low) return "权重尚未生成";
-  return `第一个方向上 ${featureLabel(high.feature)} 权重最高（${high.value.toFixed(
-    2,
-  )}），${featureLabel(low.feature)} 最低（${low.value.toFixed(2)}）`;
+  if (!high || !low) return "因子载荷阵";
+  return `PC1 权重：${featureLabel(high.feature)} 最高(${high.value.toFixed(2)})`;
 });
 
 const scoreCopy = computed(() => {
-  const values = props.structure.scores
-    .map((row) => row.values[leadingComponent.value])
-    .filter((value) => Number.isFinite(value))
-    .sort((a, b) => a - b);
-  if (!values.length) return "主成分取值尚未生成";
-  const at = (q: number) => values[Math.min(values.length - 1, Math.round((values.length - 1) * q))];
-  return `主成分 1 有 90% 的时刻落在 ${at(0.05).toFixed(2)}～${at(0.95).toFixed(
-    2,
-  )} 之间，中位 ${at(0.5).toFixed(2)}`;
+  return "二维主成分投影分布";
 });
 
 const correlationCopy = computed(() => {
   const features = props.structure.meta.features;
   let strong = 0;
-  let inverse = 0;
   props.structure.correlation.forEach((row, y) => {
     features.forEach((feature, x) => {
       if (x <= y) return;
       const value = row.values[feature];
-      if (value == null || !Number.isFinite(value) || Math.abs(value) < 0.6) return;
-      strong += 1;
-      if (value < 0) inverse += 1;
+      if (value != null && Number.isFinite(value) && Math.abs(value) >= 0.6) strong += 1;
     });
   });
-  if (!strong) return `${features.length} 个变量里没有一对相关超过 |r| = 0.6`;
-  return `${features.length} 个变量里有 ${strong} 对相关超过 |r| = 0.6，其中 ${inverse} 对反向`;
+  return `变量相关热力图 · ${strong} 组强相关 (|r|≥0.6)`;
 });
 
 function makeChart(el: HTMLDivElement | null) {

@@ -60,7 +60,7 @@ function dayLabel(iso: string) {
 const headline = computed(() => {
   const ts = times.value;
   const rs = rows.value;
-  if (!ts.length || !rs.length) return "近 30 天逐小时样本不足，暂不判断集中时刻";
+  if (!ts.length || !rs.length) return "近 30 天逐小时时空演变";
   let best = -1;
   let bestAt = 0;
   ts.forEach((_, index) => {
@@ -73,8 +73,8 @@ const headline = computed(() => {
       bestAt = index;
     }
   });
-  if (best <= 0) return `${rs.length} 省近 30 天逐小时全部低于 75 µg/m³`;
-  return `${dayLabel(ts[bestAt])} ${String(new Date(ts[bestAt]).getHours()).padStart(2, "0")}:00，${best} 省同时越过 75 µg/m³，为 30 天最集中一刻`;
+  if (best <= 0) return `${rs.length} 省全时段低于 75 µg/m³`;
+  return `${dayLabel(ts[bestAt])} ${String(new Date(ts[bestAt]).getHours()).padStart(2, "0")}:00 · 峰值高位集中（${best} 省达标警戒）`;
 });
 
 const peakStats = computed(() =>

@@ -66,19 +66,16 @@ const highButImproving = computed(
 );
 
 const matrixTitle = computed(() => {
-  if (!plottedCities.value.length) return "暂无各省 PM2.5 与 24h 变化数据";
-  if (!aboveMean.value.length) return "没有省高于均值";
+  if (!plottedCities.value.length) return "PM2.5 与 24h 变化分布";
+  if (!aboveMean.value.length) return "各省均低于平均线";
   const parts: string[] = [];
-  if (highAndRising.value) parts.push(`高且上升 ${highAndRising.value} 省`);
-  if (highButImproving.value) parts.push(`高但改善 ${highButImproving.value} 省`);
-  if (!parts.length) return `${aboveMean.value.length} 省高于均值，24h 变化都不明显`;
+  if (highAndRising.value) parts.push(`高值上升 ${highAndRising.value} 省`);
+  if (highButImproving.value) parts.push(`高值改善 ${highButImproving.value} 省`);
+  if (!parts.length) return `${aboveMean.value.length} 省高于均值`;
   return parts.join(" · ");
 });
 
-/* ── dumbbell: before → after per province ────────────────────────────
-   The matrix already plots 24h change as a position. The dumbbell reads the
-   same fact as a *transition* — how far each province travelled — which is a
-   different question and a form the rest of the page does not use. */
+/* ── dumbbell: before → after per province ──────────────────────────── */
 const movers = computed(() => {
   return plottedCities.value
     .map((city) => {
@@ -100,10 +97,8 @@ const movers = computed(() => {
 
 const moverTitle = computed(() => {
   const top = movers.value[0];
-  if (!top) return "暂无各省 24h 变化数据";
-  return `${top.name} 24h ${top.state.label} ${Math.abs(top.delta).toFixed(1)} µg/m³，${
-    plottedCities.value.length
-  } 省中位移最大`;
+  if (!top) return "24h 变化幅度排行";
+  return `${top.name} 24h ${top.state.label} ${Math.abs(top.delta).toFixed(1)} µg/m³ · 位移最大`;
 });
 
 const moverScale = computed(() => {
@@ -123,13 +118,13 @@ const regionRanking = computed(() =>
 
 const regionTitle = computed(() => {
   const top = regionRanking.value[0];
-  if (!top) return "暂无区域等级构成数据";
+  if (!top) return "区域等级构成";
   const rows = props.cities.filter((city) => city.region === top.region);
   if (!rows.length) return `PM2.5 均值最高：${top.region}`;
   const good = rows.filter(
     (city) => city.china_aqi_level === "优" || city.china_aqi_level === "良",
   ).length;
-  return `${top.region} ${rows.length} 省中 ${good} 省优良`;
+  return `${top.region} · ${good}/${rows.length} 省优良`;
 });
 
 const pollutantRows = computed(() => {
@@ -157,10 +152,8 @@ const pollutantRows = computed(() => {
 
 const pollutantTitle = computed(() => {
   const top = pollutantRows.value[0];
-  if (!top) return "暂无首要污染物数据";
-  const total = provinceTotal.value;
-  if (top.count >= total) return `${total} 省都由 ${top.name} 主导`;
-  return `${total} 省中 ${top.count} 省由 ${top.name} 主导`;
+  if (!top) return "首要污染物分布";
+  return `${top.name} 主导 · ${top.count} 省`;
 });
 
 /* An AQI at or below 50 reports no primary pollutant, so the rows do not sum

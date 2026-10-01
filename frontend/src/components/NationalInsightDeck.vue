@@ -240,7 +240,7 @@ function render(animate = true) {
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const motion = animate && !reducedMotion;
   const cities = plottedCities.value;
-  const axisInk = "#566a61";
+  const axisInk = "#64748b";
   const axisSize = 12;
 
   const important = new Set([
@@ -745,29 +745,31 @@ onBeforeUnmount(() => {
 <style scoped>
 .insight-deck {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 1fr);
+  gap: 20px;
 }
 .insight-deck article {
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: var(--sheet);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-normal) var(--ease-out);
+}
+.insight-deck article:hover {
+  border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-md);
 }
 .matrix-card {
   grid-row: 1 / 3;
   min-height: 600px;
-  /* The card stretches to the height of the right-hand column, so its plot
-     must take the leftover height. With a fixed-height plot inside a
-     stretched card the axis stopped a fifth of the way up and the rest of the
-     figure read as a hole in the page. */
   display: flex;
   flex-direction: column;
 }
 .insight-deck header {
-  min-height: 64px;
-  padding: 16px 20px 10px;
+  min-height: 66px;
+  padding: 18px 24px 12px;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -782,8 +784,8 @@ onBeforeUnmount(() => {
 }
 .table-toggle {
   flex: 0 0 auto;
-  min-height: 34px;
-  padding: 0 14px;
+  min-height: 32px;
+  padding: 0 16px;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-pill);
   background: var(--sheet-soft);
@@ -791,14 +793,19 @@ onBeforeUnmount(() => {
   font-family: var(--font-display);
   font-size: var(--fs-label);
   font-weight: var(--fw-strong);
-  letter-spacing: .03em;
+  letter-spacing: .02em;
   cursor: pointer;
+  transition: all var(--duration-fast) ease;
 }
-.table-toggle:hover { background: var(--sheet-sunken); }
+.table-toggle:hover {
+  background: var(--sheet-sunken);
+  color: var(--ink);
+}
 .table-toggle[aria-pressed="true"] {
   background: var(--ink);
   border-color: var(--ink);
   color: #fff;
+  box-shadow: 0 2px 6px rgba(10, 20, 17, 0.2);
 }
 
 .matrix-chart {

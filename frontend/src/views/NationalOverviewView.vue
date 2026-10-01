@@ -302,125 +302,153 @@ function openCity(id: number, name: string) {
 
 <style scoped>
 .national-workspace {
-  min-height: calc(100vh - 60px);
-  padding: 22px 28px 40px;
+  min-height: calc(100vh - 64px);
+  padding: 24px 32px 48px;
   display: grid;
-  gap: 16px;
+  gap: 20px;
   align-content: start;
   background: var(--canvas);
 }
 
-/* ── the stage ─────────────────────────────────────────────
-   One printed chart field: the header, the map and the ribbon share the
-   sea tone, so the map's water runs to the frame edge and the land is
-   paper white on top of it. The conclusion is read from the top of the
-   chart, in ink, and the evidence below is the same sheet. */
+/* ── The Stage ─────────────────────────────────────────────
+   A high-end editorial chart theatre: subtle inner borders,
+   calibrated maritime atmosphere, and harmonious contrast. */
 .stage {
   display: grid;
-  grid-template-rows: auto minmax(560px, 62vh) auto;
+  grid-template-rows: auto minmax(580px, 64vh) auto;
   overflow: hidden;
-  border: 1px solid var(--stage-hairline);
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xl);
   background: var(--stage-bg);
+  box-shadow: var(--shadow-sm);
 }
+
 .stage-head {
-  padding: 26px 30px 12px;
+  padding: 24px 32px 14px;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 28px;
+  gap: 32px;
 }
+
 .stage-head h1 {
   margin: 0;
   color: var(--stage-ink);
-  font-size: clamp(28px, 3.3vw, 46px);
-  line-height: 1.12;
+  font-size: var(--fs-display-lg);
+  line-height: 1.15;
   letter-spacing: var(--track-display);
 }
+
 .update-note {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: 10px;
   color: var(--stage-muted);
   font-size: var(--fs-label);
   white-space: nowrap;
 }
+
 .update-note strong {
-  color: var(--stage-ink);
+  color: var(--ink);
   font-size: var(--fs-body);
   font-weight: var(--fw-strong);
 }
 
 .map-area {
   position: relative;
-  min-height: 560px;
+  min-height: 580px;
 }
 
 .metric-switch {
   position: absolute;
   z-index: 10;
   top: 18px;
-  right: 18px;
-  padding: 4px;
+  right: 20px;
+  padding: 3px;
   display: flex;
   gap: 3px;
-  border: 1px solid var(--stage-hairline);
-  border-radius: var(--radius-sm);
-  background: var(--stage-panel);
-  backdrop-filter: blur(8px);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--sheet-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
 }
+
 .metric-switch button {
-  min-height: 38px;
+  min-height: 32px;
   padding: 0 14px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-pill);
   background: transparent;
-  color: var(--stage-muted);
+  color: var(--muted);
   font-family: var(--font-display);
   font-size: var(--fs-label);
-  font-weight: var(--fw-strong);
-  letter-spacing: .03em;
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.02em;
   cursor: pointer;
+  transition: all var(--duration-fast) ease;
 }
-.metric-switch button:hover { background: var(--stage-panel); color: var(--stage-ink); }
+
+.metric-switch button:hover {
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.03);
+}
+
 .metric-switch button.active {
-  background: var(--stage-ink);
-  color: var(--stage-bg);
+  background: var(--ink);
+  color: #ffffff;
+  font-weight: var(--fw-strong);
+  box-shadow: var(--shadow-sm);
 }
 
 .map-legend {
   position: absolute;
   z-index: 9;
-  left: 18px;
-  right: 74px;
-  bottom: 16px;
-  min-height: 42px;
-  padding: 9px 14px;
+  left: 20px;
+  right: 80px;
+  bottom: 18px;
+  min-height: 38px;
+  padding: 6px 16px;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 15px;
-  border: 1px solid var(--stage-hairline);
-  border-radius: var(--radius-sm);
-  background: var(--stage-panel);
-  backdrop-filter: blur(8px);
-  color: var(--stage-muted);
+  gap: 6px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--sheet-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--muted);
   font-size: var(--fs-label);
+  box-shadow: var(--shadow-sm);
 }
-.map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+.map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: var(--fw-medium);
+  color: var(--ink-soft);
+}
+
 .map-legend i {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
 }
+
 .map-legend i.ring {
   background: transparent;
-  border: 2px solid var(--stage-ink);
+  border: 2px solid var(--ink);
 }
+
 .legend-rule {
-  color: var(--stage-muted);
-  opacity: .85;
+  color: var(--muted);
+  opacity: 0.85;
+  font-size: 11px;
 }
+
 .map-loading {
   position: absolute;
   inset: 0;
@@ -431,9 +459,11 @@ function openCity(id: number, name: string) {
 }
 
 .ribbon-dock {
-  padding: 10px 26px 22px;
-  border-top: 1px solid var(--stage-hairline);
+  padding: 10px 28px 20px;
+  border-top: 1px solid var(--hairline);
+  background: rgba(255, 255, 255, 0.5);
 }
+
 .ribbon-empty {
   min-height: 120px;
   display: grid;
@@ -444,60 +474,77 @@ function openCity(id: number, name: string) {
 
 .national-error {
   min-height: 48px;
-  padding: 0 16px;
+  padding: 0 18px;
   display: flex;
   align-items: center;
   gap: 12px;
-  border: 1px solid #c8a29c;
-  border-radius: var(--radius-sm);
-  background: #fdf5f3;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md);
+  background: #fef2f2;
   color: var(--error);
   font-size: var(--fs-label);
 }
+
 .national-error button {
   margin-left: auto;
-  min-height: 36px;
-  border: 0;
-  background: transparent;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid #fca5a5;
+  border-radius: var(--radius-sm);
+  background: #ffffff;
   color: inherit;
   cursor: pointer;
   font-weight: var(--fw-strong);
 }
 
-.analysis-section { margin-top: 22px; }
+.analysis-section {
+  margin-top: 4px;
+}
 
 .deep-analysis {
   overflow: hidden;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: var(--sheet);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-normal) var(--ease-out);
 }
+
+.deep-analysis[open] {
+  box-shadow: var(--shadow-md);
+}
+
 .deep-analysis > summary {
-  min-height: 64px;
-  padding: 0 20px;
+  min-height: 66px;
+  padding: 0 24px;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 12px;
   cursor: pointer;
   list-style: none;
+  transition: background var(--duration-fast) ease;
 }
+
 .deep-analysis > summary::-webkit-details-marker { display: none; }
 .deep-analysis > summary:hover { background: var(--sheet-soft); }
+
 .deep-analysis summary > span {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   color: var(--ink);
   font-size: var(--fs-sub);
   letter-spacing: var(--track-title);
 }
+
 .deep-analysis-body {
-  padding: 16px;
+  padding: 20px;
   border-top: 1px solid var(--hairline-soft);
   background: var(--sheet-sunken);
 }
+
 .fingerprint-state {
-  min-height: 100px;
+  min-height: 120px;
   display: grid;
   place-items: center;
   color: var(--muted);
@@ -505,29 +552,33 @@ function openCity(id: number, name: string) {
 }
 
 @media (max-width: 900px) {
-  .national-workspace { padding: 18px 16px 34px; }
-  .stage { grid-template-rows: auto minmax(460px, 58vh) auto; }
+  .national-workspace { padding: 16px 16px 36px; gap: 16px; }
+  .stage {
+    grid-template-rows: auto minmax(460px, 58vh) auto;
+    border-radius: var(--radius-lg);
+  }
   .stage-head {
-    padding: 20px 18px 10px;
+    padding: 20px 20px 12px;
     display: grid;
-    gap: 6px;
+    gap: 8px;
   }
   .map-area { min-height: 460px; }
-  .ribbon-dock { padding: 8px 14px 18px; }
+  .ribbon-dock { padding: 10px 16px 20px; }
 }
+
 @media (max-width: 700px) {
   .stage { grid-template-rows: auto minmax(420px, 56vh) auto; }
   .map-area { min-height: 420px; }
   .metric-switch {
-    top: 12px;
-    left: 12px;
+    top: 14px;
+    left: 14px;
     right: auto;
   }
-  .metric-switch button { padding: 0 11px; }
+  .metric-switch button { padding: 0 12px; }
   .map-legend {
-    left: 12px;
-    right: 64px;
-    bottom: 58px;
+    left: 14px;
+    right: 70px;
+    bottom: 64px;
   }
   .deep-analysis > summary { min-height: 56px; }
 }

@@ -154,40 +154,48 @@ function tickStyle(mark: { start: number }) {
 <style scoped>
 .severity-band {
   display: grid;
-  gap: 14px;
-  padding: 20px 24px 16px;
+  gap: 16px;
+  padding: 22px 28px 18px;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: var(--sheet);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-normal) var(--ease-out);
+}
+.severity-band:hover {
+  border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-md);
 }
 
 .band-plot {
   min-width: 0;
   display: grid;
-  gap: 13px;
+  gap: 14px;
 }
 
 .units {
   display: flex;
-  gap: 3px;
+  gap: 4px;
 }
 
-/* 3px surface gap between fills — separation by whitespace, never a stroke
+/* 4px surface gap between fills — separation by whitespace, never a stroke
    drawn around each mark. Thirty-one units read as thirty-one provinces,
    not as a continuous gradient. */
 .unit {
   flex: 1 1 0;
   min-width: 0;
-  height: 76px;
+  height: 80px;
   padding: 0;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   cursor: pointer;
-  transition: transform 120ms ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: transform var(--duration-fast) var(--ease-spring), box-shadow var(--duration-fast) ease;
 }
 .unit:hover,
 .unit:focus-visible {
-  transform: translateY(-5px);
+  transform: translateY(-6px) scaleY(1.04);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.16);
   outline: 2px solid var(--ink);
   outline-offset: 1px;
 }

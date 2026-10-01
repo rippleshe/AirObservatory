@@ -336,7 +336,7 @@ const forecastOutlook = computed(() => {
     <header class="city-hero">
       <div class="hero-title">
         <h1 class="display-face">{{ snapshot.data.value?.city ?? context.selectedCityName }}</h1>
-        <span class="city-kicker">{{ snapshot.data.value?.province ?? "—" }}</span>
+        <span class="city-province">{{ snapshot.data.value?.province ?? "" }}</span>
       </div>
 
       <section
@@ -357,14 +357,14 @@ const forecastOutlook = computed(() => {
           <p>µg/m³</p>
         </article>
         <article>
-          <small>24h</small>
+          <small>24h 变化</small>
           <strong :class="{ bad: (pm25Trend.delta ?? 0) > 0, good: (pm25Trend.delta ?? 0) < 0 }">
             {{ trendSentence }}
           </strong>
           <p>日均 {{ fmt(pm25Trend.recentAvg) }}</p>
         </article>
         <article>
-          <small>地面观测</small>
+          <small>地面实测</small>
           <strong>{{ fmt(observedPm25) }}</strong>
           <p v-if="sourceGap != null">{{ sourceGap > 0 ? "偏高" : "偏低" }} {{ Math.abs(sourceGap).toFixed(1) }}</p>
           <p v-else-if="observedPm25 != null">{{ fmtTime(observationTime) }}</p>
@@ -463,150 +463,147 @@ const forecastOutlook = computed(() => {
 }
 .city-hero {
   display: grid;
-  grid-template-columns: minmax(280px, .7fr) minmax(760px, 1.7fr);
-  gap: 34px;
-  align-items: end;
-  padding: 12px 0 22px;
+  grid-template-columns: minmax(260px, .6fr) minmax(700px, 1.8fr);
+  gap: 32px;
+  align-items: center;
+  padding: 16px 0 24px;
   border-bottom: 1px solid var(--hairline);
 }
-.city-kicker {
-  display: block;
-  color: var(--muted);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-strong);
+.hero-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
 }
 .hero-title h1 {
-  margin: 5px 0 0;
+  margin: 0;
   color: var(--ink);
-  font-size: clamp(46px, 4.5vw, 62px);
-  font-weight: var(--fw-display);
-  letter-spacing: var(--track-display);
+  font-size: clamp(36px, 4vw, 52px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
   line-height: 1;
 }
-.hero-title p {
-  max-width: 35ch;
-  margin: 12px 0 0;
+.city-province {
   color: var(--muted);
-  font-size: 16px;
-  line-height: 1.55;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .current-status {
-  min-height: 138px;
+  min-height: 104px;
   display: grid;
-  grid-template-columns: 1.15fr repeat(3, 1fr);
+  grid-template-columns: 1.1fr repeat(3, 1fr);
   overflow: hidden;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   background: var(--sheet);
-  box-shadow: 0 10px 30px rgba(23, 41, 34, .04);
+  box-shadow: var(--shadow-sm);
 }
 .current-status article {
   min-width: 0;
-  padding: 19px 18px;
+  padding: 16px 18px;
   display: grid;
   align-content: center;
   gap: 3px;
 }
-.current-status article + article { border-left: 1px solid var(--hairline-soft); }
+.current-status article + article { border-left: 1px solid var(--hairline); }
 .current-status small {
   color: var(--muted);
-  font-size: var(--fs-label);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
-/* Hero figures: proportional digits. */
 .current-status strong {
   color: var(--ink);
-  font-size: 29px;
-  font-weight: var(--fw-display);
-  letter-spacing: -.035em;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 .current-status strong.bad { color: var(--error); }
 .current-status strong.good { color: var(--ok); }
 .current-status p {
   margin: 0;
   color: var(--muted);
-  font-size: var(--fs-label);
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.3;
 }
 .status-main {
-  grid-template-columns: 12px 1fr;
-  column-gap: 9px;
+  grid-template-columns: 10px 1fr;
+  column-gap: 10px;
 }
 .status-main > div { grid-column: 2; }
 .status-dot {
   grid-row: 1 / 4;
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   margin-top: 5px;
   border-radius: 50%;
   background: var(--aqi-tone);
 }
-.status-main strong { font-size: 25px; }
+.status-main strong { font-size: 24px; }
 
-.city-health-card { margin-top: 14px; }
+.city-health-card { margin-top: 16px; }
 
 .section-nav {
   position: sticky;
   top: 60px;
-  z-index: 8;
-  min-height: 52px;
-  margin: 0 -30px;
-  padding: 0 30px;
+  z-index: 25;
+  min-height: 48px;
+  margin: 0 -32px;
+  padding: 0 32px;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   overflow-x: auto;
   border-bottom: 1px solid var(--hairline);
-  background: rgba(242, 245, 243, .97);
-  backdrop-filter: blur(8px);
+  background: var(--sheet-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .section-nav a {
-  min-height: 38px;
-  padding: 0 13px;
+  min-height: 32px;
+  padding: 0 14px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   color: var(--muted);
   font-size: var(--fs-label);
-  font-weight: var(--fw-strong);
+  font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
+  transition: all var(--duration-fast) ease;
 }
 .section-nav a:hover {
   color: var(--ink);
-  background: var(--soft);
+  background: var(--sheet-soft);
 }
 
 .detail-section {
-  scroll-margin-top: 118px;
-  padding-top: 40px;
+  scroll-margin-top: 110px;
+  padding-top: 32px;
 }
-.first-section { padding-top: 30px; }
+.first-section { padding-top: 24px; }
 .section-heading {
-  min-height: 78px;
+  min-height: 48px;
   display: flex;
-  align-items: start;
+  align-items: baseline;
   justify-content: space-between;
   gap: 24px;
+  margin-bottom: 14px;
 }
 .section-heading h2 {
   margin: 0;
   color: var(--ink);
-  font-size: var(--fs-title);
+  font-size: 20px;
+  font-weight: 700;
   letter-spacing: var(--track-title);
 }
 .forecast-note {
-  max-width: 260px;
-  min-height: 34px;
-  padding: 8px 12px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
-  background: var(--sheet);
-  color: var(--ink-soft);
   font-size: var(--fs-label);
-  font-weight: var(--fw-strong);
-  line-height: 1.45;
+  color: var(--muted);
+  font-weight: 500;
 }
 .section-state {
   min-height: 100px;
@@ -628,19 +625,26 @@ const forecastOutlook = computed(() => {
 .technical-details {
   overflow: hidden;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: var(--sheet);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-normal) var(--ease-out);
+}
+.technical-details:hover {
+  border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-md);
 }
 .technical-details summary {
-  min-height: 58px;
-  padding: 0 18px;
+  min-height: 60px;
+  padding: 0 22px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
   color: var(--ink-soft);
   font-size: var(--fs-body);
   font-weight: var(--fw-strong);
+  transition: background var(--duration-fast) ease;
 }
 .technical-details summary:hover { background: var(--sheet-soft); }
 /* Panels inside an accordion keep their own card: same radius, same surface,

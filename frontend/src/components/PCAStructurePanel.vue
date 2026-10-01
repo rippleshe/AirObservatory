@@ -474,13 +474,18 @@ onBeforeUnmount(() => {
 .structure-panel {
   overflow: hidden;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: var(--sheet);
-  box-shadow: 0 10px 30px rgba(24, 41, 34, .045);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-normal) var(--ease-out);
+}
+.structure-panel:hover {
+  border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-md);
 }
 .panel-header {
-  min-height: 82px;
-  padding: 18px 20px 12px;
+  min-height: 84px;
+  padding: 20px 24px 14px;
   display: flex;
   align-items: start;
   justify-content: space-between;

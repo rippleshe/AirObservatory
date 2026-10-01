@@ -430,21 +430,25 @@ onBeforeUnmount(stop);
 }
 
 .play {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   flex: none;
   display: grid;
   place-items: center;
-  border: 1px solid var(--stage-hairline);
+  border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 50%;
-  background: var(--stage-panel);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   color: var(--stage-ink);
   cursor: pointer;
-  transition: background 150ms ease, transform 150ms ease;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-fast) var(--ease-spring);
 }
 .play:hover {
-  background: var(--sheet-sunken);
-  transform: scale(1.04);
+  background: #ffffff;
+  transform: scale(1.08);
+  box-shadow: var(--shadow-md);
 }
 .play svg {
   width: 15px;
@@ -455,32 +459,35 @@ onBeforeUnmount(stop);
 .readout {
   display: flex;
   align-items: baseline;
-  gap: 11px;
+  gap: 12px;
   min-width: 0;
 }
 .clock {
   color: var(--stage-ink);
-  font-size: 24px;
-  font-weight: 650;
-  letter-spacing: -.01em;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 .position {
-  padding: 2px 9px;
+  padding: 3px 10px;
   border: 1px solid var(--stage-hairline);
   border-radius: var(--radius-pill);
   color: var(--stage-muted);
   font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
   white-space: nowrap;
 }
 .position.live {
-  color: var(--stage-bg);
+  color: #ffffff;
   background: var(--stage-ink);
   border-color: var(--stage-ink);
   font-weight: 650;
+  box-shadow: 0 2px 6px rgba(10, 20, 17, 0.2);
 }
 .value {
   color: var(--stage-muted);
   font-size: var(--fs-data);
+  font-weight: var(--fw-medium);
   white-space: nowrap;
 }
 
@@ -488,25 +495,33 @@ onBeforeUnmount(stop);
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 .caption {
   color: var(--stage-muted);
   font-size: var(--fs-label);
+  font-weight: var(--fw-medium);
   white-space: nowrap;
 }
 .now {
   min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--stage-hairline);
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: var(--radius-pill);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   color: var(--stage-ink);
   font-size: var(--fs-label);
+  font-weight: var(--fw-strong);
   cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-fast) ease;
 }
 .now:hover {
-  background: var(--stage-panel);
+  background: #ffffff;
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
 .ribbon-plot {

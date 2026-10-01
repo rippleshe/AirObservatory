@@ -287,9 +287,14 @@ defineExpose({ peakCopy });
 .hour-ring-panel {
   overflow: hidden;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: var(--sheet);
-  box-shadow: 0 8px 24px rgba(24, 41, 34, .035);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-normal) var(--ease-out);
+}
+.hour-ring-panel:hover {
+  border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-md);
 }
 
 .hour-ring-panel header {
@@ -298,7 +303,7 @@ defineExpose({ peakCopy });
   justify-content: space-between;
   gap: 16px;
   min-height: 72px;
-  padding: 16px 20px 12px;
+  padding: 18px 24px 14px;
   border-bottom: 1px solid var(--hairline-soft);
 }
 
@@ -312,23 +317,27 @@ defineExpose({ peakCopy });
 
 .table-toggle {
   flex: none;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-pill);
-  background: transparent;
+  background: var(--sheet-soft);
   color: var(--ink-soft);
   font-size: var(--fs-label);
-  padding: 5px 13px;
+  font-weight: var(--fw-strong);
+  padding: 5px 15px;
   cursor: pointer;
+  transition: all var(--duration-fast) ease;
 }
 
 .table-toggle:hover {
   background: var(--sheet-sunken);
+  color: var(--ink);
 }
 
 .table-toggle[aria-pressed="true"] {
   background: var(--ink);
   border-color: var(--ink);
-  color: var(--sheet);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(10, 20, 17, 0.2);
 }
 
 .ring-stage {

@@ -357,38 +357,38 @@ onBeforeUnmount(() => {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   background: var(--sheet);
-  box-shadow: 0 10px 30px rgba(24, 41, 34, .045);
+  box-shadow: var(--shadow-sm);
 }
 .trace-header {
-  min-height: 94px;
-  padding: 17px 20px 12px;
+  min-height: 72px;
+  padding: 16px 20px 12px;
   display: flex;
   justify-content: space-between;
-  align-items: start;
+  align-items: center;
   gap: 20px;
-  border-bottom: 1px solid var(--hairline-soft);
+  border-bottom: 1px solid var(--hairline);
 }
 .trace-header h3 {
   margin: 0;
   color: var(--ink);
-  font-size: var(--fs-sub);
-  font-weight: var(--fw-display);
+  font-size: 15px;
+  font-weight: 600;
   letter-spacing: var(--track-title);
 }
 .trace-header p {
-  margin: 6px 0 0;
+  margin: 3px 0 0;
   color: var(--muted);
-  font-size: var(--fs-body);
-  line-height: 1.55;
+  font-size: 13px;
+  line-height: 1.4;
 }
 .header-tools {
   flex: 0 0 auto;
-  display: grid;
-  justify-items: end;
-  gap: 10px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 .window-switch {
-  padding: 3px;
+  padding: 2px;
   display: flex;
   gap: 2px;
   border: 1px solid var(--hairline);
@@ -396,27 +396,29 @@ onBeforeUnmount(() => {
   background: var(--sheet-soft);
 }
 .window-switch button {
-  min-height: 34px;
-  padding: 0 12px;
+  min-height: 28px;
+  padding: 0 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
   color: var(--muted);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-strong);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
+  transition: all var(--duration-fast) ease;
 }
 .window-switch button.active {
-  background: var(--ink);
-  color: white;
+  background: var(--sheet);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
 }
 .trace-legend {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: end;
-  gap: 8px 16px;
-  color: var(--ink-soft);
-  font-size: var(--fs-label);
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
 }
 .trace-legend span { display: flex; align-items: center; gap: 6px; }
 .trace-legend i { width: 19px; height: 0; border-top: 2px solid var(--model); }

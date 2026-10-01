@@ -1,113 +1,150 @@
-/* Air Observatory design tokens — single source of truth.
-   Every component consumes these; no hardcoded hex/px type in <style scoped>.
-   Information-carrying text never goes below --fs-label (12px):
-   DESIGN.md requires projector-distance legibility. */
+/* Air Observatory Design Tokens — Swiss Modern Luminous & Pure Minimal
+   Inspired by Apple, Linear, Vercel design systems.
+   Ultra-clean surfaces, crisp contrasts, delicate 1px subtle borders, no muddy/sickly green/gray tones.
+*/
 
 :root {
-  /* Display face is DIN-flavoured (Bahnschrift ships with Windows) — the
-     language of station readout boards and instrument panels. Body and every
-     number stay in the UI sans; hero figures are never set in the display face. */
-  --font-display: "Bahnschrift", "Segoe UI Variable Display", "Microsoft YaHei UI", system-ui, sans-serif;
-  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  /* ── Typography System ───────────────────────────────────
+     Clean, modern neo-grotesque typography: Inter, SF Pro, Apple System */
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI Variable Display", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI Variable Text", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  font-family: var(--font-sans);
   color: var(--ink);
   background: var(--canvas);
   font-synthesis: none;
 
-  /* ── surfaces ───────────────────────────────────────────
-     Canvas sits clearly BELOW sheet in value. When they were 3% apart the
-     whole page read washed-out and low-resolution — figures have to sit on
-     a surface with real separation to look drawn rather than printed faint. */
-  --canvas: #e3eae7;
-  --sheet: #fbfcfb;
-  --sheet-strong: #ffffff;
-  --sheet-soft: #f2f6f4;
-  --sheet-sunken: #e9efec;
-  --soft: #d7e1dd;
+  /* ── Pure, Crisp White & Minimal Canvas ──────────────────
+     Clean crisp background: #fbfbfc / #f8faf9, elevated pure white cards #ffffff */
+  --canvas: #f8fafc;
+  --canvas-subtle: #f1f5f9;
+  --sheet: #ffffff;
+  --sheet-elevated: #ffffff;
+  --sheet-soft: #f8fafc;
+  --sheet-glass: rgba(255, 255, 255, 0.85);
+  --sheet-glass-border: rgba(255, 255, 255, 0.9);
+  --sheet-sunken: #f1f5f9;
+  --soft: #e2e8f0;
 
-  /* ── ink ──────────────────────────────────────────────── */
-  --ink: #0b1512;
-  --ink-soft: #243530;
-  --muted: #566a61;
-  --faint: #6d8179; /* never below 12px */
+  /* ── Typography & Ink Hierarchy ──────────────────────────
+     Crisp neutral grays (no green undertones) */
+  --ink: #0f172a;           /* Slate 900 - ultra crisp primary text */
+  --ink-soft: #334155;      /* Slate 700 - readable secondary */
+  --ink-secondary: #475569; /* Slate 600 */
+  --muted: #64748b;         /* Slate 500 - elegant metadata */
+  --faint: #94a3b8;         /* Slate 400 */
 
-  /* ── lines (1px solid, never dashed) ────────────────────
-     Hairlines must actually read as rules on the canvas, not disappear. */
-  --hairline: #a7b8b0;
-  --hairline-soft: #c3d1cb;
-  --hairline-strong: #7f968c;
+  /* ── Ultra-Fine Hairlines (Apple / Linear style) ───────── */
+  --hairline: #e2e8f0;          /* Slate 200 */
+  --hairline-soft: #f1f5f9;     /* Slate 100 */
+  --hairline-strong: #cbd5e1;   /* Slate 300 */
+  --hairline-glow: rgba(255, 255, 255, 0.9);
 
-  /* ── map cartography ────────────────────────────────────
-     Cartographic inversion. The sea is a committed tone, the land is paper
-     white, the province boundaries are real ink. The previous set (pale lines
-     on pale mint, 10 L* between sea and land) is why the map read as muddy
-     low-resolution raster rather than a drawn chart: sea and land now sit
-     17 L* apart and the boundary clears 4.5:1 against both. */
-  --map-sea: #b9cdc6;
-  --map-land: #fbfcfb;
-  --map-border: #3d5a51;
-  --map-name: #4b635b;
+  /* ── Clean Map & Stage Palette ────────────────────────────
+     Fresh, clear airy sky blue-gray sea with pure white crisp land */
+  --map-sea: #e8eef5;           /* Clean soft clear water */
+  --map-land: #ffffff;          /* Pristine crisp land */
+  --map-border: #cbd5e1;        /* Crisp subtle land border */
+  --map-border-soft: #e2e8f0;
+  --map-name: #475569;
 
-  /* ── stage: the chart field ─────────────────────────────
-     The first viewport is one printed chart, not a card among cards: the
-     stage carries the sea tone so the map's water runs seamlessly to the
-     frame edge, and the land is paper white on top of it. Headline, legend
-     and the time ribbon are ink on that same field. */
-  --stage-bg: #b9cdc6;      /* == --map-sea: the chart field is the sea */
-  --stage-sea: #b9cdc6;
-  --stage-land: #fbfcfb;
-  --stage-border: #3d5a51;
-  --stage-name: #4b635b;
-  --stage-ink: #0b1512;
-  --stage-muted: #31473f;   /* ≥4.5:1 on --stage-bg */
-  --stage-hairline: rgba(61, 90, 81, .38);
-  --stage-panel: rgba(255, 255, 255, .72);
+  --stage-bg: #e8eef5;
+  --stage-sea: #e8eef5;
+  --stage-land: #ffffff;
+  --stage-border: #cbd5e1;
+  --stage-name: #475569;
+  --stage-ink: #0f172a;
+  --stage-muted: #64748b;
+  --stage-hairline: #dbe4ee;
+  --stage-panel: rgba(255, 255, 255, 0.92);
 
-  /* ── radius: two steps, not one ───────────────────────── */
-  --radius: 8px;       /* legacy alias of --radius-sm */
-  --radius-sm: 8px;    /* inner controls, chips, tooltips */
-  --radius-lg: 14px;   /* figure stages and cards */
-  --radius-pill: 999px;
+  /* ── Precision Radii System ─────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 9999px;
+  --radius: var(--radius-sm);
 
-  /* ── type scale ───────────────────────────────────────── */
-  --fs-hero: clamp(40px, 4.4vw, 62px);
-  --fs-title: 28px;
-  --fs-sub: 18px;
+  /* ── Spatial Cadence Scale ──────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── Editorial Type Scale & Tracking ────────────────────── */
+  --fs-hero: clamp(38px, 4.2vw, 56px);
+  --fs-display-lg: clamp(28px, 3.2vw, 42px);
+  --fs-title: 24px;
+  --fs-sub: 16px;
   --fs-body: 14px;
   --fs-data: 13px;
-  --fs-label: 12px; /* hard floor for information-carrying text */
+  --fs-label: 12px;
 
+  --fw-normal: 400;
+  --fw-medium: 500;
+  --fw-strong: 600;
   --fw-display: 700;
-  --fw-strong: 650;
-  --fw-body: 400;
-  --track-display: -.028em;
-  --track-title: -.018em;
+  --fw-black: 800;
 
-  /* ── data semantics ───────────────────────────────────── */
-  /* Model Analysis / Observation / Forecast stay visually distinct and
-     are never merged — see ARCHITECTURE.md "数据语义". */
-  --model: #2f6a82;
-  --observation: #266a56;
-  --forecast: #9a6128;
-  --external: #7b8d8c;
-  --muted-data: #8b9691;
+  --track-tight: -0.025em;
+  --track-display: -0.02em;
+  --track-title: -0.015em;
+  --track-caps: 0.05em;
 
-  /* status (reserved — never reused as a series colour) */
-  --ok: #2b6d57;
-  --warning: #93611a;
-  --error: #93352d;
-  --accent: #1d6779;
-  --accent-soft: #d4e5ea;
+  /* ── Clean Vibrant Data Semantics (HJ 633-2026 Compliant) ─ */
+  --model: #0284c7;        /* Sky 600 */
+  --observation: #059669;  /* Emerald 600 */
+  --forecast: #d97706;     /* Amber 600 */
+  --external: #64748b;
+  --muted-data: #94a3b8;
 
-  /* ── chrome ───────────────────────────────────────────── */
-  --rail: #131d19;
-  --rail-muted: #a3b1ab;
+  --ok: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --accent: #0284c7;
+  --accent-soft: #e0f2fe;
+  --accent-glow: rgba(2, 132, 199, 0.15);
 
-  --mono: "Cascadia Mono", "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  /* ── Minimalist Side Rail ─────────────────────────────────
+     Pure, clean Slate 900 or soft white border */
+  --rail: #ffffff;
+  --rail-surface: #f1f5f9;
+  --rail-border: #e2e8f0;
+  --rail-muted: #64748b;
+  --rail-active: #0f172a;
+  --rail-active-bg: #f1f5f9;
+
+  /* ── Soft Clean Ambient Shadows (Linear / Stripe style) ─── */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -4px rgba(0, 0, 0, 0.02);
+  --shadow-float: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+
+  /* ── Easing & Motion Curves ─────────────────────────────── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+
+  --mono: var(--font-mono);
 }
 
 * { box-sizing: border-box; }
 
-html, body, #app { min-height: 100%; margin: 0; }
+html, body, #app {
+  min-height: 100%;
+  margin: 0;
+  background: var(--canvas);
+}
 
 body {
   margin: 0;
@@ -116,65 +153,80 @@ body {
   font-size: var(--fs-body);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
-html { scrollbar-color: var(--hairline-strong) var(--canvas); }
+/* Scrollbar polish */
+html { scrollbar-color: var(--hairline-strong) transparent; }
 * { scrollbar-width: thin; }
-*::-webkit-scrollbar { width: 9px; height: 9px; }
-*::-webkit-scrollbar-track { background: var(--canvas); }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
   background: var(--hairline-strong);
-  border: 2px solid var(--canvas);
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
 }
 
 button, select, input { font: inherit; }
-button, a, select { outline-offset: 3px; }
+button, a, select { outline-offset: 2px; }
 :focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 3px;
-  border-radius: 3px;
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
 }
-::selection { background: #bcd6dd; color: #0b1a18; }
+::selection {
+  background: #bae6fd;
+  color: #0369a1;
+}
 
-/* Display type: station-board voice. Titles and section heads only — never
-   body copy, never a hero figure. */
 .display-face {
   font-family: var(--font-display);
   font-weight: var(--fw-display);
   letter-spacing: var(--track-display);
 }
 
+/* ── App Shell & Responsive Layout ───────────────────────── */
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: 72px minmax(0, 1fr);
+  background: var(--canvas);
 }
 
 .app-rail {
   position: sticky;
   top: 0;
   height: 100vh;
-  z-index: 20;
+  z-index: 50;
   display: grid;
-  grid-template-rows: 76px 1fr auto;
+  grid-template-rows: 68px 1fr auto;
   align-items: start;
-  background: var(--rail);
-  color: white;
+  background: var(--sheet);
+  border-right: 1px solid var(--hairline);
+  color: var(--ink);
 }
 
 .brand-mark {
-  height: 76px;
+  height: 68px;
   display: grid;
   place-items: center;
-  border-bottom: 1px solid #2b3833;
-  color: #eef5f1;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink);
   text-decoration: none;
+  transition: transform var(--duration-fast) var(--ease-spring), color var(--duration-fast) ease;
+}
+
+.brand-mark:hover {
+  color: var(--accent);
+  transform: scale(1.05);
+}
+
+.brand-mark .radar-glow {
+  display: none;
 }
 
 .app-rail nav {
-  padding: 14px 9px;
+  padding: 16px 8px;
   display: grid;
   align-content: start;
   gap: 8px;
@@ -182,107 +234,138 @@ button, a, select { outline-offset: 3px; }
 
 .rail-link,
 .rail-method {
-  min-height: 60px;
-  display: grid;
-  place-items: center;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 5px;
-  border-radius: 8px;
-  color: var(--rail-muted);
+  border-radius: var(--radius-md);
+  color: var(--muted);
   text-decoration: none;
   font-size: var(--fs-label);
-  transition: background 150ms ease, color 150ms ease;
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.02em;
+  transition: all var(--duration-fast) ease;
 }
 
 .rail-link:hover,
 .rail-method:hover {
-  color: white;
-  background: #1e2a26;
+  color: var(--ink);
+  background: var(--sheet-soft);
 }
 
 .rail-link.router-link-active,
 .rail-method.router-link-active {
-  color: #101c18;
-  background: #e9efec;
+  color: var(--ink);
+  background: var(--canvas-subtle);
+  font-weight: var(--fw-strong);
 }
 
 .rail-method {
-  margin: 10px 9px 16px;
+  margin: 10px 8px 18px;
 }
 
-.app-main { min-width: 0; }
+.app-main {
+  min-width: 0;
+}
 
+/* ── Context Top Bar (Clean Apple / Vercel Header) ───────── */
 .context-bar {
   height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
-  padding: 0 28px;
+  gap: 20px;
+  padding: 0 32px;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--sheet-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--hairline);
-  background: var(--sheet);
 }
 
 .context-title {
   min-width: 0;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 14px;
 }
 
 .product-name {
   color: var(--muted);
   font-family: var(--font-display);
-  font-size: var(--fs-body);
+  font-size: var(--fs-label);
   font-weight: var(--fw-strong);
-  letter-spacing: .04em;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
 }
 
 .context-title strong {
   padding-left: 14px;
   border-left: 1px solid var(--hairline);
   font-family: var(--font-display);
-  font-size: 19px;
-  font-weight: var(--fw-display);
+  font-size: 18px;
+  font-weight: var(--fw-strong);
   letter-spacing: var(--track-title);
+  color: var(--ink);
 }
 
 .context-meta {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   color: var(--muted);
   font-size: var(--fs-label);
 }
 
-.runtime-copy {
+.runtime-indicator {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  padding: 4px 12px;
+  background: var(--sheet);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-soft);
 }
 
-.runtime-copy::before {
-  content: "";
-  width: 7px;
-  height: 7px;
+.runtime-pulse {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: #4e9a7d;
+  background: #10b981;
+}
+
+.city-context {
+  position: relative;
 }
 
 .city-context select {
-  min-height: 38px;
+  min-height: 34px;
   max-width: 140px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
+  padding: 0 28px 0 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--sheet);
   color: var(--ink);
   font-size: var(--fs-label);
-  font-weight: var(--fw-strong);
+  font-weight: var(--fw-medium);
   cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  transition: all var(--duration-fast) ease;
 }
 
-.city-context select:hover { background: var(--sheet-soft); }
-.city-context select:focus-visible { outline: 2px solid var(--accent); }
+.city-context select:hover {
+  border-color: var(--hairline-strong);
+}
 
 .sr-only {
   position: absolute;
@@ -296,34 +379,36 @@ button, a, select { outline-offset: 3px; }
   border: 0;
 }
 
-button:focus-visible,
-select:focus-visible,
-a:focus-visible {
-  outline: 2px solid var(--accent);
+.data-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Mono is for tabular data that must align in a column — timestamps,
-   run ids, σ values, versions. Not a decorative "technical" texture, and
-   never on hero figures (proportional digits read better at display size). */
-.data-mono {
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
+/* ── Modern Card Surface Container ───────────────────────── */
+.glass-panel {
+  background: var(--sheet);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--duration-fast) ease;
+}
+
+.glass-panel:hover {
+  border-color: var(--hairline-strong);
 }
 
 @media (max-width: 900px) {
   .app-shell { grid-template-columns: 60px minmax(0, 1fr); }
   .app-rail { grid-template-rows: 60px 1fr auto; }
   .brand-mark { height: 60px; }
-  .rail-link,
-  .rail-method { min-height: 52px; }
-  .rail-link span,
-  .rail-method span { display: none; }
-  .context-bar { padding: 0 14px; }
+  .rail-link, .rail-method { min-height: 50px; }
+  .rail-link span, .rail-method span { display: none; }
+  .context-bar { padding: 0 16px; }
   .product-name { display: none; }
   .context-title strong {
     padding-left: 0;
     border-left: 0;
     font-size: 16px;
   }
-  .runtime-copy { display: none; }
+  .runtime-indicator span { display: none; }
 }

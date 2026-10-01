@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ShieldAlert } from "lucide-vue-next";
+import { ShieldCheck } from "lucide-vue-next";
 import { aqiColor } from "../lib/palette";
 
 defineProps<{
@@ -12,115 +12,106 @@ defineProps<{
 </script>
 
 <template>
-  <section
+  <aside
     v-if="level && (healthEffect || advice)"
-    :class="['health-guidance', { compact }]"
+    :class="['health-banner', { compact }]"
     :style="{ '--risk-tone': aqiColor(level) }"
+    aria-label="健康指引与建议"
   >
-    <div class="health-heading">
-      <span class="risk-dot" aria-hidden="true"></span>
-      <div>
-        <h3 v-if="compact">{{ city ? `${city}` : "" }}</h3>
-        <h3 v-else>{{ level }}</h3>
-        <span>{{ compact ? level : "" }}</span>
-      </div>
-      <ShieldAlert :size="compact ? 15 : 17" />
+    <div class="banner-badge">
+      <span class="dot" aria-hidden="true"></span>
+      <strong>{{ level }}</strong>
     </div>
 
-    <div class="health-copy">
-      <p v-if="healthEffect && !compact">
-        <span>{{ healthEffect }}</span>
-      </p>
-      <p v-if="advice">
-        <span>{{ advice }}</span>
-      </p>
+    <div class="banner-content">
+      <span v-if="healthEffect" class="effect-text">{{ healthEffect }}</span>
+      <span v-if="healthEffect && advice" class="separator">·</span>
+      <span v-if="advice" class="advice-text">{{ advice }}</span>
     </div>
-  </section>
+
+    <ShieldCheck class="shield-icon" :size="16" />
+  </aside>
 </template>
 
 <style scoped>
-.health-guidance {
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--sheet);
-}
-.health-heading {
-  min-height: 58px;
-  padding: 0 17px;
-  display: grid;
-  grid-template-columns: 11px 1fr 20px;
+.health-banner {
+  display: flex;
   align-items: center;
-  gap: 10px;
-  border-bottom: 1px solid var(--hairline-soft);
+  gap: 16px;
+  min-height: 48px;
+  padding: 0 20px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--sheet);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-fast) ease;
 }
-.risk-dot {
-  width: 10px;
-  height: 10px;
+
+.banner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.banner-badge .dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--risk-tone);
 }
-.health-heading h3 {
-  margin: 0;
-  color: var(--ink);
-  font-size: var(--fs-body);
-  font-weight: var(--fw-strong);
-}
-.health-heading span {
-  display: block;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: var(--fs-label);
-}
-.health-heading svg { color: var(--muted); }
-.health-copy {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-}
-.health-copy p {
-  min-width: 0;
-  margin: 0;
-  padding: 15px 17px;
-  display: grid;
-  gap: 5px;
-}
-.health-copy p + p { border-left: 1px solid var(--hairline-soft); }
-.health-copy span {
-  color: var(--muted);
-  font-size: var(--fs-body);
-  line-height: 1.6;
-}
-.health-guidance.compact {
-  display: grid;
-  grid-template-columns: minmax(220px, .75fr) minmax(0, 1.25fr);
-}
-.health-guidance.compact .health-heading {
-  min-height: 62px;
-  border-bottom: 0;
-  border-right: 1px solid var(--hairline);
-}
-.health-guidance.compact .health-copy {
-  display: block;
-}
-.health-guidance.compact .health-copy p {
-  min-height: 62px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.health-guidance.compact .health-copy p + p { border-left: 0; }
-.health-guidance.compact .health-copy b { flex: 0 0 auto; }
 
-@media (max-width: 720px) {
-  .health-copy { grid-template-columns: 1fr; }
-  .health-copy p + p {
-    border-left: 0;
-    border-top: 1px solid var(--hairline);
+.banner-badge strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.banner-content {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.effect-text {
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.separator {
+  color: var(--faint);
+}
+
+.advice-text {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shield-icon {
+  color: var(--faint);
+  flex: none;
+}
+
+@media (max-width: 768px) {
+  .health-banner {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    gap: 8px;
   }
-  .health-guidance.compact { grid-template-columns: 1fr; }
-  .health-guidance.compact .health-heading {
-    border-right: 0;
-    border-bottom: 1px solid var(--hairline);
+  .banner-content {
+    flex-basis: 100%;
+    flex-direction: column;
+    gap: 4px;
   }
+  .separator { display: none; }
+  .shield-icon { display: none; }
 }
 </style>

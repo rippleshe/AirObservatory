@@ -318,18 +318,17 @@ function render() {
     },
   }));
 
-  /* One light chart world: the stage field is the map's own sea and land, so
-     no second skin exists. */
+  /* Swiss modern luminous chart world: clean, pristine white land, airy sea, slate typography */
   const ink = token("--ink");
   const land = token("--map-land");
   const border = token("--map-border");
   const provinceName = token("--map-name");
   const muted = token("--muted");
-  const ring = land;
-  const labelHalo = land;
-  const panelBg = "rgba(255,255,255,.985)";
-  const panelEdge = token("--hairline-strong");
-  const hoverGround = token("--sheet-sunken");
+  const ring = "#ffffff";
+  const labelHalo = "#ffffff";
+  const panelBg = "rgba(255, 255, 255, 0.96)";
+  const panelEdge = token("--hairline");
+  const hoverGround = "#f1f5f9";
 
   chart.setOption(
     {
@@ -617,17 +616,20 @@ onBeforeUnmount(() => {
 .map-actions {
   position: absolute;
   z-index: 8;
-  right: 18px;
-  bottom: 18px;
+  right: 22px;
+  bottom: 22px;
   display: grid;
   overflow: hidden;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, .96);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
 }
 .map-actions button {
-  width: 42px;
-  height: 40px;
+  width: 40px;
+  height: 38px;
   display: grid;
   place-items: center;
   border: 0;
@@ -635,27 +637,31 @@ onBeforeUnmount(() => {
   background: transparent;
   color: var(--ink-soft);
   cursor: pointer;
+  transition: all var(--duration-fast) ease;
 }
 .map-actions button:last-child { border-bottom: 0; }
 .map-actions button:hover {
-  background: var(--sheet-sunken);
+  background: var(--sheet-soft);
   color: var(--ink);
 }
 .ground-key {
   position: absolute;
   z-index: 7;
-  right: 72px;
-  bottom: 18px;
-  min-height: 40px;
-  padding: 0 14px;
+  right: 76px;
+  bottom: 22px;
+  min-height: 38px;
+  padding: 0 16px;
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, .96);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--ink-soft);
   font-size: var(--fs-label);
+  box-shadow: var(--shadow-sm);
 }
 .ground-key i {
   width: 12px;

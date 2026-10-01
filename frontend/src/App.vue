@@ -41,22 +41,23 @@ function selectGlobalLocation(event: Event) {
   <div class="app-shell">
     <aside class="app-rail" aria-label="主导航">
       <RouterLink to="/overview" class="brand-mark" aria-label="Air Observatory 全国总览">
-        <Radar :size="23" />
+        <span class="radar-glow" aria-hidden="true"></span>
+        <Radar :size="24" stroke-width="2" />
       </RouterLink>
 
       <nav>
         <RouterLink to="/overview" class="rail-link">
-          <MapPinned :size="19" stroke-width="1.8" />
+          <MapPinned :size="20" stroke-width="1.9" />
           <span>全国</span>
         </RouterLink>
         <RouterLink :to="cityTo" class="rail-link">
-          <Radar :size="19" stroke-width="1.8" />
+          <Radar :size="20" stroke-width="1.9" />
           <span>城市</span>
         </RouterLink>
       </nav>
 
       <RouterLink to="/system" class="rail-method">
-        <Database :size="17" stroke-width="1.7" />
+        <Database :size="18" stroke-width="1.8" />
         <span>数据</span>
       </RouterLink>
     </aside>
@@ -68,9 +69,12 @@ function selectGlobalLocation(event: Event) {
           <strong>{{ title }}</strong>
         </div>
         <div class="context-meta">
-          <span class="runtime-copy">{{ runtimeState }}</span>
+          <div class="runtime-indicator" :title="runtimeState">
+            <span class="runtime-pulse" aria-hidden="true"></span>
+            <span>{{ runtimeState }}</span>
+          </div>
           <label v-if="route.name !== 'overview'" class="city-context">
-            <span class="sr-only">城市</span>
+            <span class="sr-only">选择城市</span>
             <select
               :value="context.selectedLocationId ?? ''"
               @change="selectGlobalLocation"

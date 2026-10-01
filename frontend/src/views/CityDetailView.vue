@@ -659,9 +659,9 @@ const forecastOutlook = computed(() => {
   .city-hero { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  .city-detail { padding: 18px 12px 36px; }
-  .city-hero { gap: 18px; }
-  .hero-title h1 { font-size: 46px; }
+  .city-detail { padding: 16px 14px 32px; }
+  .city-hero { gap: 14px; }
+  .hero-title h1 { font-size: 32px; }
   .current-status { grid-template-columns: 1fr 1fr; }
   .current-status article:nth-child(3) {
     border-left: 0;
@@ -670,11 +670,11 @@ const forecastOutlook = computed(() => {
   .current-status article:nth-child(4) { border-top: 1px solid var(--hairline-soft); }
   .section-nav {
     top: 60px;
-    margin: 0 -12px;
-    padding: 0 12px;
+    margin: 0 -14px;
+    padding: 0 14px;
   }
   .section-heading { display: grid; }
-  .section-heading h2 { font-size: 23px; }
+  .section-heading h2 { font-size: 18px; }
   .forecast-note { justify-self: start; }
 }
 </style>

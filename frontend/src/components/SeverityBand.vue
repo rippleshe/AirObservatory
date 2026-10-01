@@ -154,118 +154,112 @@ function tickStyle(mark: { start: number }) {
 <style scoped>
 .severity-band {
   display: grid;
-  gap: 16px;
-  padding: 22px 28px 18px;
+  gap: 14px;
+  padding: 18px 24px 14px;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   background: var(--sheet);
   box-shadow: var(--shadow-sm);
-  transition: all var(--duration-normal) var(--ease-out);
+  transition: border-color var(--duration-fast) ease;
 }
 .severity-band:hover {
   border-color: var(--hairline-strong);
-  box-shadow: var(--shadow-md);
 }
 
 .band-plot {
   min-width: 0;
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .units {
   display: flex;
-  gap: 4px;
+  gap: 3px;
 }
 
-/* 4px surface gap between fills — separation by whitespace, never a stroke
-   drawn around each mark. Thirty-one units read as thirty-one provinces,
-   not as a continuous gradient. */
 .unit {
   flex: 1 1 0;
   min-width: 0;
-  height: 80px;
+  height: 52px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: 2px;
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  transition: transform var(--duration-fast) var(--ease-spring), box-shadow var(--duration-fast) ease;
+  opacity: 0.92;
+  transition: transform var(--duration-fast) ease, opacity var(--duration-fast) ease;
 }
 .unit:hover,
 .unit:focus-visible {
-  transform: translateY(-6px) scaleY(1.04);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.16);
+  opacity: 1;
+  transform: scaleY(1.1);
   outline: 2px solid var(--ink);
   outline-offset: 1px;
 }
 
 .ruler {
   position: relative;
-  height: 20px;
+  height: 18px;
 }
 .ruler-mark {
   position: absolute;
   top: 0;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   color: var(--muted);
-  font-size: var(--fs-label);
+  font-size: 11px;
   white-space: nowrap;
 }
 .ruler-mark .tick {
   position: absolute;
-  top: -13px;
+  top: -12px;
   left: 0;
   width: 1px;
-  height: 11px;
+  height: 10px;
   background: var(--hairline-strong);
 }
 .ruler-mark .swatch {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 2px;
 }
 .ruler-mark b {
   color: var(--ink);
-  font-weight: var(--fw-strong);
+  font-weight: 600;
 }
 
-/* The supporting readings sit under the band as a data rail: label above
-   value, rules between, so the strip reads as one instrument rather than a
-   detached stat block beside the chart. */
 .band-facts {
   margin: 0;
-  padding-top: 13px;
+  padding-top: 12px;
   border-top: 1px solid var(--hairline-soft);
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 10px 0;
+  gap: 8px 0;
 }
 .band-facts > div {
   flex: 0 0 auto;
-  padding: 0 22px;
+  padding: 0 20px;
   border-right: 1px solid var(--hairline-soft);
 }
 .band-facts > div:first-child { padding-left: 0; }
 .band-facts > div:last-child { border-right: 0; }
 .band-facts dt {
   color: var(--muted);
-  font-size: var(--fs-label);
+  font-size: 11px;
+  font-weight: 500;
 }
 .band-facts dd {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   color: var(--ink);
-  font-size: 19px;
-  font-weight: var(--fw-strong);
-  line-height: 1.15;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 .band-facts dd small {
   color: var(--muted);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-body);
+  font-size: 11px;
+  font-weight: 400;
 }
 .band-rule {
   margin-left: auto;

@@ -301,8 +301,8 @@ onBeforeUnmount(stop);
     >
       <defs>
         <linearGradient id="ribbon-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#3d5a51" stop-opacity=".26" />
-          <stop offset="100%" stop-color="#3d5a51" stop-opacity=".03" />
+          <stop offset="0%" stop-color="#0284c7" stop-opacity=".15" />
+          <stop offset="100%" stop-color="#0284c7" stop-opacity=".01" />
         </linearGradient>
       </defs>
 
@@ -314,7 +314,7 @@ onBeforeUnmount(stop);
           :width="plotW"
           :height="Math.max(0, zone.h)"
           :fill="stageColor(zone.color)"
-          opacity=".1"
+          opacity=".06"
         />
         <line
           v-if="zone.upTo !== Infinity && zone.label"
@@ -323,7 +323,7 @@ onBeforeUnmount(stop);
           :y1="zone.y"
           :y2="zone.y"
           :stroke="stageColor(zone.color)"
-          stroke-opacity=".42"
+          stroke-opacity=".25"
           stroke-width="1"
         />
         <text
@@ -331,8 +331,8 @@ onBeforeUnmount(stop);
           :x="5"
           :y="zone.y - 3"
           :fill="stageColor(zone.color)"
-          font-size="12"
-          opacity=".9"
+          font-size="11"
+          opacity=".8"
         >
           {{ zone.label }}
         </text>
@@ -343,8 +343,8 @@ onBeforeUnmount(stop);
         <path
           :d="seg.line"
           fill="none"
-          stroke="#243530"
-          stroke-width="2"
+          stroke="#0f172a"
+          stroke-width="1.8"
           stroke-linejoin="round"
           stroke-linecap="round"
         />
@@ -357,8 +357,8 @@ onBeforeUnmount(stop);
           :key="mark.label + mark.x"
           :x="Math.min(Math.max(mark.x, 2), plotW - 30)"
           :y="HEIGHT - 6"
-          fill="#566a61"
-          font-size="12"
+          fill="#64748b"
+          font-size="11"
           :text-anchor="mark.x < 40 ? 'start' : mark.x > plotW - 40 ? 'end' : 'middle'"
         >
           {{ mark.label }}
@@ -372,8 +372,8 @@ onBeforeUnmount(stop);
           :x2="xAt(hovered)"
           :y1="PAD_TOP"
           :y2="PAD_TOP + PLOT_H"
-          stroke="#3d5a51"
-          stroke-opacity=".3"
+          stroke="#94a3b8"
+          stroke-opacity=".4"
           stroke-width="1"
         />
       </g>
@@ -383,25 +383,25 @@ onBeforeUnmount(stop);
         <line
           :x1="xAt(activeIndex)"
           :x2="xAt(activeIndex)"
-          :y1="PAD_TOP - 6"
-          :y2="PAD_TOP + PLOT_H + 6"
-          stroke="#0b1512"
+          :y1="PAD_TOP - 4"
+          :y2="PAD_TOP + PLOT_H + 4"
+          stroke="#0f172a"
           stroke-width="1.5"
         />
         <circle
           v-if="activeValue != null"
           :cx="xAt(activeIndex)"
           :cy="yAt(activeValue)"
-          r="9"
-          fill="#0b1512"
-          opacity=".12"
+          r="8"
+          fill="#0284c7"
+          opacity=".18"
         />
         <circle
           v-if="activeValue != null"
           :cx="xAt(activeIndex)"
           :cy="yAt(activeValue)"
-          r="4"
-          fill="#0b1512"
+          r="3.5"
+          fill="#0284c7"
         />
       </g>
     </svg>
@@ -430,29 +430,26 @@ onBeforeUnmount(stop);
 }
 
 .play {
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   flex: none;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--hairline);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: var(--stage-ink);
+  background: var(--sheet);
+  color: var(--ink);
   cursor: pointer;
   box-shadow: var(--shadow-sm);
-  transition: all var(--duration-fast) var(--ease-spring);
+  transition: all var(--duration-fast) ease;
 }
 .play:hover {
-  background: #ffffff;
-  transform: scale(1.08);
-  box-shadow: var(--shadow-md);
+  background: var(--sheet-soft);
+  color: var(--accent);
 }
 .play svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   fill: currentColor;
 }
 
@@ -464,30 +461,29 @@ onBeforeUnmount(stop);
 }
 .clock {
   color: var(--stage-ink);
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 .position {
-  padding: 3px 10px;
-  border: 1px solid var(--stage-hairline);
+  padding: 2px 8px;
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
-  color: var(--stage-muted);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-medium);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
   white-space: nowrap;
 }
 .position.live {
   color: #ffffff;
-  background: var(--stage-ink);
-  border-color: var(--stage-ink);
-  font-weight: 650;
-  box-shadow: 0 2px 6px rgba(10, 20, 17, 0.2);
+  background: var(--ink);
+  border-color: var(--ink);
+  font-weight: 600;
 }
 .value {
-  color: var(--stage-muted);
-  font-size: var(--fs-data);
-  font-weight: var(--fw-medium);
+  color: var(--muted);
+  font-size: var(--fs-label);
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -495,33 +491,29 @@ onBeforeUnmount(stop);
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 .caption {
-  color: var(--stage-muted);
+  color: var(--muted);
   font-size: var(--fs-label);
-  font-weight: var(--fw-medium);
+  font-weight: 500;
   white-space: nowrap;
 }
 .now {
-  min-height: 32px;
-  padding: 0 14px;
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: var(--stage-ink);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-strong);
+  background: var(--sheet);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
   box-shadow: var(--shadow-sm);
   transition: all var(--duration-fast) ease;
 }
 .now:hover {
-  background: #ffffff;
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
+  background: var(--sheet-soft);
 }
 
 .ribbon-plot {

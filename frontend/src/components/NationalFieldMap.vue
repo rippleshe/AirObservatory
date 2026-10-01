@@ -254,15 +254,8 @@ function render() {
   ranked.forEach((entry, rank) => labelRank.set(entry.index, rank));
 
   const data = cities.map((city, index) => {
-    const state = changeState(city.pm25_change_24h);
-    // Level word travels with the colour — never colour alone.
-    const reading = hasReading(city);
-    const subLabel = !reading
-      ? ""
-      : props.metric === "change"
-        ? `${state.label} ${metricLabel(city)}`
-        : `${city.china_aqi_level ?? "暂无"} ${metricLabel(city)}`;
-    labelInfo.set(index, { name: city.name, subLabel, h: reading ? 33 : 18 });
+    // Elegant, noise-free single line label
+    labelInfo.set(index, { name: city.name, subLabel: "", h: 18 });
     return {
       name: city.name,
       value: [
@@ -280,7 +273,7 @@ function render() {
       sourceTime: city.source_time,
       primary: city.primary_pollutants,
       metricText: metricLabel(city),
-      subLabel,
+      subLabel: "",
       symbolSize: markSize(city),
       itemStyle: { color: cityColor(city) },
     };
@@ -387,24 +380,18 @@ function render() {
         right: 18,
         label: {
           show: wide.value,
-          // Province names are the third layer: below the pins, below the
-          // readings, printed in ink on paper rather than in gray on mint.
           color: provinceName,
-          fontSize: 12,
+          fontSize: 11,
           formatter: (params: any) => {
             const name = shortProvince(params.name);
             return namedProvinces.value.has(name) ? "" : name;
           },
-          // Drop a province name rather than print it over a neighbour.
           labelLayout: { hideOverlap: true },
         },
-        /* Cartographic inversion: the stage is the sea, the provinces are
-           paper. Pale-on-pale geography is what made the map read as muddy
-           low-resolution rendering rather than a drawn chart. */
         itemStyle: {
           areaColor: land,
           borderColor: border,
-          borderWidth: 1,
+          borderWidth: 0.8,
         },
         emphasis: {
           itemStyle: {
@@ -477,31 +464,18 @@ function render() {
           label: {
             show: true,
             position: "right",
-            distance: 0,
+            distance: 4,
             align: "left",
             verticalAlign: "middle",
-            formatter(params: any) {
-              const line2 = params.data.subLabel ?? "";
-              return line2
-                ? `{city|${params.data.name}}\n{value|${line2}}`
-                : `{city|${params.data.name}}`;
-            },
-            // A ground-coloured halo, not a white glow: letters stay legible
-            // over the sea without the sticker outline.
+            formatter: "{city|{b}}",
             textBorderColor: labelHalo,
-            textBorderWidth: 3,
+            textBorderWidth: 2,
             rich: {
               city: {
                 color: ink,
-                fontSize: 13,
-                fontWeight: 650,
-                lineHeight: 17,
-              },
-              value: {
-                color: token("--ink-soft"),
                 fontSize: 12,
-                fontWeight: 500,
-                lineHeight: 15,
+                fontWeight: 600,
+                lineHeight: 14,
               },
             },
           },
@@ -582,19 +556,14 @@ onBeforeUnmount(() => {
 
     <div class="map-actions" aria-label="地图缩放控制">
       <button type="button" aria-label="放大地图" @click="setZoom(zoom + 0.22)">
-        <Plus :size="17" />
+        <Plus :size="16" />
       </button>
       <button type="button" aria-label="缩小地图" @click="setZoom(zoom - 0.22)">
-        <Minus :size="17" />
+        <Minus :size="16" />
       </button>
       <button type="button" aria-label="复位地图" @click="resetView">
-        <RotateCcw :size="16" />
+        <RotateCcw :size="15" />
       </button>
-    </div>
-
-    <div v-if="groundCount" class="ground-key">
-      <i></i>
-      <span>{{ groundCount }} 城有近期地面观测</span>
     </div>
 
     <p v-if="mapError" class="map-error" role="alert">
@@ -616,26 +585,26 @@ onBeforeUnmount(() => {
 .map-actions {
   position: absolute;
   z-index: 8;
-  right: 22px;
-  bottom: 22px;
+  right: 20px;
+  bottom: 20px;
   display: grid;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--sheet-glass);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   box-shadow: var(--shadow-sm);
 }
 .map-actions button {
-  width: 40px;
-  height: 38px;
+  width: 34px;
+  height: 32px;
   display: grid;
   place-items: center;
   border: 0;
-  border-bottom: 1px solid var(--hairline-soft);
+  border-bottom: 1px solid var(--hairline);
   background: transparent;
-  color: var(--ink-soft);
+  color: var(--muted);
   cursor: pointer;
   transition: all var(--duration-fast) ease;
 }
@@ -644,40 +613,15 @@ onBeforeUnmount(() => {
   background: var(--sheet-soft);
   color: var(--ink);
 }
-.ground-key {
-  position: absolute;
-  z-index: 7;
-  right: 76px;
-  bottom: 22px;
-  min-height: 38px;
-  padding: 0 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: var(--ink-soft);
-  font-size: var(--fs-label);
-  box-shadow: var(--shadow-sm);
-}
-.ground-key i {
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--ink);
-  border-radius: 50%;
-}
 .map-error {
   position: absolute;
   left: 18px;
   bottom: 18px;
   margin: 0;
-  padding: 11px 14px;
-  border: 1px solid #d2aaa5;
+  padding: 10px 14px;
+  border: 1px solid #fed7aa;
   border-radius: var(--radius-sm);
-  background: #fff8f7;
+  background: #fff7ed;
   color: var(--error);
   font-size: var(--fs-label);
 }

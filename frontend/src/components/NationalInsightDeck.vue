@@ -746,66 +746,64 @@ onBeforeUnmount(() => {
 .insight-deck {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 1fr);
-  gap: 20px;
+  gap: 16px;
 }
 .insight-deck article {
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   background: var(--sheet);
   box-shadow: var(--shadow-sm);
-  transition: all var(--duration-normal) var(--ease-out);
+  transition: border-color var(--duration-fast) ease;
 }
 .insight-deck article:hover {
   border-color: var(--hairline-strong);
-  box-shadow: var(--shadow-md);
 }
 .matrix-card {
   grid-row: 1 / 3;
-  min-height: 600px;
+  min-height: 560px;
   display: flex;
   flex-direction: column;
 }
 .insight-deck header {
-  min-height: 66px;
-  padding: 18px 24px 12px;
+  min-height: 56px;
+  padding: 14px 20px 10px;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 18px;
+  gap: 16px;
   flex-wrap: wrap;
 }
 .insight-deck h3 {
   margin: 0;
   color: var(--ink);
-  font-size: var(--fs-sub);
+  font-size: 15px;
+  font-weight: 600;
   letter-spacing: var(--track-title);
 }
 .table-toggle {
   flex: 0 0 auto;
-  min-height: 32px;
-  padding: 0 16px;
-  border: 1px solid var(--hairline-strong);
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
-  background: var(--sheet-soft);
-  color: var(--ink-soft);
-  font-family: var(--font-display);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-strong);
-  letter-spacing: .02em;
+  background: var(--sheet);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
   transition: all var(--duration-fast) ease;
 }
 .table-toggle:hover {
-  background: var(--sheet-sunken);
+  background: var(--sheet-soft);
   color: var(--ink);
 }
 .table-toggle[aria-pressed="true"] {
   background: var(--ink);
   border-color: var(--ink);
   color: #fff;
-  box-shadow: 0 2px 6px rgba(10, 20, 17, 0.2);
+  font-weight: 600;
 }
 
 .matrix-chart {

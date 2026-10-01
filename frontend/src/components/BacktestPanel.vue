@@ -317,27 +317,27 @@ onBeforeUnmount(() => {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   background: var(--sheet);
-  box-shadow: 0 10px 30px rgba(24, 41, 34, .045);
+  box-shadow: var(--shadow-sm);
 }
 .panel-header {
-  min-height: 78px;
-  padding: 18px 20px 12px;
+  min-height: 60px;
+  padding: 14px 20px 10px;
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
-  border-bottom: 1px solid var(--hairline-soft);
+  border-bottom: 1px solid var(--hairline);
 }
 .panel-header h2 {
   margin: 0;
   color: var(--ink);
-  font-size: var(--fs-sub);
-  font-weight: var(--fw-display);
+  font-size: 15px;
+  font-weight: 600;
   letter-spacing: var(--track-title);
 }
 .panel-meta {
   color: var(--muted);
-  font-size: var(--fs-label);
+  font-size: 12px;
   white-space: nowrap;
 }
 

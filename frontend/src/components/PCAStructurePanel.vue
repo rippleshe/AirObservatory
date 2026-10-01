@@ -474,34 +474,33 @@ onBeforeUnmount(() => {
 .structure-panel {
   overflow: hidden;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   background: var(--sheet);
   box-shadow: var(--shadow-sm);
-  transition: all var(--duration-normal) var(--ease-out);
+  transition: border-color var(--duration-fast) ease;
 }
 .structure-panel:hover {
   border-color: var(--hairline-strong);
-  box-shadow: var(--shadow-md);
 }
 .panel-header {
-  min-height: 84px;
-  padding: 20px 24px 14px;
+  min-height: 64px;
+  padding: 16px 20px 12px;
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
-  border-bottom: 1px solid var(--hairline-soft);
+  border-bottom: 1px solid var(--hairline);
 }
 .panel-header h2 {
   margin: 0;
   color: var(--ink);
-  font-size: var(--fs-sub);
-  font-weight: var(--fw-display);
+  font-size: 15px;
+  font-weight: 600;
   letter-spacing: var(--track-title);
 }
 .panel-meta {
   color: var(--muted);
-  font-size: var(--fs-label);
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -511,20 +510,20 @@ onBeforeUnmount(() => {
 }
 .structure-grid article {
   min-width: 0;
-  padding: 18px 20px;
-  border-bottom: 1px solid var(--hairline-soft);
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--hairline);
 }
 .structure-grid article:nth-child(odd) {
-  border-right: 1px solid var(--hairline-soft);
+  border-right: 1px solid var(--hairline);
 }
 .chart-heading {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .chart-heading h3 {
   margin: 0;
   color: var(--ink);
-  font-size: var(--fs-body);
-  font-weight: var(--fw-strong);
+  font-size: 13px;
+  font-weight: 600;
   letter-spacing: var(--track-title);
 }
 .structure-chart {

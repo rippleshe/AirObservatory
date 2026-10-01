@@ -235,8 +235,7 @@ function openCity(id: number, name: string) {
           <span v-for="[label, color] in legendItems" :key="String(label)">
             <i :style="{ background: color }"></i>{{ label }}
           </span>
-          <span class="legend-key"><i class="ring"></i>地面观测</span>
-          <span class="legend-rule">CAMS 模式换算，非地面监测值</span>
+          <span class="legend-rule">CAMS 模式换算</span>
         </div>
       </div>
 

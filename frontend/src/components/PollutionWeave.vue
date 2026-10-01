@@ -280,15 +280,14 @@ defineExpose({ headline, peakStats, pm25Color });
 <style scoped>
 .weave-card {
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   background: var(--sheet);
   box-shadow: var(--shadow-sm);
-  padding: 22px 24px 18px;
-  transition: all var(--duration-normal) var(--ease-out);
+  padding: 18px 22px 14px;
+  transition: border-color var(--duration-fast) ease;
 }
 .weave-card:hover {
   border-color: var(--hairline-strong);
-  box-shadow: var(--shadow-md);
 }
 
 .weave-header {
@@ -296,31 +295,32 @@ defineExpose({ headline, peakStats, pm25Color });
   align-items: baseline;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .weave-header h2 {
   margin: 0;
-  font-size: var(--fs-sub);
+  font-size: 15px;
+  font-weight: 600;
   letter-spacing: var(--track-title);
   color: var(--ink);
 }
 
 .table-toggle {
   flex: none;
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
-  background: var(--sheet-soft);
-  color: var(--ink-soft);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-strong);
-  padding: 5px 15px;
+  background: var(--sheet);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 12px;
   cursor: pointer;
   transition: all var(--duration-fast) ease;
 }
 
 .table-toggle:hover {
-  background: var(--sheet-sunken);
+  background: var(--sheet-soft);
   color: var(--ink);
 }
 
@@ -328,7 +328,7 @@ defineExpose({ headline, peakStats, pm25Color });
   background: var(--ink);
   border-color: var(--ink);
   color: #ffffff;
-  box-shadow: 0 2px 6px rgba(10, 20, 17, 0.2);
+  font-weight: 600;
 }
 
 .weave-stage {

@@ -64,33 +64,50 @@ function selectGlobalLocation(event: Event) {
 
     <main class="app-main">
       <header class="context-bar">
-        <div class="context-title">
-          <span class="product-name">Air Observatory</span>
-          <strong>{{ title }}</strong>
-        </div>
-        <div class="context-meta">
-          <div class="runtime-indicator" :title="runtimeState">
-            <span class="runtime-pulse" aria-hidden="true"></span>
-            <span>{{ runtimeState }}</span>
+        <div class="context-inner">
+          <div class="context-title">
+            <span class="product-name">Air Observatory</span>
+            <strong>{{ title }}</strong>
           </div>
-          <label v-if="route.name !== 'overview'" class="city-context">
-            <span class="sr-only">选择城市</span>
-            <select
-              :value="context.selectedLocationId ?? ''"
-              @change="selectGlobalLocation"
-            >
-              <option
-                v-for="location in locations.data.value ?? []"
-                :key="location.location_id"
-                :value="location.location_id"
+          <div class="context-meta">
+            <div class="runtime-indicator" :title="runtimeState">
+              <span class="runtime-pulse" aria-hidden="true"></span>
+              <span>{{ runtimeState }}</span>
+            </div>
+            <label v-if="route.name !== 'overview'" class="city-context">
+              <span class="sr-only">选择城市</span>
+              <select
+                :value="context.selectedLocationId ?? ''"
+                @change="selectGlobalLocation"
               >
-                {{ location.city }}
-              </option>
-            </select>
-          </label>
+                <option
+                  v-for="location in locations.data.value ?? []"
+                  :key="location.location_id"
+                  :value="location.location_id"
+                >
+                  {{ location.city }}
+                </option>
+              </select>
+            </label>
+          </div>
         </div>
       </header>
-      <RouterView />
+      <div class="page-body">
+        <RouterView v-slot="{ Component }">
+          <Transition name="route" mode="out-in">
+            <component :is="Component" />
+          </Transition>
+        </RouterView>
+      </div>
+
+      <footer class="app-footer">
+        <strong>Air Observatory</strong>
+        <span>数据源 OpenAQ · Open-Meteo CAMS</span>
+        <span>AQI 口径 HJ 633-2026</span>
+        <span>模型场 ≠ 地面观测</span>
+        <span class="footer-spacer"></span>
+        <span class="data-mono">{{ runtimeState }}</span>
+      </footer>
     </main>
   </div>
 </template>

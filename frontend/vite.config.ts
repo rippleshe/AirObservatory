@@ -13,5 +13,14 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 650,
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes("node_modules/echarts") || id.includes("node_modules/zrender")) {
+            return "echarts";
+          }
+        },
+      },
+    },
   },
 });

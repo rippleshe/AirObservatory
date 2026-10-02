@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { components } from "../api/schema";
-import { init, token, type ECharts } from "../lib/charts";
+import { chartTheme, init, token, type ECharts } from "../lib/charts";
+import { useInView } from "../composables/useInView";
+
+/* Charts stay blank until the reader scrolls to them: the first paint is
+   the animated entrance, never a show that already ended. */
+const shell = ref<HTMLElement | null>(null);
+const inView = useInView(shell);
 import { PM25_BANDS, pm25Color } from "../lib/palette";
 
 type NationalSeriesResponse = components["schemas"]["NationalSeriesResponse"];
@@ -107,6 +113,7 @@ const peakStats = computed(() =>
 );
 
 function render() {
+  if (!inView.value) return;
   if (!chart) return;
   const ts = times.value;
   const rs = rows.value;
@@ -115,9 +122,9 @@ function render() {
     return;
   }
 
-  const surface = token("--sheet", "#fbfcfb");
-  const hairline = token("--hairline-soft", "#c3d1cb");
-  const inkSoft = token("--ink-soft", "#243530");
+  const surface = token("--sheet", chartTheme().surface);
+  const hairline = token("--hairline-soft", chartTheme().splitLine);
+  const inkSoft = token("--ink-soft", chartTheme().inkSoft);
 
   const data: [number, number, number][] = [];
   rs.forEach((row, y) => {
@@ -136,9 +143,9 @@ function render() {
       tooltip: {
         confine: true,
         backgroundColor: "rgba(255,255,255,.985)",
-        borderColor: "#bec9c3",
+        borderColor: chartTheme().axisLine,
         padding: [9, 11],
-        textStyle: { color: "#0b1512", fontSize: 13 },
+        textStyle: { color: chartTheme().ink, fontSize: 13 },
         formatter(params: any) {
           const p = Array.isArray(params) ? params[0] : params;
           const [x, y, value] = p.value as [number, number, number];
@@ -194,7 +201,7 @@ function render() {
           itemStyle: { borderWidth: 0, borderColor: surface },
           emphasis: {
             itemStyle: {
-              borderColor: token("--ink", "#0b1512"),
+              borderColor: token("--ink", chartTheme().ink),
               borderWidth: 1.5,
             },
           },
@@ -215,6 +222,7 @@ onMounted(() => {
 });
 
 watch(() => [props.series, props.roster], render, { deep: true });
+watch(inView, () => render());
 
 onBeforeUnmount(() => {
   observer?.disconnect();
@@ -225,7 +233,7 @@ defineExpose({ headline, peakStats, pm25Color });
 </script>
 
 <template>
-  <article class="weave-card">
+  <article ref="shell" class="weave-card">
     <header class="weave-header">
       <h2 class="display-face">{{ headline }}</h2>
       <button

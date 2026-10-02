@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { components } from "../api/schema";
-import { init, type ECharts } from "../lib/charts";
+import { chartTheme, init, type ECharts } from "../lib/charts";
+import { useInView } from "../composables/useInView";
+
+/* Charts stay blank until the reader scrolls to them: the first paint is
+   the animated entrance, never a show that already ended. */
+const shell = ref<HTMLElement | null>(null);
+const inView = useInView(shell);
+import { FORECAST_COLOR, MODEL_COLOR } from "../lib/palette";
 
 type Structure = components["schemas"]["CityStructureResponse"];
 
@@ -34,7 +41,7 @@ const FEATURE_LABELS: Record<string, string> = {
 
 /* Diverging: cool pole / neutral midpoint / warm pole. Value is printed in
    the tooltip and both axes are labelled, so it never rides on hue alone. */
-const DIVERGING = ["#366fa3", "#eef1ef", "#b44b45"];
+const DIVERGING = ["#2563eb", "#f1f5f9", "#dc2626"];
 
 function featureLabel(name: string) {
   return FEATURE_LABELS[name] ?? name;
@@ -119,22 +126,23 @@ function makeChart(el: HTMLDivElement | null) {
 function tooltipBase() {
   return {
     backgroundColor: "rgba(255,255,255,.985)",
-    borderColor: "#8fa39b",
+    borderColor: chartTheme().tooltipBorder,
     borderWidth: 1,
     padding: [11, 13],
-    textStyle: { color: "#0b1512", fontSize: 13, lineHeight: 21 },
+    textStyle: { color: chartTheme().ink, fontSize: 13, lineHeight: 21 },
     extraCssText: "box-shadow:0 12px 32px rgba(21,36,30,.12);border-radius:10px;",
   };
 }
 
 function render() {
+  if (!inView.value) return;
   if (charts.length !== 4) return;
   const [scree, loadings, scores, correlation] = charts;
   const explained = props.structure.explained_variance;
   const components = explained.map((item) => item.component);
   const features = props.structure.meta.features;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const axisInk = "#566a61";
+  const axisInk = chartTheme().axisInk;
   const axisSize = 12;
 
   scree.setOption(
@@ -166,7 +174,7 @@ function render() {
         type: "category",
         data: components,
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: "#a7b8b0" } },
+        axisLine: { lineStyle: { color: chartTheme().axisLine } },
         axisLabel: { color: axisInk, fontSize: axisSize },
       },
       yAxis: {
@@ -178,7 +186,7 @@ function render() {
           fontSize: axisSize,
           formatter: (value: number) => Math.round(value * 100) + "%",
         },
-        splitLine: { lineStyle: { color: "#c3d1cb" } },
+        splitLine: { lineStyle: { color: chartTheme().splitLine } },
       },
       series: [
         {
@@ -186,7 +194,24 @@ function render() {
           type: "bar",
           data: explained.map((item) => item.variance_ratio),
           barMaxWidth: 26,
-          itemStyle: { color: "#356f87", borderRadius: [4, 4, 0, 0] },
+          animationDuration: 760,
+          animationDelay: (idx: number) => idx * 90,
+          itemStyle: {
+            // Vertical gradient gives the bars weight without breaking the
+            // single-hue discipline: sky-600 falling to a lighter tint.
+            color: {
+              type: "linear",
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: MODEL_COLOR },
+                { offset: 1, color: "#7dd3fc" },
+              ],
+            },
+            borderRadius: [4, 4, 0, 0],
+          },
         },
         {
           name: "累计解释",
@@ -194,8 +219,10 @@ function render() {
           data: explained.map((item) => item.cumulative_ratio),
           showSymbol: true,
           symbolSize: 6,
-          lineStyle: { color: "#a06a34", width: 2 },
-          itemStyle: { color: "#a06a34", borderColor: "#fbfcfb", borderWidth: 2 },
+          animationDuration: 1100,
+          animationDelay: 420,
+          lineStyle: { color: FORECAST_COLOR, width: 2 },
+          itemStyle: { color: FORECAST_COLOR, borderColor: chartTheme().surface, borderWidth: 2 },
         },
       ],
     },
@@ -228,7 +255,7 @@ function render() {
         type: "category",
         data: components,
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: "#a7b8b0" } },
+        axisLine: { lineStyle: { color: chartTheme().axisLine } },
         axisLabel: { color: axisInk, fontSize: axisSize },
       },
       yAxis: {
@@ -236,7 +263,7 @@ function render() {
         data: features.map(featureLabel),
         axisTick: { show: false },
         axisLine: { show: false },
-        axisLabel: { color: "#243530", fontSize: axisSize },
+        axisLabel: { color: chartTheme().inkSoft, fontSize: axisSize },
       },
       visualMap: {
         min: -loadingMax,
@@ -254,8 +281,8 @@ function render() {
         {
           type: "heatmap",
           data: loadingValues,
-          itemStyle: { borderWidth: 2, borderColor: "#fbfcfb" },
-          emphasis: { itemStyle: { borderColor: "#0b1512", borderWidth: 1 } },
+          itemStyle: { borderWidth: 2, borderColor: chartTheme().surface },
+          emphasis: { itemStyle: { borderColor: chartTheme().ink, borderWidth: 1 } },
         },
       ],
     },
@@ -299,29 +326,31 @@ function render() {
         nameGap: 30,
         nameTextStyle: { color: axisInk, fontSize: axisSize },
         axisLabel: { color: axisInk, fontSize: axisSize },
-        axisLine: { lineStyle: { color: "#a7b8b0" } },
-        splitLine: { lineStyle: { color: "#c3d1cb" } },
+        axisLine: { lineStyle: { color: chartTheme().axisLine } },
+        splitLine: { lineStyle: { color: chartTheme().splitLine } },
       },
       yAxis: {
         type: "value",
         name: `主成分 2 · ${Math.round((explained[1]?.variance_ratio ?? 0) * 100)}%`,
         nameTextStyle: { color: axisInk, fontSize: axisSize, padding: [0, 0, 8, 0] },
         axisLabel: { color: axisInk, fontSize: axisSize },
-        axisLine: { lineStyle: { color: "#a7b8b0" } },
-        splitLine: { lineStyle: { color: "#c3d1cb" } },
+        axisLine: { lineStyle: { color: chartTheme().axisLine } },
+        splitLine: { lineStyle: { color: chartTheme().splitLine } },
       },
       series: [
         {
           type: "scatter",
           data: scoreValues,
-          symbolSize: 6,
+          symbolSize: 7,
+          animationDuration: 700,
+          animationDelay: (idx: number) => Math.min(idx * 6, 600),
           itemStyle: {
-            color: "#356f87",
-            opacity: 0.5,
-            borderColor: "#fbfcfb",
+            color: MODEL_COLOR,
+            opacity: 0.55,
+            borderColor: chartTheme().surface,
             borderWidth: 1,
           },
-          emphasis: { itemStyle: { color: "#0b1512", opacity: 1 } },
+          emphasis: { itemStyle: { color: chartTheme().ink, opacity: 1 } },
         },
       ],
     },
@@ -354,14 +383,14 @@ function render() {
         data: features.map(featureLabel),
         axisTick: { show: false },
         axisLine: { show: false },
-        axisLabel: { color: "#243530", fontSize: axisSize, rotate: 48 },
+        axisLabel: { color: chartTheme().inkSoft, fontSize: axisSize, rotate: 48 },
       },
       yAxis: {
         type: "category",
         data: features.map(featureLabel),
         axisTick: { show: false },
         axisLine: { show: false },
-        axisLabel: { color: "#243530", fontSize: axisSize },
+        axisLabel: { color: chartTheme().inkSoft, fontSize: axisSize },
       },
       visualMap: {
         min: -1,
@@ -379,7 +408,7 @@ function render() {
         {
           type: "heatmap",
           data: correlationValues,
-          itemStyle: { borderWidth: 2, borderColor: "#fbfcfb" },
+          itemStyle: { borderWidth: 2, borderColor: chartTheme().surface },
         },
       ],
     },
@@ -400,6 +429,7 @@ onMounted(() => {
 });
 
 watch(() => props.structure, render, { deep: true });
+watch(inView, () => render());
 
 onBeforeUnmount(() => {
   observer?.disconnect();
@@ -408,7 +438,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="structure-panel">
+  <section ref="shell" class="structure-panel">
     <header class="panel-header">
       <h2 class="display-face">{{ topPairCopy }}</h2>
       <span class="panel-meta data-mono">{{ structure.meta.sample_count }} 小时样本</span>

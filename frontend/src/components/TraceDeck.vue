@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { components } from "../api/schema";
-import { init, type ECharts } from "../lib/charts";
+import { chartTheme, init, type ECharts } from "../lib/charts";
+import { useInView } from "../composables/useInView";
+
+/* Charts stay blank until the reader scrolls to them: the first paint is
+   the animated entrance, never a show that already ended. */
+const shell = ref<HTMLElement | null>(null);
+const inView = useInView(shell);
 import {
+  AQI_LEVEL_COLORS,
   FORECAST_COLOR,
   OBSERVATION_COLOR,
   PM25_BANDS,
@@ -65,7 +72,27 @@ function setWindow(value: WindowHours) {
   render();
 }
 
+/* Sparse ground readings must not read as continuous coverage: a gap longer
+   than the comparability window breaks the line — missing stays missing. */
+const OBSERVATION_GAP_MS = 3 * 3_600_000;
+
+function observationSeriesData(points: { time: string; value: number | null }[]) {
+  const data: [string, number | null][] = [];
+  let previousMs: number | null = null;
+  for (const point of points) {
+    if (point.value == null || !Number.isFinite(Number(point.value))) continue;
+    const timeMs = new Date(point.time).getTime();
+    if (previousMs != null && timeMs - previousMs > OBSERVATION_GAP_MS) {
+      data.push([new Date((previousMs + timeMs) / 2).toISOString(), null]);
+    }
+    data.push([point.time, Number(point.value)]);
+    previousMs = timeMs;
+  }
+  return data;
+}
+
 function render() {
+  if (!inView.value) return;
   if (!chart) return;
 
   const fullHistory = props.history?.points ?? [];
@@ -123,10 +150,10 @@ function render() {
         trigger: "axis",
         confine: true,
         backgroundColor: "rgba(255,255,255,.985)",
-        borderColor: "#b5c1bb",
+        borderColor: chartTheme().tooltipBorder,
         borderWidth: 1,
         padding: [12, 14],
-        textStyle: { color: "#0b1512", fontSize: 13, lineHeight: 22 },
+        textStyle: { color: chartTheme().ink, fontSize: 13, lineHeight: 22 },
         extraCssText:
           "box-shadow:0 14px 36px rgba(21,37,30,.12);border-radius:10px;",
         formatter(params: any) {
@@ -153,10 +180,10 @@ function render() {
       },
       xAxis: {
         type: "time",
-        axisLine: { lineStyle: { color: "#7f968c" } },
+        axisLine: { lineStyle: { color: chartTheme().axisLine } },
         axisTick: { show: false },
         axisLabel: {
-          color: "#566a61",
+          color: chartTheme().axisInk,
           fontSize: 12,
           hideOverlap: true,
           formatter(value: number) {
@@ -173,16 +200,16 @@ function render() {
         type: "value",
         min: 0,
         axisLabel: {
-          color: "#566a61",
+          color: chartTheme().axisInk,
           fontSize: 12,
           formatter: (value: number) => String(Math.round(value)),
         },
         axisLine: { show: false },
         axisTick: { show: false },
         splitNumber: 5,
-        splitLine: { lineStyle: { color: "#c3d1cb", width: 1 } },
+        splitLine: { lineStyle: { color: chartTheme().splitLine, width: 1 } },
         name: "PM2.5 µg/m³",
-        nameTextStyle: { color: "#566a61", fontSize: 12, padding: [0, 0, 6, 0] },
+        nameTextStyle: { color: chartTheme().axisInk, fontSize: 12, padding: [0, 0, 6, 0] },
       },
       series: [
         ...(lower.length
@@ -232,12 +259,12 @@ function render() {
             ? {
                 symbol: ["none", "none"],
                 silent: true,
-                lineStyle: { color: "#43564d", width: 1.2, type: "dashed" },
+                lineStyle: { color: chartTheme().inkSoft, width: 1.2, type: "dashed" },
                 label: {
                   show: true,
                   formatter: "现在",
-                  color: "#26382f",
-                  backgroundColor: "#f0f4f1",
+                  color: chartTheme().ink,
+                  backgroundColor: chartTheme().surfaceSubtle,
                   borderRadius: 5,
                   padding: [4, 6],
                   fontSize: 12,
@@ -254,7 +281,7 @@ function render() {
               {
                 type: "max",
                 name: "窗口峰值",
-                itemStyle: { color: "#86251a", borderColor: "#fbfcfb", borderWidth: 2 },
+                itemStyle: { color: AQI_LEVEL_COLORS["中度污染"], borderColor: chartTheme().surface, borderWidth: 2 },
                 label: {
                   show: true,
                   formatter(params: any) {
@@ -262,7 +289,7 @@ function render() {
                   },
                   position: "top",
                   distance: 7,
-                  color: "#5c2a22",
+                  color: chartTheme().inkSoft,
                   fontSize: 12,
                   fontWeight: 700,
                   backgroundColor: "rgba(255,255,255,.94)",
@@ -276,8 +303,10 @@ function render() {
         {
           name: "地面观测",
           type: "line",
-          data: observations.map((point) => [point.time, point.value]),
-          showSymbol: false,
+          data: observationSeriesData(observations),
+          showSymbol: true,
+          symbol: "circle",
+          symbolSize: 5,
           connectNulls: false,
           lineStyle: { color: OBSERVATION_COLOR, width: 2.8 },
           itemStyle: { color: OBSERVATION_COLOR },
@@ -309,6 +338,7 @@ onMounted(() => {
 });
 
 watch(() => [props.history, props.observations, props.forecast], render, { deep: true });
+watch(inView, () => render());
 
 onBeforeUnmount(() => {
   observer?.disconnect();
@@ -317,7 +347,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="trace-deck">
+  <section ref="shell" class="trace-deck">
     <header class="trace-header">
       <div>
         <h3>{{ windowPeakCopy }}</h3>

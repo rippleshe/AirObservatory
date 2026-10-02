@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { components } from "../api/schema";
-import { init, type ECharts } from "../lib/charts";
+import { chartTheme, init, type ECharts } from "../lib/charts";
+import { useInView } from "../composables/useInView";
+
+/* Charts stay blank until the reader scrolls to them: the first paint is
+   the animated entrance, never a show that already ended. */
+const shell = ref<HTMLElement | null>(null);
+const inView = useInView(shell);
 import { MODEL_COLOR, MUTED_DATA_COLOR, OBSERVATION_COLOR, FORECAST_COLOR } from "../lib/palette";
 
 type BacktestResponse = components["schemas"]["BacktestResponse"];
@@ -114,13 +120,13 @@ function lineOption(metric: "mae" | "rmse") {
       enabled: true,
       description: metric.toUpperCase() + " 按预测时效变化。",
     },
-    grid: { left: 52, right: 20, top: 26, bottom: 42 },
+    grid: { left: 52, right: 46, top: 26, bottom: 42 },
     tooltip: {
       trigger: "axis",
       backgroundColor: "rgba(255,255,255,.985)",
-      borderColor: "#8fa39b",
+      borderColor: chartTheme().tooltipBorder,
       borderWidth: 1,
-      textStyle: { color: "#0b1512", fontSize: 13 },
+      textStyle: { color: chartTheme().ink, fontSize: 13 },
       extraCssText: "box-shadow:0 12px 32px rgba(21,36,30,.12);border-radius:10px;",
     },
     xAxis: {
@@ -128,37 +134,74 @@ function lineOption(metric: "mae" | "rmse") {
       name: "预测时长（小时）",
       nameLocation: "middle",
       nameGap: 28,
-      nameTextStyle: { color: "#566a61", fontSize: 12 },
+      nameTextStyle: { color: chartTheme().axisInk, fontSize: 12 },
       axisTick: { show: false },
-      axisLine: { lineStyle: { color: "#a7b8b0" } },
-      axisLabel: { color: "#566a61", fontSize: 12 },
+      axisLine: { lineStyle: { color: chartTheme().axisLine } },
+      axisLabel: { color: chartTheme().axisInk, fontSize: 12 },
       splitLine: { show: false },
     },
     yAxis: {
       type: "value",
       name: metric === "mae" ? "平均误差 MAE" : "均方根误差 RMSE",
-      nameTextStyle: { color: "#566a61", fontSize: 12, padding: [0, 0, 6, 0] },
+      nameTextStyle: { color: chartTheme().axisInk, fontSize: 12, padding: [0, 0, 6, 0] },
       axisTick: { show: false },
       axisLine: { show: false },
-      axisLabel: { color: "#566a61", fontSize: 12 },
-      splitLine: { lineStyle: { color: "#c3d1cb" } },
+      axisLabel: { color: chartTheme().axisInk, fontSize: 12 },
+      splitLine: { lineStyle: { color: chartTheme().splitLine } },
     },
-    series: models.map((model, index) => ({
-      name: model,
-      type: "line",
-      showSymbol: true,
-      symbolSize: 7,
-      data: rows
+    series: models.map((model, index) => {
+      const tone = seriesColors[index % seriesColors.length];
+      const points = rows
         .filter((row) => row.model_name === model)
-        .sort((a, b) => a.horizon_hours - b.horizon_hours)
-        .map((row) => [row.horizon_hours, row[metric]]),
-      lineStyle: { width: 2, color: seriesColors[index % seriesColors.length] },
-      itemStyle: {
-        color: seriesColors[index % seriesColors.length],
-        borderColor: "#fbfcfb",
-        borderWidth: 2,
-      },
-    })),
+        .sort((a, b) => a.horizon_hours - b.horizon_hours);
+      const data = points.map((row, i) => ({
+        value: [row.horizon_hours, row[metric]],
+        // The terminal value is printed at the line's end — the reading
+        // travels with the mark instead of living only in the tooltip.
+        label:
+          i === points.length - 1
+            ? {
+                show: true,
+                position: "right" as const,
+                distance: 6,
+                formatter: () => `${Number(row[metric]).toFixed(1)}`,
+                color: tone,
+                fontWeight: 700,
+                fontSize: 11,
+              }
+            : { show: false },
+      }));
+      return {
+        name: model,
+        type: "line",
+        showSymbol: true,
+        symbolSize: 7,
+        animationDuration: 900,
+        animationDelay: index * 160,
+        data,
+        lineStyle: { width: 2.2, color: tone },
+        itemStyle: {
+          color: tone,
+          borderColor: chartTheme().surface,
+          borderWidth: 2,
+        },
+        // Soft area shade under each curve gives the error envelope weight.
+        areaStyle: {
+          opacity: 0.09,
+          color: {
+            type: "linear",
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: tone },
+              { offset: 1, color: "rgba(255,255,255,0)" },
+            ],
+          },
+        },
+      };
+    }),
   };
 }
 
@@ -176,9 +219,9 @@ function scatterOption() {
     grid: { left: 56, right: 24, top: 26, bottom: 48 },
     tooltip: {
       backgroundColor: "rgba(255,255,255,.985)",
-      borderColor: "#8fa39b",
+      borderColor: chartTheme().tooltipBorder,
       borderWidth: 1,
-      textStyle: { color: "#0b1512", fontSize: 13 },
+      textStyle: { color: chartTheme().ink, fontSize: 13 },
       extraCssText: "box-shadow:0 12px 32px rgba(21,36,30,.12);border-radius:10px;",
       formatter(params: any) {
         const raw = params.data;
@@ -197,9 +240,9 @@ function scatterOption() {
       nameGap: 28,
       min: 0,
       max,
-      nameTextStyle: { color: "#566a61", fontSize: 12 },
-      axisLabel: { color: "#566a61", fontSize: 12 },
-      splitLine: { lineStyle: { color: "#c3d1cb" } },
+      nameTextStyle: { color: chartTheme().axisInk, fontSize: 12 },
+      axisLabel: { color: chartTheme().axisInk, fontSize: 12 },
+      splitLine: { lineStyle: { color: chartTheme().splitLine } },
     },
     yAxis: {
       type: "value",
@@ -208,9 +251,9 @@ function scatterOption() {
       nameGap: 40,
       min: 0,
       max,
-      nameTextStyle: { color: "#566a61", fontSize: 12 },
-      axisLabel: { color: "#566a61", fontSize: 12 },
-      splitLine: { lineStyle: { color: "#c3d1cb" } },
+      nameTextStyle: { color: chartTheme().axisInk, fontSize: 12 },
+      axisLabel: { color: chartTheme().axisInk, fontSize: 12 },
+      splitLine: { lineStyle: { color: chartTheme().splitLine } },
     },
     series: [
       ...models.map((model, index) => ({
@@ -226,7 +269,7 @@ function scatterOption() {
         itemStyle: {
           color: seriesColors[index % seriesColors.length],
           opacity: 0.72,
-          borderColor: "#fbfcfb",
+          borderColor: chartTheme().surface,
           borderWidth: 2,
         },
       })),
@@ -239,13 +282,14 @@ function scatterOption() {
         ],
         showSymbol: false,
         silent: true,
-        lineStyle: { color: "#8f9d96", width: 1, type: "dashed" },
+        lineStyle: { color: chartTheme().faint, width: 1, type: "dashed" },
       },
     ],
   };
 }
 
 function render() {
+  if (!inView.value) return;
   if (charts.length !== 3 || !evidence.value.enough) return;
   charts[0].setOption(lineOption("mae"), true);
   charts[1].setOption(lineOption("rmse"), true);
@@ -266,6 +310,7 @@ onMounted(() => {
 });
 
 watch(() => props.backtest, render, { deep: true });
+watch(inView, () => render());
 
 onBeforeUnmount(() => {
   observer?.disconnect();
@@ -274,7 +319,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="backtest-panel">
+  <section ref="shell" class="backtest-panel">
     <header class="panel-header">
       <h2 class="display-face">{{ backtestHeadline }}</h2>
       <span class="panel-meta data-mono">N={{ evidence.samples.length }}</span>

@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { init, type ECharts } from "../lib/charts";
+import { chartTheme, init, type ECharts } from "../lib/charts";
+import { useInView } from "../composables/useInView";
+
+/* Charts stay blank until the reader scrolls to them: the first paint is
+   the animated entrance, never a show that already ended. */
+const shell = ref<HTMLElement | null>(null);
+const inView = useInView(shell);
 import {
   AQI_LEVEL_COLORS,
   aqiColor,
   changeColor,
   changeState,
+  MODEL_COLOR,
 } from "../lib/palette";
 import type { NationalCity, RegionRow } from "../lib/provinces";
 
@@ -175,11 +182,11 @@ const pollutantChartHeight = computed(
 function tooltipBase() {
   return {
     backgroundColor: "rgba(255,255,255,.985)",
-    borderColor: "#8fa39b",
+    borderColor: chartTheme().tooltipBorder,
     borderWidth: 1,
     padding: [11, 13],
-    textStyle: { color: "#0b1512", fontSize: 13, lineHeight: 21 },
-    extraCssText: "box-shadow:0 12px 32px rgba(11,21,18,.14);border-radius:8px;",
+    textStyle: { color: chartTheme().ink, fontSize: 13, lineHeight: 21 },
+    extraCssText: "box-shadow:0 12px 32px rgba(15,23,42,.14);border-radius:8px;",
   };
 }
 
@@ -228,12 +235,13 @@ function noteBudgetFor(gutter: number) {
 }
 
 function render(animate = true) {
+  if (!inView.value) return;
   if (charts.length !== 3) return;
   const [matrixChart, regionChart, pollutantChart] = charts;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const motion = animate && !reducedMotion;
   const cities = plottedCities.value;
-  const axisInk = "#64748b";
+  const axisInk = chartTheme().axisInk;
   const axisSize = 12;
 
   const important = new Set([
@@ -284,38 +292,40 @@ function render(animate = true) {
         name: "当前 PM2.5",
         nameLocation: "middle",
         nameGap: 34,
-        nameTextStyle: { color: "#243530", fontSize: axisSize, fontWeight: 650 },
+        nameTextStyle: { color: chartTheme().inkSoft, fontSize: axisSize, fontWeight: 650 },
         type: "value",
         min: 0,
-        axisLine: { lineStyle: { color: "#a7b8b0" } },
+        axisLine: { lineStyle: { color: chartTheme().axisLine } },
         axisTick: { show: false },
         axisLabel: { color: axisInk, fontSize: axisSize },
-        splitLine: { lineStyle: { color: "#c3d1cb" } },
+        splitLine: { lineStyle: { color: chartTheme().splitLine } },
       },
       yAxis: {
         name: "24h 变化",
         nameGap: 40,
-        nameTextStyle: { color: "#243530", fontSize: axisSize, fontWeight: 650 },
+        nameTextStyle: { color: chartTheme().inkSoft, fontSize: axisSize, fontWeight: 650 },
         type: "value",
-        axisLine: { lineStyle: { color: "#a7b8b0" } },
+        axisLine: { lineStyle: { color: chartTheme().axisLine } },
         axisTick: { show: false },
         axisLabel: {
           color: axisInk,
           fontSize: axisSize,
           formatter: (value: number) => (value > 0 ? `+${value}` : String(value)),
         },
-        splitLine: { lineStyle: { color: "#c3d1cb" } },
+        splitLine: { lineStyle: { color: chartTheme().splitLine } },
       },
       series: [
         {
           type: "scatter",
+          animationDuration: 640,
+          animationDelay: (idx: number) => idx * 16,
           data: cities.map((city) => ({
             value: [city.pm25, city.pm25_change_24h, city.china_aqi],
             raw: city,
             symbolSize: 13 + 15 * ((city.china_aqi ?? 0) / maxAqi),
             itemStyle: {
               color: aqiColor(city.china_aqi_level),
-              borderColor: "#fbfcfb",
+              borderColor: chartTheme().surface,
               borderWidth: 2,
               opacity: 1,
             },
@@ -327,18 +337,18 @@ function render(animate = true) {
           label: {
             position: "top",
             distance: 6,
-            color: "#0b1512",
+            color: chartTheme().ink,
             fontSize: 12,
             fontWeight: 700,
-            textBorderColor: "#fbfcfb",
+            textBorderColor: chartTheme().surface,
             textBorderWidth: 3,
           },
           emphasis: {
             scale: 1.2,
-            itemStyle: { borderColor: "#0b1512", borderWidth: 2.2 },
+            itemStyle: { borderColor: chartTheme().ink, borderWidth: 2.2 },
             label: {
               show: true,
-              color: "#0b1512",
+              color: chartTheme().ink,
               fontSize: 13,
               fontWeight: 700,
               backgroundColor: "rgba(255,255,255,.95)",
@@ -352,11 +362,11 @@ function render(animate = true) {
           markLine: {
             silent: true,
             symbol: ["none", "none"],
-            lineStyle: { color: "#7f968c", width: 1 },
+            lineStyle: { color: chartTheme().axisLine, width: 1 },
             label: {
-              color: "#566a61",
+              color: chartTheme().axisInk,
               fontSize: 12,
-              backgroundColor: "rgba(251,252,251,.92)",
+              backgroundColor: "rgba(255,255,255,.92)",
               padding: [2, 5],
             },
             data: [
@@ -372,7 +382,7 @@ function render(animate = true) {
           },
           markArea: {
             silent: true,
-            itemStyle: { color: "rgba(163,95,34,.07)" },
+            itemStyle: { color: "rgba(217,119,6,.07)" },
             label: { show: false },
             data: [
               [
@@ -426,7 +436,7 @@ function render(animate = true) {
         axisLabel: { color: axisInk, fontSize: axisSize },
         axisTick: { show: false },
         axisLine: { show: false },
-        splitLine: { lineStyle: { color: "#c3d1cb" } },
+        splitLine: { lineStyle: { color: chartTheme().splitLine } },
       },
       yAxis: {
         type: "category",
@@ -435,20 +445,22 @@ function render(animate = true) {
         axisTick: { show: false },
         axisLine: { show: false },
         axisLabel: {
-          color: "#243530",
+          color: chartTheme().inkSoft,
           fontSize: axisSize,
           fontWeight: 700,
         },
       },
-      series: levelOrder.map((level) => ({
+      series: levelOrder.map((level, levelIndex) => ({
         name: level,
         type: "bar",
         stack: "levels",
         barWidth: 18,
+        animationDuration: 680,
+        animationDelay: (idx: number) => idx * 70 + levelIndex * 110,
         data: sortedRegions.map((region) => regionCounts.get(region.region)?.[level] ?? 0),
         // 2px surface gaps between stack segments — separation by whitespace,
         // not by a stroke drawn around each segment.
-        itemStyle: { color: AQI_LEVEL_COLORS[level], borderColor: "#fbfcfb", borderWidth: 2 },
+        itemStyle: { color: AQI_LEVEL_COLORS[level], borderColor: chartTheme().surface, borderWidth: 2 },
         emphasis: { focus: "series" },
       })),
     },
@@ -499,11 +511,11 @@ function render(animate = true) {
         name: "主导省数",
         nameLocation: "middle",
         nameGap: 24,
-        nameTextStyle: { color: "#243530", fontSize: axisSize, fontWeight: 650 },
-        axisLine: { lineStyle: { color: "#a7b8b0" } },
+        nameTextStyle: { color: chartTheme().inkSoft, fontSize: axisSize, fontWeight: 650 },
+        axisLine: { lineStyle: { color: chartTheme().axisLine } },
         axisTick: { show: false },
         axisLabel: { color: axisInk, fontSize: axisSize },
-        splitLine: { lineStyle: { color: "#c3d1cb" } },
+        splitLine: { lineStyle: { color: chartTheme().splitLine } },
       },
       yAxis: {
         type: "category",
@@ -512,7 +524,7 @@ function render(animate = true) {
         axisTick: { show: false },
         axisLine: { show: false },
         axisLabel: {
-          color: "#243530",
+          color: chartTheme().inkSoft,
           fontSize: 13,
           fontWeight: 700,
           formatter: (name: string) => {
@@ -521,8 +533,8 @@ function render(animate = true) {
             return note ? `{name|${name}}\n{note|${note}}` : name;
           },
           rich: {
-            name: { color: "#243530", fontSize: 13, fontWeight: 700, lineHeight: 17 },
-            note: { color: "#566a61", fontSize: 12, fontWeight: 400, lineHeight: 16 },
+            name: { color: chartTheme().inkSoft, fontSize: 13, fontWeight: 700, lineHeight: 17 },
+            note: { color: chartTheme().axisInk, fontSize: 12, fontWeight: 400, lineHeight: 16 },
           },
         },
       },
@@ -531,23 +543,27 @@ function render(animate = true) {
           type: "bar",
           barWidth: 2,
           silent: true,
+          animationDuration: 700,
+          animationDelay: (idx: number) => idx * 70,
           data: rows.map((item) => [item.count, item.name]),
-          itemStyle: { color: "#a7b8b0", borderRadius: [0, 1, 1, 0] },
+          itemStyle: { color: chartTheme().axisLine, borderRadius: [0, 1, 1, 0] },
         },
         {
           type: "scatter",
           symbolSize: 13,
+          animationDuration: 500,
+          animationDelay: (idx: number) => 380 + idx * 70,
           data: rows.map((item) => [item.count, item.name]),
           itemStyle: {
-            color: "#2f6a82",
-            borderColor: "#fbfcfb",
+            color: MODEL_COLOR,
+            borderColor: chartTheme().surface,
             borderWidth: 2,
           },
           label: {
             show: true,
             position: "right",
             distance: 8,
-            color: "#0b1512",
+            color: chartTheme().ink,
             fontSize: 12,
             fontWeight: 700,
             formatter: (params: any) => `${rows[params.dataIndex]?.count ?? "—"} 省`,
@@ -565,7 +581,7 @@ function render(animate = true) {
             show: true,
             position: "right",
             distance: 6,
-            color: "#566a61",
+            color: chartTheme().axisInk,
             fontSize: 12,
             formatter: (params: any) => {
               const item = rows[params.dataIndex];
@@ -600,6 +616,7 @@ onMounted(() => {
 });
 
 watch(() => [props.regions, props.cities], () => render(), { deep: true });
+watch(inView, () => render());
 
 watch(showTable, (visible) => {
   if (!visible) requestAnimationFrame(() => charts.forEach((chart) => chart.resize()));
@@ -613,7 +630,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="insight-deck">
+  <section ref="shell" class="insight-deck">
     <article class="matrix-card">
       <header>
         <h3 class="display-face">{{ matrixTitle }}</h3>

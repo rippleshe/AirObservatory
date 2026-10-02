@@ -5,8 +5,9 @@
 
 :root {
   /* ── Typography System ───────────────────────────────────
-     Clean, modern neo-grotesque typography: Inter, SF Pro, Apple System */
-  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI Variable Display", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+     Inter Tight Variable carries display Latin & digits (self-hosted);
+     CJK text stays on the system stack: PingFang SC / Microsoft YaHei UI. */
+  --font-display: "Inter Tight Variable", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI Variable Display", "PingFang SC", "Microsoft YaHei UI", sans-serif;
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI Variable Text", "PingFang SC", "Microsoft YaHei UI", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
 
@@ -87,6 +88,14 @@
   --fs-body: 14px;
   --fs-data: 13px;
   --fs-label: 12px;
+  --fs-eyebrow: 11px;
+
+  /* ── Page Frame & Section Rhythm ──────────────────────────
+     Ultra-wide screens get a centered reading column instead of
+     line-lengths that run past the horizon. */
+  --page-max: 1680px;
+  --page-pad: clamp(16px, 2.4vw, 36px);
+  --section-gap: clamp(48px, 6vh, 84px);
 
   --fw-normal: 400;
   --fw-medium: 500;
@@ -287,6 +296,18 @@ button, a, select { outline-offset: 2px; }
   border-bottom: 1px solid var(--hairline);
 }
 
+/* Keep bar content aligned with the centered page column on ultrawide:
+   the column insets its content by --page-pad, so the bar matches that box. */
+.context-inner {
+  width: min(100%, calc(var(--page-max) - 2 * var(--page-pad)));
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-width: 0;
+}
+
 .context-title {
   min-width: 0;
   display: flex;
@@ -390,11 +411,127 @@ button, a, select { outline-offset: 2px; }
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  transition: border-color var(--duration-fast) ease;
+  transition: border-color var(--duration-fast) ease, box-shadow var(--duration-normal) var(--ease-out), transform var(--duration-normal) var(--ease-out);
 }
 
 .glass-panel:hover {
   border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Page Frame ──────────────────────────────────────────── */
+.page-body {
+  width: min(100%, var(--page-max));
+  margin-inline: auto;
+}
+
+/* ── Scroll Reveal (one-shot, staggered via --reveal-delay) ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 640ms var(--ease-out),
+    transform 640ms var(--ease-out);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── Route Transition ────────────────────────────────────── */
+.route-enter-active {
+  transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out);
+}
+
+.route-leave-active {
+  transition: opacity 150ms ease;
+}
+
+.route-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.route-leave-to {
+  opacity: 0;
+}
+
+/* ── Skeleton Loading ────────────────────────────────────── */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--canvas-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.7),
+    transparent
+  );
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+.skeleton-text {
+  height: 12px;
+  margin: 6px 0;
+}
+
+/* ── App Footer ──────────────────────────────────────────── */
+.app-footer {
+  width: min(100%, var(--page-max));
+  margin-inline: auto;
+  padding: 28px var(--page-pad) 36px;
+  border-top: 1px solid var(--hairline);
+  margin-top: var(--section-gap);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  align-items: baseline;
+  color: var(--faint);
+  font-size: var(--fs-label);
+  letter-spacing: 0.01em;
+}
+
+.app-footer strong {
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-weight: var(--fw-strong);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  font-size: var(--fs-label);
+}
+
+.app-footer .footer-spacer { flex: 1; }
+
+/* ── Press Feel ──────────────────────────────────────────── */
+.rail-link:active,
+.rail-method:active,
+button:active {
+  transform: scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .route-enter-active,
+  .route-leave-active { transition: none; }
+  .skeleton::after { animation: none; }
 }
 
 @media (max-width: 900px) {

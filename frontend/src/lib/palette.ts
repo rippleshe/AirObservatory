@@ -49,15 +49,15 @@ export const AQI_LEVEL_COLORS: Record<string, string> = {
   严重污染: "#7a2240",
 };
 
-/** 24h change: diverging — neutral midpoint, saturated poles. */
+/** 24h change: diverging — neutral slate midpoint, saturated poles. */
 export const CHANGE_LEVELS = ["明显改善", "改善", "稳定", "上升", "明显上升"] as const;
 
 export const CHANGE_COLORS: Record<string, string> = {
-  明显改善: "#1f6b52",
-  改善: "#5d9c85",
-  稳定: "#9aa8a2",
-  上升: "#d08654",
-  明显上升: "#a83c30",
+  明显改善: "#047857",
+  改善: "#10b981",
+  稳定: "#94a3b8",
+  上升: "#ea580c",
+  明显上升: "#dc2626",
 };
 
 /** PM2.5 concentration bands — single-hue family, light → dark. */
@@ -69,10 +69,14 @@ export const PM25_BANDS: ReadonlyArray<readonly [string, string]> = [
   [">150", "#703d88"],
 ];
 
-export const MODEL_COLOR = "#356f87";
-export const OBSERVATION_COLOR = "#2f725f";
-export const FORECAST_COLOR = "#a06a34";
-export const MUTED_DATA_COLOR = "#8b9691";
+/* Identity colours mirror the --model / --observation / --forecast tokens in
+   base.css (single design system, two render targets: CSS and ECharts). The
+   former olive/moss trio belonged to a retired palette and read muddy on the
+   slate canvas. */
+export const MODEL_COLOR = "#0284c7";
+export const OBSERVATION_COLOR = "#059669";
+export const FORECAST_COLOR = "#d97706";
+export const MUTED_DATA_COLOR = "#94a3b8";
 
 /** PCA / exploratory clusters. Always shown with a persistent text legend —
  *  three slots fall under 3:1 contrast and need that relief. */

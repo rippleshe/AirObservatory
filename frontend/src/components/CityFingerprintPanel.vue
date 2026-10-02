@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { components } from "../api/schema";
-import { init, type ECharts } from "../lib/charts";
-import { clusterColor } from "../lib/palette";
+import { chartTheme, init, type ECharts } from "../lib/charts";
+import { useInView } from "../composables/useInView";
+
+/* Charts stay blank until the reader scrolls to them: the first paint is
+   the animated entrance, never a show that already ended. */
+const shell = ref<HTMLElement | null>(null);
+const inView = useInView(shell);
+import { clusterColor, FORECAST_COLOR, MODEL_COLOR, MUTED_DATA_COLOR } from "../lib/palette";
 
 type Fingerprint = components["schemas"]["CityFingerprintResponse"];
 
@@ -48,9 +54,9 @@ function featureLabel(name: string) {
 /* Deviation from the mean of the provincial representatives is polarity, not
    status: the diverging pair is cool↔warm with a neutral grey midpoint,
    deliberately not the good/bad status green↔red. */
-const SIGMA_COOL = "#2b6b86";
-const SIGMA_WARM = "#a35f22";
-const SIGMA_ZERO = "#9aa8a2";
+const SIGMA_COOL = MODEL_COLOR;
+const SIGMA_WARM = FORECAST_COLOR;
+const SIGMA_ZERO = MUTED_DATA_COLOR;
 
 function sigmaColor(z: number) {
   if (z <= -0.05) return SIGMA_COOL;
@@ -171,12 +177,13 @@ const scatterAria = computed(() =>
 );
 
 function render() {
+  if (!inView.value) return;
   if (!scatter || !variance) return;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const clusters = Array.from(
     new Set(props.fingerprint.points.map((point) => point.cluster)),
   ).sort((a, b) => a - b);
-  const axisInk = "#566a61";
+  const axisInk = chartTheme().axisInk;
   const axisSize = 12;
   const ev = components_.value;
 
@@ -187,14 +194,14 @@ function render() {
         enabled: true,
         description: scatterAria.value,
       },
-      grid: { left: 58, right: 28, top: 26, bottom: 54 },
+      grid: { left: 58, right: 66, top: 26, bottom: 54 },
       tooltip: {
         backgroundColor: "rgba(255,255,255,.985)",
-        borderColor: "#8fa39b",
+        borderColor: chartTheme().tooltipBorder,
         borderWidth: 1,
         padding: [11, 13],
-        textStyle: { color: "#0b1512", fontSize: 13, lineHeight: 21 },
-        extraCssText: "box-shadow:0 12px 32px rgba(11,21,18,.14);border-radius:8px;",
+        textStyle: { color: chartTheme().ink, fontSize: 13, lineHeight: 21 },
+        extraCssText: "box-shadow:0 12px 32px rgba(15,23,42,.14);border-radius:8px;",
         formatter(params: any) {
           const row = params.data;
           return [
@@ -219,25 +226,25 @@ function render() {
         name: `主成分 1 · ${Math.round((ev[0]?.variance_ratio ?? 0) * 100)}%`,
         nameLocation: "middle",
         nameGap: 32,
-        nameTextStyle: { color: "#243530", fontSize: axisSize, fontWeight: 650 },
+        nameTextStyle: { color: chartTheme().inkSoft, fontSize: axisSize, fontWeight: 650 },
         axisLabel: { color: axisInk, fontSize: axisSize },
-        axisLine: { lineStyle: { color: "#a7b8b0" } },
-        splitLine: { lineStyle: { color: "#c3d1cb" } },
+        axisLine: { lineStyle: { color: chartTheme().axisLine } },
+        splitLine: { lineStyle: { color: chartTheme().splitLine } },
       },
       yAxis: {
         type: "value",
         name: `主成分 2 · ${Math.round((ev[1]?.variance_ratio ?? 0) * 100)}%`,
         nameTextStyle: {
-          color: "#243530",
+          color: chartTheme().inkSoft,
           fontSize: axisSize,
           fontWeight: 650,
           padding: [0, 0, 8, 0],
         },
         axisLabel: { color: axisInk, fontSize: axisSize },
-        axisLine: { lineStyle: { color: "#a7b8b0" } },
-        splitLine: { lineStyle: { color: "#c3d1cb" } },
+        axisLine: { lineStyle: { color: chartTheme().axisLine } },
+        splitLine: { lineStyle: { color: chartTheme().splitLine } },
       },
-      series: clusters.map((cluster) => {
+      series: clusters.map((cluster, clusterIndex) => {
         const rows = props.fingerprint.points
           .filter((point) => point.cluster === cluster)
           .map((point) => ({
@@ -253,10 +260,12 @@ function render() {
           type: "scatter",
           symbolSize: 15,
           data: rows,
+          animationDuration: 720,
+          animationDelay: (idx: number) => clusterIndex * 200 + idx * 26,
           itemStyle: {
             color: clusterColor(cluster),
             opacity: 0.95,
-            borderColor: "#fbfcfb",
+            borderColor: chartTheme().surface,
             borderWidth: 2,
           },
           // Names on as many points as the canvas can seat; the resolver culls
@@ -266,25 +275,26 @@ function render() {
             formatter: (params: any) => params.data.city,
             position: "right",
             distance: 4,
-            color: "#243530",
+            color: chartTheme().inkSoft,
             fontSize: 12,
             fontWeight: 650,
-            textBorderColor: "#fbfcfb",
+            textBorderColor: chartTheme().surface,
             textBorderWidth: 3,
           },
           labelLayout: { moveOverlap: "shiftY", hideOverlap: true },
           emphasis: {
             scale: 1.5,
-            itemStyle: { borderColor: "#0b1512", borderWidth: 2 },
+            focus: "series",
+            itemStyle: { borderColor: chartTheme().ink, borderWidth: 2 },
             label: {
               show: true,
               formatter: (params: any) => params.data.city,
               position: "top",
-              color: "#0b1512",
+              color: chartTheme().ink,
               fontSize: 13,
               fontWeight: 700,
               backgroundColor: "rgba(255,255,255,.96)",
-              borderColor: "#8fa39b",
+              borderColor: chartTheme().tooltipBorder,
               borderWidth: 1,
               borderRadius: 5,
               padding: [5, 8],
@@ -313,10 +323,10 @@ function render() {
       tooltip: {
         trigger: "axis",
         backgroundColor: "rgba(255,255,255,.985)",
-        borderColor: "#8fa39b",
+        borderColor: chartTheme().tooltipBorder,
         borderWidth: 1,
-        textStyle: { color: "#0b1512", fontSize: 13 },
-        extraCssText: "box-shadow:0 12px 32px rgba(11,21,18,.14);border-radius:8px;",
+        textStyle: { color: chartTheme().ink, fontSize: 13 },
+        extraCssText: "box-shadow:0 12px 32px rgba(15,23,42,.14);border-radius:8px;",
       },
       legend: {
         top: 0,
@@ -329,7 +339,7 @@ function render() {
         type: "category",
         data: ev.map((item) => item.component),
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: "#a7b8b0" } },
+        axisLine: { lineStyle: { color: chartTheme().axisLine } },
         axisLabel: { color: axisInk, fontSize: axisSize },
       },
       yAxis: {
@@ -341,7 +351,7 @@ function render() {
           fontSize: axisSize,
           formatter: (value: number) => Math.round(value * 100) + "%",
         },
-        splitLine: { lineStyle: { color: "#c3d1cb" } },
+        splitLine: { lineStyle: { color: chartTheme().splitLine } },
       },
       series: [
         {
@@ -349,11 +359,26 @@ function render() {
           type: "bar",
           barMaxWidth: 24,
           data: ev.map((item) => item.variance_ratio),
-          itemStyle: { color: "#2f6a82", borderRadius: [3, 3, 0, 0] },
+          animationDuration: 760,
+          animationDelay: (idx: number) => idx * 90,
+          itemStyle: {
+            color: {
+              type: "linear",
+              x: 0,
+              y: 0,
+              x2: 0,
+              y2: 1,
+              colorStops: [
+                { offset: 0, color: MODEL_COLOR },
+                { offset: 1, color: "#7dd3fc" },
+              ],
+            },
+            borderRadius: [3, 3, 0, 0],
+          },
           label: {
             show: true,
             position: "top",
-            color: "#243530",
+            color: chartTheme().inkSoft,
             fontSize: 12,
             fontWeight: 650,
             formatter: (params: any) =>
@@ -366,12 +391,14 @@ function render() {
           data: ev.map((item) => item.cumulative_ratio),
           showSymbol: true,
           symbolSize: 6,
-          lineStyle: { color: "#9a6128", width: 2 },
-          itemStyle: { color: "#9a6128", borderColor: "#fbfcfb", borderWidth: 2 },
+          animationDuration: 1100,
+          animationDelay: 420,
+          lineStyle: { color: FORECAST_COLOR, width: 2 },
+          itemStyle: { color: FORECAST_COLOR, borderColor: chartTheme().surface, borderWidth: 2 },
           endLabel: {
             show: true,
             formatter: (params: any) => Math.round(Number(params.value) * 100) + "%",
-            color: "#9a6128",
+            color: FORECAST_COLOR,
             fontSize: 12,
             fontWeight: 700,
             distance: 4,
@@ -396,6 +423,7 @@ onMounted(() => {
 });
 
 watch(() => props.fingerprint, render, { deep: true });
+watch(inView, () => render());
 
 onBeforeUnmount(() => {
   observer?.disconnect();
@@ -405,7 +433,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="fingerprint-panel">
+  <section ref="shell" class="fingerprint-panel">
     <header class="panel-header">
       <h2 class="display-face">{{ headline }}</h2>
       <div class="panel-meta data-mono">

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { useQuery } from "@tanstack/vue-query";
 import { useRoute } from "vue-router";
-import { Activity, BarChart3, Clock3, Database, Layers3, ShieldCheck } from "lucide-vue-next";
+import { Activity, BarChart3, Clock3, Layers3, ShieldCheck } from "lucide-vue-next";
 import { api } from "../api/client";
 import { expectData } from "../api/request";
 import BacktestPanel from "../components/BacktestPanel.vue";
@@ -13,6 +13,7 @@ import PollutantSmallMultiples from "../components/PollutantSmallMultiples.vue";
 import TraceDeck from "../components/TraceDeck.vue";
 import TrustPanel from "../components/TrustPanel.vue";
 import { useLocationCatalog } from "../composables/useLocationCatalog";
+import { useCountUp } from "../composables/useCountUp";
 import { aqiColor } from "../lib/palette";
 import { useContextStore } from "../stores/context";
 
@@ -153,6 +154,36 @@ const pm25Series = computed(() =>
 );
 const modelPm25 = computed(() => snapshot.data.value?.model_analysis?.pm25);
 const observedPm25 = computed(() => snapshot.data.value?.observation?.pm25);
+
+/* Hero status numbers land with a count-up instead of popping in. */
+const aqiTarget = computed(() =>
+  nationalCity.value?.china_aqi == null
+    ? null
+    : Number(nationalCity.value.china_aqi),
+);
+const modelTarget = computed(() =>
+  modelPm25.value != null && Number.isFinite(Number(modelPm25.value))
+    ? Number(modelPm25.value)
+    : null,
+);
+const observedTarget = computed(() =>
+  observedPm25.value != null && Number.isFinite(Number(observedPm25.value))
+    ? Number(observedPm25.value)
+    : null,
+);
+const aqiDisplay = useCountUp(aqiTarget);
+const modelDisplay = useCountUp(modelTarget);
+const observedDisplay = useCountUp(observedTarget);
+
+const aqiText = computed(() =>
+  aqiTarget.value == null ? "—" : Math.round(aqiDisplay.value).toString(),
+);
+const modelText = computed(() =>
+  modelTarget.value == null ? "—" : modelDisplay.value.toFixed(1),
+);
+const observedText = computed(() =>
+  observedTarget.value == null ? "—" : observedDisplay.value.toFixed(1),
+);
 
 function fmt(value: number | null | undefined, digits = 1) {
   return value == null || !Number.isFinite(value) ? "—" : value.toFixed(digits);
@@ -334,12 +365,12 @@ const forecastOutlook = computed(() => {
           <span class="status-dot" aria-hidden="true"></span>
           <div>
             <strong>{{ nationalCity?.china_aqi_level ?? "暂无" }}</strong>
-            <p>AQI {{ nationalCity?.china_aqi ?? "—" }}</p>
+            <p>AQI {{ aqiText }}</p>
           </div>
         </article>
         <article>
           <small>PM2.5</small>
-          <strong>{{ fmt(modelPm25) }}</strong>
+          <strong>{{ modelText }}</strong>
           <p>µg/m³</p>
         </article>
         <article>
@@ -351,7 +382,7 @@ const forecastOutlook = computed(() => {
         </article>
         <article>
           <small>地面实测</small>
-          <strong>{{ fmt(observedPm25) }}</strong>
+          <strong>{{ observedText }}</strong>
           <p v-if="sourceGap != null">{{ sourceGap > 0 ? "偏高" : "偏低" }} {{ Math.abs(sourceGap).toFixed(1) }}</p>
           <p v-else-if="observedPm25 != null">{{ fmtTime(observationTime) }}</p>
           <p v-else>—</p>
@@ -375,7 +406,7 @@ const forecastOutlook = computed(() => {
       <a href="#trust"><ShieldCheck :size="15" />可信度</a>
     </nav>
 
-    <section id="trend" class="detail-section first-section">
+    <section id="trend" v-reveal class="detail-section first-section">
       <div class="section-heading">
         <h2 class="display-face">{{ trendHeadline }}</h2>
         <span class="forecast-note">{{ forecastOutlook }}</span>
@@ -387,7 +418,7 @@ const forecastOutlook = computed(() => {
       />
     </section>
 
-    <section id="pollutants" class="detail-section">
+    <section id="pollutants" v-reveal class="detail-section">
       <div class="section-heading">
         <h2 class="display-face">{{ pollutantHeadline }}</h2>
       </div>
@@ -395,10 +426,17 @@ const forecastOutlook = computed(() => {
         v-if="pulse.data.value?.length"
         :series="pulse.data.value"
       />
-      <div v-else class="section-state">正在读取污染物历史…</div>
+      <div v-else class="section-grid-skeleton" role="status" aria-label="正在读取污染物历史">
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+      </div>
     </section>
 
-    <section id="rhythm" class="detail-section">
+    <section id="rhythm" v-reveal class="detail-section">
       <div class="section-heading">
         <h2 class="display-face">{{ rhythmHeadline }}</h2>
       </div>
@@ -406,7 +444,7 @@ const forecastOutlook = computed(() => {
       <HourRing ref="heatmap" :series="pm25Series" />
     </section>
 
-    <section id="structure" class="detail-section">
+    <section id="structure" v-reveal class="detail-section">
       <div class="section-heading">
         <h2 class="display-face">{{ structureHeadline }}</h2>
       </div>
@@ -417,26 +455,13 @@ const forecastOutlook = computed(() => {
       <div v-else class="section-state">当前城市还没有足够样本做结构分析。</div>
     </section>
 
-    <section id="trust" class="detail-section trust-section">
+    <section id="trust" v-reveal class="detail-section trust-section">
       <div class="section-heading">
         <h2 class="display-face">{{ trustHeadline }}</h2>
       </div>
 
-      <div class="trust-accordions">
-        <details class="technical-details">
-          <summary>查看预测回测与误差</summary>
-          <div class="details-body">
-            <BacktestPanel :backtest="backtest.data.value" />
-          </div>
-        </details>
-
-        <details class="technical-details">
-          <summary><Database :size="15" /> 查看数据来源、覆盖率与分析产物</summary>
-          <div class="details-body">
-            <TrustPanel :coverage="coverage.data.value" />
-          </div>
-        </details>
-      </div>
+      <BacktestPanel :backtest="backtest.data.value" />
+      <TrustPanel :coverage="coverage.data.value" />
     </section>
   </section>
 </template>
@@ -444,7 +469,7 @@ const forecastOutlook = computed(() => {
 <style scoped>
 .city-detail {
   min-height: calc(100vh - 60px);
-  padding: 26px 30px 48px;
+  padding: 26px var(--page-pad) 48px;
   background: var(--canvas);
 }
 .city-hero {
@@ -603,49 +628,29 @@ const forecastOutlook = computed(() => {
   font-size: var(--fs-body);
 }
 
-.trust-section { padding-bottom: 14px; }
-.trust-accordions {
+.section-grid-skeleton {
   display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
-.technical-details {
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-xl);
-  background: var(--sheet);
-  box-shadow: var(--shadow-sm);
-  transition: all var(--duration-normal) var(--ease-out);
+
+.section-grid-skeleton .skeleton {
+  height: 168px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--hairline-soft);
 }
-.technical-details:hover {
-  border-color: var(--hairline-strong);
-  box-shadow: var(--shadow-md);
-}
-.technical-details summary {
-  min-height: 60px;
-  padding: 0 22px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  color: var(--ink-soft);
-  font-size: var(--fs-body);
-  font-weight: var(--fw-strong);
-  transition: background var(--duration-fast) ease;
-}
-.technical-details summary:hover { background: var(--sheet-soft); }
-/* Panels inside an accordion keep their own card: same radius, same surface,
-   so opening one never looks like a different product. */
-.details-body {
-  padding: 16px;
-  border-top: 1px solid var(--hairline-soft);
-  background: var(--sheet-sunken);
+
+.trust-section {
+  padding-bottom: 14px;
+  display: grid;
+  gap: 16px;
 }
 
 @media (max-width: 1180px) {
   .city-hero { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  .city-detail { padding: 16px 14px 32px; }
+  .city-detail { padding: 16px var(--page-pad) 32px; }
   .city-hero { gap: 14px; }
   .hero-title h1 { font-size: 32px; }
   .current-status { grid-template-columns: 1fr 1fr; }
@@ -656,11 +661,12 @@ const forecastOutlook = computed(() => {
   .current-status article:nth-child(4) { border-top: 1px solid var(--hairline-soft); }
   .section-nav {
     top: 60px;
-    margin: 0 -14px;
-    padding: 0 14px;
+    margin: 0 calc(-1 * var(--page-pad));
+    padding: 0 var(--page-pad);
   }
   .section-heading { display: grid; }
   .section-heading h2 { font-size: 18px; }
   .forecast-note { justify-self: start; }
+  .section-grid-skeleton { grid-template-columns: 1fr 1fr; }
 }
 </style>

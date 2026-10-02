@@ -9,7 +9,6 @@ import {
 } from "echarts/charts";
 import {
   AriaComponent,
-  GeoComponent,
   GridComponent,
   LegendComponent,
   MarkAreaComponent,
@@ -21,7 +20,6 @@ import {
 } from "echarts/components";
 import {
   init as echartsInit,
-  registerMap,
   use,
   type ECharts,
 } from "echarts/core";
@@ -34,7 +32,6 @@ use([
   CustomChart,
   EffectScatterChart,
   HeatmapChart,
-  GeoComponent,
   GridComponent,
   LegendComponent,
   LineChart,
@@ -74,6 +71,25 @@ export function token(name: string, fallback = "#000000") {
   return value || fallback;
 }
 
+/* Resolved chart neutrals — call once per options build. Every chart reads
+   the slate system through this factory, so a retired palette hex can never
+   leak back into an ECharts option by accident. */
+export function chartTheme() {
+  return {
+    ink: token("--ink", "#0f172a"),
+    inkSoft: token("--ink-soft", "#334155"),
+    axisInk: token("--muted", "#64748b"),
+    faint: token("--faint", "#94a3b8"),
+    axisLine: token("--hairline-strong", "#cbd5e1"),
+    splitLine: token("--hairline", "#e2e8f0"),
+    surface: token("--sheet", "#ffffff"),
+    surfaceSubtle: token("--canvas-subtle", "#f1f5f9"),
+    tooltipBorder: token("--hairline-strong", "#cbd5e1"),
+  };
+}
+
+export type ChartTheme = ReturnType<typeof chartTheme>;
+
 /* Every chart is SVG: DESIGN.md asks for vector-crisp geography and for core
    charts that hold up at projector distance and in print. Call sites pass the
    renderer explicitly so the choice is never accidental. */
@@ -93,5 +109,4 @@ export function init(
   });
 }
 
-export { registerMap };
 export type { ECharts };

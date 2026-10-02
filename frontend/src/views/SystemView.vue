@@ -48,7 +48,7 @@ function retry() {
       </button>
     </header>
 
-    <div class="system-summary">
+    <div v-reveal class="system-summary">
       <section class="provider-strip">
         <div
           v-for="(provider, name) in status.data.value?.providers ?? {}"
@@ -87,7 +87,7 @@ function retry() {
       </section>
     </div>
 
-    <section class="system-panel">
+    <section v-reveal="80" class="system-panel">
       <header>
         <Database :size="15" />
         <h2 class="display-face">
@@ -124,7 +124,7 @@ function retry() {
       </div>
     </section>
 
-    <section class="system-panel">
+    <section v-reveal="120" class="system-panel">
       <header>
         <RefreshCw :size="15" />
         <h2 class="display-face">
@@ -169,7 +169,7 @@ function retry() {
 <style scoped>
 .system-workspace {
   min-height: calc(100vh - 60px);
-  padding: 24px 32px 40px;
+  padding: 28px var(--page-pad) 48px;
   background: var(--canvas);
 }
 .system-header {
@@ -271,7 +271,6 @@ function retry() {
   border-bottom: 1px solid var(--hairline);
   background: var(--sheet);
 }
-.system-panel h2 { margin: 0; font-size: 13px; font-weight: 600; }
 .system-panel h2 { margin: 0; font-size: 13px; font-weight: var(--fw-strong); }
 .system-panel p { margin: 3px 0 0; color: var(--muted); font-size: var(--fs-label); }
 .table-scroll { overflow-x: auto; }

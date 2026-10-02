@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { components } from "../api/schema";
-import { init, type ECharts } from "../lib/charts";
+import { chartTheme, init, type ECharts } from "../lib/charts";
+import { useInView } from "../composables/useInView";
+
+/* Charts stay blank until the reader scrolls to them: the first paint is
+   the animated entrance, never a show that already ended. */
+const shell = ref<HTMLElement | null>(null);
+const inView = useInView(shell);
 import { MODEL_COLOR } from "../lib/palette";
 
 type SeriesResponse = components["schemas"]["SeriesResponse"];
@@ -102,6 +108,7 @@ function percentileShare(item: SeriesResponse) {
 }
 
 function render() {
+  if (!inView.value) return;
   props.series.forEach((item, index) => {
     const chart = charts[index];
     if (!chart) return;
@@ -120,9 +127,9 @@ function render() {
           trigger: "axis",
           confine: true,
           backgroundColor: "rgba(255,255,255,.985)",
-          borderColor: "#bec9c3",
+          borderColor: chartTheme().axisLine,
           padding: [9, 11],
-          textStyle: { color: "#0b1512", fontSize: 13 },
+          textStyle: { color: chartTheme().ink, fontSize: 13 },
           formatter(params: any) {
             const row = Array.isArray(params) ? params[0] : params;
             const time = new Intl.DateTimeFormat("zh-CN", {
@@ -153,12 +160,12 @@ function render() {
                 : {
                     silent: true,
                     symbol: ["none", "none"],
-                    lineStyle: { color: "#8f9d96", width: 1, type: "dashed" },
+                    lineStyle: { color: chartTheme().faint, width: 1, type: "dashed" },
                     label: {
                       show: true,
                       formatter: "近 30 天中位",
                       position: "insideStartTop",
-                      color: "#566a61",
+                      color: chartTheme().axisInk,
                       fontSize: 12,
                       backgroundColor: "rgba(255,255,255,.88)",
                       borderRadius: 3,
@@ -185,6 +192,7 @@ onMounted(() => {
 });
 
 watch(() => props.series, render, { deep: true });
+watch(inView, () => render());
 
 onBeforeUnmount(() => {
   observer?.disconnect();
@@ -193,7 +201,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="pollutant-grid">
+  <div ref="shell" class="pollutant-grid">
     <article v-for="(item, index) in series" :key="item.variable">
       <header>
         <div>

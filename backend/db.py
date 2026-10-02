@@ -59,15 +59,30 @@ SOURCE_SEEDS = [
 ]
 
 
+class _AutoCloseConnection(sqlite3.Connection):
+    """Close on ``with`` exit so ``with connect() as con:`` blocks don't leak.
+
+    ``sqlite3.Connection`` commits/rolls back on context exit but never
+    closes; with ~20 call sites relying on ``with connect()``, fixing the
+    behavior here beats touching every one.
+    """
+
+    def __exit__(self, exc_type, exc_value, tb):  # type: ignore[override]
+        try:
+            super().__exit__(exc_type, exc_value, tb)
+        finally:
+            self.close()
+
+
 def connect() -> sqlite3.Connection:
     db_path = get_settings().resolved_database_path
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(db_path, timeout=5.0)
+    con = sqlite3.connect(db_path, timeout=10.0, factory=_AutoCloseConnection)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     con.execute("PRAGMA journal_mode = WAL")
     con.execute("PRAGMA synchronous = NORMAL")
-    con.execute("PRAGMA busy_timeout = 5000")
+    con.execute("PRAGMA busy_timeout = 10000")
     return con
 
 

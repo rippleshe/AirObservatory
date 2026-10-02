@@ -4,9 +4,10 @@ from datetime import UTC, datetime
 
 import httpx
 
-from backend.config import get_settings
+from backend.config import Settings, get_settings
 
 from .base import ModelAnalysisPoint, ModelLiveBundle
+from .http import request_with_retries
 
 OPEN_METEO_API_VERSION = 1
 AIR_URL = (
@@ -14,6 +15,7 @@ AIR_URL = (
     f"v{OPEN_METEO_API_VERSION}/air-quality"
 )
 HOURLY = "pm2_5,pm10,nitrogen_dioxide,ozone,sulphur_dioxide,carbon_monoxide,european_aqi"
+USER_AGENT = "AirObservatory/air-quality"
 
 
 def _dt(value: str) -> datetime:
@@ -45,15 +47,33 @@ def _point(data: dict, prefix: str = "current", index: int | None = None) -> Mod
 class OpenMeteoCAMSProvider:
     name = "openmeteo_cams_analysis"
 
+    def __init__(self, settings: Settings | None = None):
+        self.settings = settings or get_settings()
+        self._client: httpx.AsyncClient | None = None
+
+    async def __aenter__(self) -> OpenMeteoCAMSProvider:
+        self._client = httpx.AsyncClient(
+            headers={"User-Agent": USER_AGENT},
+            timeout=self.settings.http_timeout_seconds,
+        )
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
     async def _get(self, params: dict) -> dict | list[dict]:
-        settings = get_settings()
-        async with httpx.AsyncClient(
-            headers={"User-Agent": "AirObservatory/air-quality"},
-            timeout=settings.http_timeout_seconds,
-        ) as client:
-            response = await client.get(AIR_URL, params=params)
-            response.raise_for_status()
-            return response.json()
+        if self._client is None:
+            # Tolerate single-shot callers that skip the context manager.
+            async with httpx.AsyncClient(
+                headers={"User-Agent": USER_AGENT},
+                timeout=self.settings.http_timeout_seconds,
+            ) as client:
+                response = await request_with_retries(client, AIR_URL, params)
+                return response.json()
+        response = await request_with_retries(self._client, AIR_URL, params)
+        return response.json()
 
     @staticmethod
     def _range_points(data: dict) -> list[ModelAnalysisPoint]:

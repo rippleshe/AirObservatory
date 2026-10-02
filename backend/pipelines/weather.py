@@ -54,83 +54,97 @@ async def backfill_weather(
             (run_id, started.isoformat(), start_date, end_date),
         )
 
-    provider = OpenMeteoWeatherProvider()
     fetched_at = datetime.now(UTC).isoformat()
     accepted = 0
+    null_only_rows = 0
     errors: list[str] = []
     latest_source_time: str | None = None
 
     try:
-        for start in range(0, len(locations), batch_size):
-            batch = locations[start : start + batch_size]
-            coordinates = [
-                (location["latitude"], location["longitude"])
-                for location in batch
-            ]
-            try:
-                bundles = await provider.fetch_range_batch(
-                    coordinates,
-                    start_date,
-                    end_date,
-                )
-                results = list(zip(batch, bundles, strict=True))
-            except Exception:
-                results = []
-                for location in batch:
-                    try:
-                        points = await provider.fetch_range(
-                            location["latitude"],
-                            location["longitude"],
-                            start_date,
-                            end_date,
-                        )
-                        results.append((location, points))
-                    except Exception as exc:
-                        errors.append(f'{location["city"]}: {exc}')
-
-            with transaction() as con:
-                for location, points in results:
-                    rows = [
-                        (
-                            location["location_id"],
-                            source["source_id"],
-                            _iso(point.observed_at),
-                            fetched_at,
-                            point.temperature_2m,
-                            point.relative_humidity_2m,
-                            point.pressure_msl,
-                            point.precipitation,
-                            point.wind_speed_10m,
-                            point.wind_direction_10m,
-                            point.boundary_layer_height,
-                        )
-                        for point in points
-                    ]
-                    con.executemany(
-                        """
-                        INSERT INTO weather_observations(
-                            location_id, source_id, observed_at, fetched_at,
-                            temperature_2m, relative_humidity_2m, pressure_msl,
-                            precipitation, wind_speed_10m, wind_direction_10m,
-                            boundary_layer_height, quality_flag
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'gridded_archive')
-                        ON CONFLICT(location_id, source_id, observed_at) DO UPDATE SET
-                            fetched_at=excluded.fetched_at,
-                            temperature_2m=excluded.temperature_2m,
-                            relative_humidity_2m=excluded.relative_humidity_2m,
-                            pressure_msl=excluded.pressure_msl,
-                            precipitation=excluded.precipitation,
-                            wind_speed_10m=excluded.wind_speed_10m,
-                            wind_direction_10m=excluded.wind_direction_10m,
-                            boundary_layer_height=excluded.boundary_layer_height,
-                            quality_flag=excluded.quality_flag
-                        """,
-                        rows,
+        async with OpenMeteoWeatherProvider() as provider:
+            for start in range(0, len(locations), batch_size):
+                batch = locations[start : start + batch_size]
+                coordinates = [
+                    (location["latitude"], location["longitude"])
+                    for location in batch
+                ]
+                try:
+                    bundles = await provider.fetch_range_batch(
+                        coordinates,
+                        start_date,
+                        end_date,
                     )
-                    accepted += len(rows)
-                    if points:
-                        value = _iso(points[-1].observed_at)
-                        latest_source_time = max(latest_source_time or value, value)
+                    results = list(zip(batch, bundles, strict=True))
+                except Exception:
+                    results = []
+                    for location in batch:
+                        try:
+                            points = await provider.fetch_range(
+                                location["latitude"],
+                                location["longitude"],
+                                start_date,
+                                end_date,
+                            )
+                            results.append((location, points))
+                        except Exception as exc:
+                            errors.append(f'{location["city"]}: {exc}')
+
+                with transaction() as con:
+                    for location, points in results:
+                        rows = [
+                            (
+                                location["location_id"],
+                                source["source_id"],
+                                _iso(point.observed_at),
+                                fetched_at,
+                                point.temperature_2m,
+                                point.relative_humidity_2m,
+                                point.pressure_msl,
+                                point.precipitation,
+                                point.wind_speed_10m,
+                                point.wind_direction_10m,
+                                point.boundary_layer_height,
+                            )
+                            for point in points
+                        ]
+                        con.executemany(
+                            """
+                            -- Unqualified columns in DO UPDATE refer to the
+                            -- existing row: NULL archive hours must not erase
+                            -- values fetched earlier.
+                            INSERT INTO weather_observations(
+                                location_id, source_id, observed_at, fetched_at,
+                                temperature_2m, relative_humidity_2m, pressure_msl,
+                                precipitation, wind_speed_10m, wind_direction_10m,
+                                boundary_layer_height, quality_flag
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'gridded_archive')
+                            ON CONFLICT(location_id, source_id, observed_at) DO UPDATE SET
+                                fetched_at=excluded.fetched_at,
+                                temperature_2m=COALESCE(excluded.temperature_2m, temperature_2m),
+                                relative_humidity_2m=COALESCE(
+                                    excluded.relative_humidity_2m, relative_humidity_2m),
+                                pressure_msl=COALESCE(excluded.pressure_msl, pressure_msl),
+                                precipitation=COALESCE(excluded.precipitation, precipitation),
+                                wind_speed_10m=COALESCE(
+                                    excluded.wind_speed_10m, wind_speed_10m),
+                                wind_direction_10m=COALESCE(
+                                    excluded.wind_direction_10m, wind_direction_10m),
+                                boundary_layer_height=COALESCE(
+                                    excluded.boundary_layer_height, boundary_layer_height),
+                                quality_flag=excluded.quality_flag
+                            """,
+                            rows,
+                        )
+                        # The archive lags several days, so trailing hours
+                        # arrive as all-NULL rows; they are not accepted data.
+                        data_rows = [
+                            row for row in rows if any(v is not None for v in row[4:11])
+                        ]
+                        accepted += len(data_rows)
+                        null_only_rows += len(rows) - len(data_rows)
+                        for row in data_rows:
+                            value = row[2]
+                            latest_source_time = max(latest_source_time or value, value)
 
         status = "success" if not errors else ("partial" if accepted else "error")
         with transaction() as con:
@@ -149,6 +163,11 @@ async def backfill_weather(
                     perf_counter() - t0,
                     status,
                     f"{accepted} weather rows accepted across {len(locations)} cities"
+                    + (
+                        f"; {null_only_rows} hours still missing from the archive"
+                        if null_only_rows
+                        else ""
+                    )
                     + (f"; errors: {' | '.join(errors)}" if errors else ""),
                     run_id,
                 ),
@@ -158,6 +177,7 @@ async def backfill_weather(
             "status": status,
             "cities": len(locations),
             "rows": accepted,
+            "null_only_rows": null_only_rows,
             "latest_source_time": latest_source_time,
             "errors": errors,
         }

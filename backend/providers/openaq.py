@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import math
 from datetime import UTC, datetime
 from typing import Any
@@ -10,9 +9,15 @@ import httpx
 from backend.config import Settings, get_settings
 
 from .base import GroundMeasurement, GroundSite
+from .http import SlidingWindowLimiter, request_with_retries
 
 API_ROOT = "https://api.openaq.org/v3"
 SUPPORTED_PARAMETERS = {"pm25", "pm10", "no2", "o3", "so2", "co"}
+
+# OpenAQ v3 rate-limits per minute; a full 60-city refresh plus periodic
+# site discovery must stay under the quota or every cycle degrades into 429s.
+MAX_CALLS_PER_WINDOW = 45
+WINDOW_SECONDS = 60.0
 
 
 def _dt(value: str | None) -> datetime | None:
@@ -44,6 +49,7 @@ class OpenAQProvider:
             },
             timeout=self.settings.http_timeout_seconds,
         )
+        self._limiter = SlidingWindowLimiter(MAX_CALLS_PER_WINDOW, WINDOW_SECONDS)
 
     async def __aenter__(self) -> OpenAQProvider:
         return self
@@ -52,28 +58,9 @@ class OpenAQProvider:
         await self._client.aclose()
 
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict:
-        last_error: Exception | None = None
-        for attempt in range(3):
-            try:
-                response = await self._client.get(path, params=params)
-                if response.status_code == 429 or response.status_code >= 500:
-                    retry_after = response.headers.get("Retry-After")
-                    delay = (
-                        float(retry_after)
-                        if retry_after and retry_after.isdigit()
-                        else 0.5 * (2**attempt)
-                    )
-                    await asyncio.sleep(min(delay, 5.0))
-                    continue
-                response.raise_for_status()
-                return response.json()
-            except (httpx.TransportError, httpx.TimeoutException) as exc:
-                last_error = exc
-                if attempt < 2:
-                    await asyncio.sleep(0.5 * (2**attempt))
-        if last_error is not None:
-            raise last_error
-        raise RuntimeError(f"OpenAQ request failed after retries: {path}")
+        await self._limiter.acquire()
+        response = await request_with_retries(self._client, path, params or {})
+        return response.json()
 
     async def discover_site(
         self,

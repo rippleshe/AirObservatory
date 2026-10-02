@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, time
 from time import perf_counter
 from uuid import uuid4
 
@@ -55,19 +55,36 @@ def _bound_site(location_id: int, source_id: int) -> GroundSite | None:
     )
 
 
-def _binding_needs_refresh(location_id: int, source_id: int, max_age_hours: int = 24) -> bool:
+# Re-discovering all 60 bindings at once adds 60 /locations calls to the same
+# burst and trips the per-minute quota; refresh a few stale bindings per cycle.
+MAX_BINDING_AGE_HOURS = 24
+DISCOVERY_PER_CYCLE = 3
+
+
+def _stale_binding_ids(locations, source_id: int) -> list[int]:
+    """Location ids whose binding discovery is overdue, oldest check first."""
     with connect() as con:
-        row = con.execute(
+        rows = con.execute(
             """
-            SELECT last_checked_at FROM provider_bindings
-            WHERE location_id=? AND source_id=? AND active=1
+            SELECT location_id, last_checked_at FROM provider_bindings
+            WHERE source_id=? AND active=1
             """,
-            (location_id, source_id),
-        ).fetchone()
-    if row is None:
-        return True
-    checked = _dt(row["last_checked_at"])
-    return checked is None or datetime.now(UTC) - checked > timedelta(hours=max_age_hours)
+            (source_id,),
+        ).fetchall()
+    now = datetime.now(UTC)
+    ages: dict[int, float] = {}
+    for row in rows:
+        checked = _dt(row["last_checked_at"])
+        ages[row["location_id"]] = (
+            float("inf") if checked is None else (now - checked).total_seconds() / 3600.0
+        )
+    stale = [
+        loc["location_id"]
+        for loc in locations
+        if ages.get(loc["location_id"], float("inf")) > MAX_BINDING_AGE_HOURS
+    ]
+    stale.sort(key=lambda location_id: ages.get(location_id, float("inf")), reverse=True)
+    return stale
 
 
 def _save_binding(location_id: int, source_id: int, site: GroundSite) -> None:
@@ -112,9 +129,10 @@ async def _site_for_location(
     provider: OpenAQProvider,
     location,
     source_id: int,
+    force_discovery: bool = False,
 ) -> GroundSite | None:
     site = _bound_site(location["location_id"], source_id)
-    if site is not None and not _binding_needs_refresh(location["location_id"], source_id):
+    if site is not None and not force_discovery:
         return site
     discovered = await provider.discover_site(location["latitude"], location["longitude"])
     if discovered is not None:
@@ -133,23 +151,24 @@ def _upsert_measurements(
         return 0
     fetched_at = datetime.now(UTC).isoformat()
     accepted = 0
+    # Station-level provenance: one observed_at row carries several parameter
+    # columns, and per-parameter refs would overwrite each other on upsert.
+    raw_ref = json.dumps(
+        {
+            "openaq_location_id": site.external_location_id,
+            "station_name": site.name,
+            "provider": site.provider,
+            "sensors": site.sensors,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
     with transaction() as con:
         for point in points:
             column = PARAMETER_COLUMNS.get(point.parameter)
             if column is None:
                 continue
             quality = "flagged" if point.has_flags else "reported"
-            raw_ref = json.dumps(
-                {
-                    "openaq_location_id": site.external_location_id,
-                    "station_name": site.name,
-                    "provider": site.provider,
-                    "sensor_id": point.sensor_id,
-                    "parameter": point.parameter,
-                },
-                ensure_ascii=False,
-                sort_keys=True,
-            )
             con.execute(
                 f"""
                 INSERT INTO air_observations(
@@ -210,13 +229,22 @@ async def refresh_openaq() -> dict:
             (run_id, started.isoformat()),
         )
 
-    semaphore = asyncio.Semaphore(4)
+    # Spread binding re-discovery across cycles instead of one 24h storm.
+    stale_bindings = _stale_binding_ids(locations, source["source_id"])
+    to_discover = set(stale_bindings[:DISCOVERY_PER_CYCLE])
+
+    semaphore = asyncio.Semaphore(3)
 
     async with OpenAQProvider(settings) as provider:
         async def fetch(location):
             async with semaphore:
                 try:
-                    site = await _site_for_location(provider, location, source["source_id"])
+                    site = await _site_for_location(
+                        provider,
+                        location,
+                        source["source_id"],
+                        force_discovery=location["location_id"] in to_discover,
+                    )
                     if site is None:
                         return location, None, [], "no PM2.5 site within search radius"
                     points = await provider.fetch_latest(site)
@@ -228,10 +256,16 @@ async def refresh_openaq() -> dict:
 
     accepted = 0
     errors: list[str] = []
+    no_site: list[str] = []
     latest: datetime | None = None
     for location, site, points, error in results:
-        if error is not None or site is None:
-            errors.append(f'{location["city"]}: {error or "site unavailable"}')
+        if error is not None:
+            errors.append(f'{location["city"]}: {error}')
+            continue
+        if site is None:
+            # A missing nearby station is a coverage gap, not a run failure;
+            # reporting it as an error every cycle buried real incidents.
+            no_site.append(location["city"])
             continue
         accepted += _upsert_measurements(location["location_id"], source["source_id"], site, points)
         if points:
@@ -252,6 +286,11 @@ async def refresh_openaq() -> dict:
             _save_binding(location["location_id"], source["source_id"], refreshed_site)
 
     status = "success" if not errors else ("partial" if accepted else "error")
+    message = f"{accepted} latest measurements accepted"
+    if no_site:
+        message += f"; {len(no_site)} cities without a nearby PM2.5 site: {', '.join(no_site)}"
+    if errors:
+        message += f"; errors: {' | '.join(errors)}"
     with transaction() as con:
         con.execute(
             """
@@ -267,8 +306,7 @@ async def refresh_openaq() -> dict:
                 len(errors),
                 perf_counter() - t0,
                 status,
-                f"{accepted} latest measurements accepted"
-                + (f"; {' | '.join(errors)}" if errors else ""),
+                message,
                 run_id,
             ),
         )
@@ -276,6 +314,7 @@ async def refresh_openaq() -> dict:
         "run_id": run_id,
         "status": status,
         "accepted": accepted,
+        "no_site": no_site,
         "latest_source_time": _iso(latest),
         "errors": errors,
     }

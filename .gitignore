@@ -19,3 +19,7 @@ frontend/vite.config.d.ts
 .ruff_cache/
 .claude/settings.local.json
 .claude/launch.json
+
+# ZCode 本地工作区配置
+.zcode/
+.zcodeignore

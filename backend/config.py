@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     cams_refresh_seconds: int = Field(default=900, ge=300)
     openaq_refresh_seconds: int = Field(default=300, ge=300)
     weather_refresh_seconds: int = Field(default=21_600, ge=3_600)
+    weather_archive_lag_days: int = Field(default=5, ge=1, le=20)
     forecast_hours: int = Field(default=24, ge=1, le=120)
     openaq_radius_m: int = Field(default=25_000, ge=1_000, le=25_000)
     openaq_api_key: SecretStr | None = Field(

@@ -4,15 +4,17 @@ from datetime import UTC, datetime
 
 import httpx
 
-from backend.config import get_settings
+from backend.config import Settings, get_settings
 
 from .base import WeatherPoint
+from .http import request_with_retries
 
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 WEATHER_HOURLY = (
     "temperature_2m,relative_humidity_2m,pressure_msl,precipitation,"
     "wind_speed_10m,wind_direction_10m,boundary_layer_height"
 )
+USER_AGENT = "AirObservatory/weather"
 
 
 def _dt(value: str) -> datetime:
@@ -39,15 +41,33 @@ def _points(data: dict) -> list[WeatherPoint]:
 class OpenMeteoWeatherProvider:
     name = "openmeteo_weather_reanalysis"
 
+    def __init__(self, settings: Settings | None = None):
+        self.settings = settings or get_settings()
+        self._client: httpx.AsyncClient | None = None
+
+    async def __aenter__(self) -> OpenMeteoWeatherProvider:
+        self._client = httpx.AsyncClient(
+            headers={"User-Agent": USER_AGENT},
+            timeout=self.settings.http_timeout_seconds,
+        )
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
     async def _get(self, params: dict) -> dict | list[dict]:
-        settings = get_settings()
-        async with httpx.AsyncClient(
-            headers={"User-Agent": "AirObservatory/weather"},
-            timeout=settings.http_timeout_seconds,
-        ) as client:
-            response = await client.get(ARCHIVE_URL, params=params)
-            response.raise_for_status()
-            return response.json()
+        if self._client is None:
+            # Tolerate single-shot callers that skip the context manager.
+            async with httpx.AsyncClient(
+                headers={"User-Agent": USER_AGENT},
+                timeout=self.settings.http_timeout_seconds,
+            ) as client:
+                response = await request_with_retries(client, ARCHIVE_URL, params)
+                return response.json()
+        response = await request_with_retries(self._client, ARCHIVE_URL, params)
+        return response.json()
 
     async def fetch_range(
         self,

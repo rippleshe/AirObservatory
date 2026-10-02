@@ -297,7 +297,9 @@ def coverage_rows(location_id: int, days: int) -> list[sqlite3.Row]:
                        COUNT(DISTINCT substr(observed_at, 1, 13)) AS hours
                 FROM air_observations
                 WHERE location_id=?
-                  AND observed_at >= datetime('now', ?)
+                  -- Stored timestamps are 'T'-separated ISO strings while
+                  -- datetime('now') emits a space; normalize before comparing.
+                  AND observed_at >= replace(datetime('now', ?), ' ', 'T')
                 GROUP BY substr(observed_at, 1, 10)
             ),
             model AS (
@@ -305,7 +307,7 @@ def coverage_rows(location_id: int, days: int) -> list[sqlite3.Row]:
                        COUNT(DISTINCT substr(valid_at, 1, 13)) AS hours
                 FROM air_model_analysis
                 WHERE location_id=?
-                  AND valid_at >= datetime('now', ?)
+                  AND valid_at >= replace(datetime('now', ?), ' ', 'T')
                 GROUP BY substr(valid_at, 1, 10)
             ),
             weather AS (
@@ -313,7 +315,7 @@ def coverage_rows(location_id: int, days: int) -> list[sqlite3.Row]:
                        COUNT(DISTINCT substr(observed_at, 1, 13)) AS hours
                 FROM weather_observations
                 WHERE location_id=?
-                  AND observed_at >= datetime('now', ?)
+                  AND observed_at >= replace(datetime('now', ?), ' ', 'T')
                 GROUP BY substr(observed_at, 1, 10)
             )
             SELECT dates.day,

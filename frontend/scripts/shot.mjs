@@ -56,15 +56,20 @@ for (const shot of SHOTS) {
     // Charts draw on first scroll-into-view: walk the page like a reader so
     // every section's entrance has fired before the stitched full-page shot.
     if (shot.full) {
-      await page.evaluate(async () => {
-        const step = window.innerHeight * 0.8;
-        for (let y = 0; y <= document.body.scrollHeight; y += step) {
-          window.scrollTo(0, y);
-          await new Promise((resolve) => setTimeout(resolve, 140));
-        }
-        window.scrollTo(0, 0);
-      });
-      await page.waitForTimeout(1800);
+      // Two passes: late-arriving queries mount sections after the first
+      // walk, and their reveal triggers need a fresh scroll to fire.
+      for (let pass = 0; pass < 2; pass++) {
+        await page.evaluate(async () => {
+          const step = window.innerHeight * 0.8;
+          for (let y = 0; y <= document.body.scrollHeight; y += step) {
+            window.scrollTo(0, y);
+            await new Promise((resolve) => setTimeout(resolve, 140));
+          }
+          window.scrollTo(0, 0);
+        });
+        await page.waitForTimeout(900);
+      }
+      await page.waitForTimeout(1400);
     }
     await page.screenshot({
       path: `${OUT}${shot.name}.png`,

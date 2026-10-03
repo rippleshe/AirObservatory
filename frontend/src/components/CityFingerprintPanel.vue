@@ -169,11 +169,7 @@ const clusterHeadline = computed(() => {
 });
 
 const scatterAria = computed(() =>
-  cityCount.value <= 0
-    ? "没有可用的城市结构指纹二维投影。"
-    : `${countLabel.value}长期结构指纹二维投影。每点一个${
-        onePerProvince.value ? "省的代表城市" : "城市"
-      }，颜色为探索性分组。`,
+  cityCount.value <= 0 ? "无指纹投影" : "城市指纹投影",
 );
 
 function render() {

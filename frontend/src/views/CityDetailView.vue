@@ -7,11 +7,13 @@ import { api } from "../api/client";
 import { expectData } from "../api/request";
 import BacktestPanel from "../components/BacktestPanel.vue";
 import HealthRiskCard from "../components/HealthRiskCard.vue";
+import HorizonChart from "../components/HorizonChart.vue";
 import HourRing from "../components/HourRing.vue";
 import PCAStructurePanel from "../components/PCAStructurePanel.vue";
-import PollutantSmallMultiples from "../components/PollutantSmallMultiples.vue";
+import PhasePath from "../components/PhasePath.vue";
 import TraceDeck from "../components/TraceDeck.vue";
 import TrustPanel from "../components/TrustPanel.vue";
+import WaterfallChart from "../components/WaterfallChart.vue";
 import { useLocationCatalog } from "../composables/useLocationCatalog";
 import { useCountUp } from "../composables/useCountUp";
 import { aqiColor } from "../lib/palette";
@@ -32,8 +34,14 @@ const POLLUTANT_LABELS: Record<string, string> = {
   so2: "SO₂",
   co: "CO",
 };
-/* The forecast gap has one wording on this page. */
-const FORECAST_PENDING = "未来预测尚未就绪";
+const HORIZON_COLORS: Record<string, string> = {
+  pm25: "#c8702b",
+  pm10: "#eda100",
+  no2: "#1baf7a",
+  o3: "#2a78d6",
+  so2: "#e87ba4",
+  co: "#4a3aa7",
+};
 
 watch(
   [locationId, () => locations.data.value],
@@ -107,6 +115,20 @@ const forecast = useQuery({
         },
       }),
     ),
+});
+
+/* City-scoped slice of the national weather matrix: the phase path and the
+   wind-clearance reading both need hourly wind beside the PM2.5 field. */
+const cityWeather = useQuery({
+  queryKey: computed(() => ["city-weather", locationId.value]),
+  enabled: computed(() => Number.isInteger(locationId.value) && locationId.value > 0),
+  queryFn: () =>
+    expectData(
+      api.GET("/api/overview/national/weather", {
+        params: { query: { hours: 720, location_id: locationId.value } },
+      }),
+    ),
+  staleTime: 15 * 60_000,
 });
 
 const structure = useQuery({
@@ -283,6 +305,91 @@ const rhythmHeadline = computed(
   () => heatmap.value?.peakCopy ?? "时段节律特征",
 );
 
+/* ── phase path: wind × PM2.5 ─────────────────────────────── */
+const phasePoints = computed(() => {
+  const series = pm25Series.value;
+  const weatherData = cityWeather.data.value;
+  if (!series || !weatherData) return [];
+  const pmByTime = new Map(
+    series.points
+      .filter((point) => point.value != null)
+      .map((point) => [point.time, Number(point.value)]),
+  );
+  const city = weatherData.cities[0];
+  if (!city) return [];
+  const out: Array<{ time: string; pm25: number; wind: number }> = [];
+  weatherData.times.forEach((time, i) => {
+    const wind = city.wind_speed[i];
+    const pm25 = pmByTime.get(time);
+    if (wind != null && pm25 != null) out.push({ time, pm25, wind });
+  });
+  return out;
+});
+
+const windClearance = computed(() => {
+  const points = phasePoints.value;
+  if (points.length < 200) return null;
+  const sorted = [...points].sort((a, b) => a.wind - b.wind);
+  const q = (f: number) => sorted[Math.floor(sorted.length * f)]!.wind;
+  const calmLine = q(0.25);
+  const windyLine = q(0.75);
+  const mean = (arr: typeof points) =>
+    arr.length ? arr.reduce((sum, p) => sum + p.pm25, 0) / arr.length : 0;
+  const calmMean = mean(points.filter((p) => p.wind <= calmLine));
+  const windyMean = mean(points.filter((p) => p.wind >= windyLine));
+  return { delta: calmMean - windyMean };
+});
+
+const windHeadline = computed(() => {
+  const clearance = windClearance.value;
+  if (clearance == null || clearance.delta <= 0) return "风与污染的拉锯";
+  return `静风比大风天高 ${clearance.delta.toFixed(1)} µg/m³`;
+});
+
+/* ── horizon: six pollutants folded ───────────────────────── */
+const horizonTimes = computed(
+  () => pulse.data.value?.[0]?.points.map((point) => point.time) ?? [],
+);
+
+const horizonSeries = computed(() =>
+  (pulse.data.value ?? []).map((item) => ({
+    key: item.variable,
+    label: POLLUTANT_LABELS[item.variable] ?? item.variable,
+    color: HORIZON_COLORS[item.variable] ?? "#94a3b8",
+    values: item.points.map((point) => point.value),
+  })),
+);
+
+/* ── waterfall: how the month was built ───────────────────── */
+const dailyPm = computed(() => {
+  const points = (pm25Series.value?.points ?? []).filter(
+    (point): point is typeof point & { value: number } => point.value != null,
+  );
+  const buckets = new Map<string, number[]>();
+  for (const point of points) {
+    const key = point.time.slice(0, 10);
+    const arr = buckets.get(key) ?? [];
+    arr.push(Number(point.value));
+    buckets.set(key, arr);
+  }
+  const days = [...buckets.keys()].sort();
+  const values = days.map((day) => {
+    const arr = buckets.get(day)!;
+    return arr.length >= 12
+      ? arr.reduce((sum, value) => sum + value, 0) / arr.length
+      : null;
+  });
+  return { days, values };
+});
+
+const waterfallHeadline = computed(() => {
+  const { values } = dailyPm.value;
+  const valid = values.filter((v): v is number => v != null);
+  if (valid.length < 2) return "30 天变化分解";
+  const net = valid[valid.length - 1]! - valid[0]!;
+  return `30 天净变化 ${net >= 0 ? "+" : ""}${net.toFixed(1)} µg/m³`;
+});
+
 const structureHeadline = computed(() => {
   const item = structure.data.value;
   const samples = item?.meta.sample_count ?? 0;
@@ -310,10 +417,7 @@ const trustHeadline = computed(() => {
 });
 
 /* Model-vs-observation is only a statement about model bias when both readings
-   describe the same hour. 武汉's newest ground reading is from 2025-08 while its
-   model field is current, and differencing them printed a "模式偏高 119.3 µg/m³"
-   claim that was arithmetic across thirteen months, not a comparison.
-   Comparability is a precondition of the claim, not a nicety. */
+   describe the same hour. Comparability is a precondition of the claim. */
 const COMPARABLE_HOURS = 3;
 
 const observationTime = computed(() => snapshot.data.value?.observation?.source_time);
@@ -399,11 +503,11 @@ const forecastOutlook = computed(() => {
     />
 
     <nav class="section-nav" aria-label="城市详情分区">
-      <a href="#trend"><Activity :size="15" />总趋势</a>
-      <a href="#pollutants"><BarChart3 :size="15" />污染物</a>
-      <a href="#rhythm"><Clock3 :size="15" />时段</a>
-      <a href="#structure"><Layers3 :size="15" />关联</a>
-      <a href="#trust"><ShieldCheck :size="15" />可信度</a>
+      <a href="#trend"><Activity :size="15" />趋势</a>
+      <a href="#pollutants"><BarChart3 :size="15" />构成</a>
+      <a href="#rhythm"><Clock3 :size="15" />节律</a>
+      <a href="#structure"><Layers3 :size="15" />结构</a>
+      <a href="#trust"><ShieldCheck :size="15" />回测</a>
     </nav>
 
     <section id="trend" v-reveal class="detail-section first-section">
@@ -421,12 +525,15 @@ const forecastOutlook = computed(() => {
     <section id="pollutants" v-reveal class="detail-section">
       <div class="section-heading">
         <h2 class="display-face">{{ pollutantHeadline }}</h2>
+        <span class="forecast-note">六污染物层阶</span>
       </div>
-      <PollutantSmallMultiples
-        v-if="pulse.data.value?.length"
-        :series="pulse.data.value"
+      <HorizonChart
+        v-if="horizonSeries.length"
+        class="horizon-body"
+        :times="horizonTimes"
+        :series="horizonSeries"
       />
-      <div v-else class="section-grid-skeleton" role="status" aria-label="正在读取污染物历史">
+      <div v-else class="section-grid-skeleton" role="status">
         <div class="skeleton"></div>
         <div class="skeleton"></div>
         <div class="skeleton"></div>
@@ -439,9 +546,16 @@ const forecastOutlook = computed(() => {
     <section id="rhythm" v-reveal class="detail-section">
       <div class="section-heading">
         <h2 class="display-face">{{ rhythmHeadline }}</h2>
+        <span class="forecast-note">{{ windHeadline }}</span>
       </div>
 
-      <HourRing ref="heatmap" :series="pm25Series" />
+      <div class="rhythm-grid">
+        <HourRing ref="heatmap" class="rhythm-cell" :series="pm25Series" />
+        <div class="rhythm-cell rhythm-phase">
+          <PhasePath v-if="phasePoints.length" :points="phasePoints" />
+          <div v-else class="section-state">风场数据不足</div>
+        </div>
+      </div>
     </section>
 
     <section id="structure" v-reveal class="detail-section">
@@ -452,7 +566,7 @@ const forecastOutlook = computed(() => {
         v-if="structure.data.value"
         :structure="structure.data.value"
       />
-      <div v-else class="section-state">当前城市还没有足够样本做结构分析。</div>
+      <div v-else class="section-state">样本不足</div>
     </section>
 
     <section id="trust" v-reveal class="detail-section trust-section">
@@ -460,6 +574,15 @@ const forecastOutlook = computed(() => {
         <h2 class="display-face">{{ trustHeadline }}</h2>
       </div>
 
+      <div class="trust-waterfall">
+        <h3 class="display-face">{{ waterfallHeadline }}</h3>
+        <WaterfallChart
+          v-if="dailyPm.values.length"
+          class="waterfall-body"
+          :days="dailyPm.days"
+          :values="dailyPm.values"
+        />
+      </div>
       <BacktestPanel :backtest="backtest.data.value" />
       <TrustPanel :coverage="coverage.data.value" />
     </section>
@@ -640,14 +763,46 @@ const forecastOutlook = computed(() => {
   border: 1px solid var(--hairline-soft);
 }
 
+.horizon-body {
+  height: clamp(360px, 46vh, 460px);
+}
+
+.rhythm-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 5fr) 7fr;
+  gap: 40px;
+  align-items: stretch;
+}
+
+.rhythm-cell {
+  height: 440px;
+}
+
 .trust-section {
   padding-bottom: 14px;
   display: grid;
   gap: 16px;
 }
 
+.trust-waterfall {
+  display: grid;
+  gap: 10px;
+}
+
+.trust-waterfall h3 {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+  font-weight: var(--fw-medium);
+}
+
+.waterfall-body {
+  height: 280px;
+}
+
 @media (max-width: 1180px) {
   .city-hero { grid-template-columns: 1fr; }
+  .rhythm-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
   .city-detail { padding: 16px var(--page-pad) 32px; }

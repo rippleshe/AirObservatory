@@ -4,13 +4,16 @@ import { useQuery } from "@tanstack/vue-query";
 import { useRouter } from "vue-router";
 import { api } from "../api/client";
 import { expectData } from "../api/request";
+import BumpChart from "../components/BumpChart.vue";
+import ChordDiagram from "../components/ChordDiagram.vue";
 import CityFingerprintPanel from "../components/CityFingerprintPanel.vue";
 import ChinaFieldMap from "../components/ChinaFieldMap.vue";
 import HealthRiskCard from "../components/HealthRiskCard.vue";
-import NationalInsightDeck from "../components/NationalInsightDeck.vue";
 import PollutionWeave from "../components/PollutionWeave.vue";
 import SeverityBand from "../components/SeverityBand.vue";
+import StreamGraph from "../components/StreamGraph.vue";
 import TimeRibbon from "../components/TimeRibbon.vue";
+import WindRose from "../components/WindRose.vue";
 import {
   AQI_LEVELS,
   CHANGE_COLORS,
@@ -23,7 +26,6 @@ import {
 import {
   concernCount,
   provinceRepresentatives,
-  regionSummary,
   type NationalCity,
 } from "../lib/provinces";
 import { useContextStore } from "../stores/context";
@@ -59,9 +61,7 @@ const fingerprint = useQuery({
   staleTime: 30 * 60_000,
 });
 
-/* One aligned hourly field replaces N single-city calls. Two variables ride
-   the same window: PM2.5 carries the ribbon's trace and the 24h change,
-   reference_aqi carries the headline and the map's AQI coding. */
+/* One aligned hourly field replaces N single-city calls. */
 const pmSeries = useQuery({
   queryKey: ["national-series", "pm25", 720],
   queryFn: () => fetchSeries("pm25"),
@@ -74,19 +74,39 @@ const aqiSeries = useQuery({
   staleTime: 15 * 60_000,
 });
 
-const cities = computed(() => national.data.value?.cities ?? []);
-/* One mark per province is the national layer's unit of reading. Reducing
-   once here — not inside each chart — is what keeps the headline count, the
-   band, the map, the matrix and the region bars describing the same set. */
-const provinces = computed(() => provinceRepresentatives(cities.value));
-const regions = computed(() => regionSummary(provinces.value));
+const weather = useQuery({
+  queryKey: ["national-weather", 720],
+  queryFn: () =>
+    expectData(
+      api.GET("/api/overview/national/weather", {
+        params: { query: { hours: 720 } },
+      }),
+    ),
+  staleTime: 15 * 60_000,
+});
 
-/* ── time machine projection ──────────────────────────────
-   Past hours are re-read from the stored field, never invented: AQI comes
-   from the model's own reference_aqi series, the level word from the same
-   HJ 633-2026 boundaries the backend uses, 24h change from the PM2.5 series
-   against the same hour a day earlier. Fields a past hour cannot know —
-   primary pollutants, health copy, ground-truth flags — arrive empty. */
+/* All six pollutants ride one parallel suite: the stream needs every mean,
+   and the province roster filters each matrix the same way. */
+const POLLUTANTS = [
+  { key: "pm25", label: "PM2.5", color: "#2a78d6" },
+  { key: "pm10", label: "PM10", color: "#eb6834" },
+  { key: "no2", label: "NO₂", color: "#1baf7a" },
+  { key: "o3", label: "O₃", color: "#eda100" },
+  { key: "so2", label: "SO₂", color: "#e87ba4" },
+  { key: "co", label: "CO", color: "#4a3aa7" },
+] as const;
+
+const pollutantSuite = useQuery({
+  queryKey: ["national-series-suite", 720],
+  queryFn: async () => Promise.all(POLLUTANTS.map((p) => fetchSeries(p.key))),
+  staleTime: 15 * 60_000,
+});
+
+const cities = computed(() => national.data.value?.cities ?? []);
+const provinces = computed(() => provinceRepresentatives(cities.value));
+const provinceIds = computed(() => new Set(provinces.value.map((city) => city.location_id)));
+
+/* ── time machine projection ────────────────────────────── */
 const pmCities = computed(() => {
   const rows = pmSeries.data.value?.cities ?? [];
   return new Map(rows.map((city) => [city.location_id, city]));
@@ -124,6 +144,27 @@ const displayCities = computed<NationalCity[]>(() => {
   });
 });
 
+/* Wind at the scrubbed hour: weather archives lag, so each city falls back
+   to its most recent non-null hour within 72h — persistence, not invention. */
+const windField = computed(() => {
+  const data = weather.data.value;
+  if (!data) return null;
+  const at =
+    scrubIndex.value == null
+      ? data.times.length - 1
+      : Math.min(Math.max(0, scrubIndex.value), data.times.length - 1);
+  return data.cities.flatMap((city) => {
+    for (let back = 0; back <= 72 && at - back >= 0; back++) {
+      const speed = city.wind_speed[at - back];
+      const dir = city.wind_direction[at - back];
+      if (speed != null && dir != null) {
+        return [{ location_id: city.location_id, lat: city.lat, lon: city.lon, speed, dir }];
+      }
+    }
+    return [];
+  });
+});
+
 const worstCity = computed(
   () =>
     [...displayCities.value]
@@ -136,7 +177,6 @@ const focusCity = computed(() =>
     .sort((a, b) => (b.china_aqi ?? -1) - (a.china_aqi ?? -1))[0] ?? null,
 );
 
-/* Awwwards / Editorial clean headline: concise, impactful, no rambling */
 const topLine = computed(() => {
   const worst = worstCity.value;
   if (!worst || worst.china_aqi == null) return "全国空气态势";
@@ -144,8 +184,6 @@ const topLine = computed(() => {
   return `${worst.name} AQI ${worst.china_aqi} ${worst.china_aqi_level ?? ""} · ${concerns} 省关注`;
 });
 
-/* The structure-fingerprint section states its conclusion from the analysis
-   product itself — components explained and modes found — never a static label. */
 const fingerprintHeadline = computed(() => {
   const meta = fingerprint.data.value?.meta;
   const explained = fingerprint.data.value?.explained_variance ?? [];
@@ -160,9 +198,211 @@ const fingerprintHeadline = computed(() => {
   return `前 ${used} 主成分解释 ${Math.round(covered * 100)}% 波动 · ${meta.cluster_count} 类污染模式`;
 });
 
-/* The legend is a ramp ruler with boundary ticks — instrument labelling,
-   not a row of dots. Numeric scales get boundary numbers; the diverging
-   change scale gets its five state words. */
+/* ── stream: composition pulse ────────────────────────────── */
+const streamTimes = computed(() => pollutantSuite.data.value?.[0]?.times ?? []);
+
+const streamLayers = computed(() => {
+  const suite = pollutantSuite.data.value;
+  if (!suite) return [];
+  const ids = provinceIds.value;
+  return POLLUTANTS.map((pollutant, i) => {
+    const series = suite[i]!;
+    const rows = series.cities.filter((city) => ids.has(city.location_id));
+    const values = series.times.map((_, t) => {
+      let sum = 0;
+      let n = 0;
+      for (const row of rows) {
+        const value = row.values[t];
+        if (value != null) {
+          sum += value;
+          n += 1;
+        }
+      }
+      return n ? sum / n : null;
+    });
+    const valid = values.filter((v): v is number => v != null).sort((a, b) => a - b);
+    const p90 = valid[Math.floor(valid.length * 0.9)] ?? 1;
+    return {
+      key: pollutant.key,
+      label: pollutant.label,
+      color: pollutant.color,
+      values: values.map((v) => (v == null ? null : Math.min(1.6, v / Math.max(1, p90)))),
+    };
+  });
+});
+
+const dominantPollutant = computed(() => {
+  const layers = streamLayers.value;
+  if (!layers.length) return "—";
+  let best = layers[0]!;
+  let bestMean = -1;
+  for (const layer of layers) {
+    const valid = layer.values.filter((v): v is number => v != null);
+    const mean = valid.reduce((a, b) => a + b, 0) / Math.max(1, valid.length);
+    if (mean > bestMean) {
+      bestMean = mean;
+      best = layer;
+    }
+  }
+  return best.label;
+});
+
+/* ── bump: rank race ──────────────────────────────────────── */
+const bumpEntries = computed(() => {
+  const series = pmSeries.data.value;
+  if (!series) return [];
+  const ids = provinceIds.value;
+  return series.cities
+    .filter((city) => ids.has(city.location_id))
+    .map((city) => {
+      const daily: Array<number | null> = [];
+      for (let start = 0; start < city.values.length; start += 24) {
+        const slice = city.values
+          .slice(start, start + 24)
+          .filter((v): v is number => v != null);
+        daily.push(slice.length >= 12 ? slice.reduce((a, b) => a + b, 0) / slice.length : null);
+      }
+      return { location_id: city.location_id, name: city.name, daily };
+    });
+});
+
+const bumpDays = computed(() => {
+  const series = pmSeries.data.value;
+  if (!series) return [];
+  return series.times
+    .filter((_, i) => i % 24 === 0)
+    .map((t) => t.slice(5, 10).replace("-", "/"));
+});
+
+const bumpLeader = computed(() => {
+  const entries = bumpEntries.value;
+  if (!entries.length) return "—";
+  let best = entries[0]!;
+  let bestMean = -1;
+  for (const entry of entries) {
+    const valid = entry.daily.filter((v): v is number => v != null);
+    const mean = valid.reduce((a, b) => a + b, 0) / Math.max(1, valid.length);
+    if (mean > bestMean) {
+      bestMean = mean;
+      best = entry;
+    }
+  }
+  return best.name;
+});
+
+/* ── wind rose samples: wind × PM2.5 over every province hour ── */
+const roseSamples = computed(() => {
+  const data = weather.data.value;
+  const series = pmSeries.data.value;
+  if (!data || !series) return [];
+  const ids = provinceIds.value;
+  const pmIndex = new Map(series.times.map((t, i) => [t, i]));
+  const out: Array<{ speed: number; dir: number; pm25: number }> = [];
+  for (const city of data.cities) {
+    if (!ids.has(city.location_id)) continue;
+    const pmRow = series.cities.find((c) => c.location_id === city.location_id);
+    if (!pmRow) continue;
+    data.times.forEach((time, i) => {
+      const pi = pmIndex.get(time);
+      if (pi == null) return;
+      const speed = city.wind_speed[i];
+      const dir = city.wind_direction[i];
+      const pm25 = pmRow.values[pi];
+      if (speed != null && dir != null && pm25 != null) {
+        out.push({ speed, dir, pm25 });
+      }
+    });
+  }
+  return out;
+});
+
+const DIRTIEST_BINS = [
+  { from: 337.5, to: 22.5, label: "北风" },
+  { from: 22.5, to: 67.5, label: "东北风" },
+  { from: 67.5, to: 112.5, label: "东风" },
+  { from: 112.5, to: 157.5, label: "东南风" },
+  { from: 157.5, to: 202.5, label: "南风" },
+  { from: 202.5, to: 247.5, label: "西南风" },
+  { from: 247.5, to: 292.5, label: "西风" },
+  { from: 292.5, to: 337.5, label: "西北风" },
+];
+
+const roseHeadline = computed(() => {
+  const samples = roseSamples.value;
+  if (samples.length < 200) return "风与污染";
+  const bins = new Map<number, { sum: number; n: number }>();
+  for (const sample of samples) {
+    const bin = Math.floor(((sample.dir % 360) + 360) % 360 / 45);
+    const cell = bins.get(bin) ?? { sum: 0, n: 0 };
+    cell.sum += sample.pm25;
+    cell.n += 1;
+    bins.set(bin, cell);
+  }
+  let bestBin = -1;
+  let bestMean = -1;
+  for (const [bin, cell] of bins) {
+    if (cell.n < 100) continue;
+    const mean = cell.sum / cell.n;
+    if (mean > bestMean) {
+      bestMean = mean;
+      bestBin = bin;
+    }
+  }
+  if (bestBin < 0) return "风与污染";
+  const label = DIRTIEST_BINS[bestBin]?.label ?? "风";
+  return `${label}携污最重 · ${bestMean.toFixed(0)} µg/m³`;
+});
+
+/* ── chord: synchrony network ─────────────────────────────── */
+const chordCities = computed(() => {
+  const series = pmSeries.data.value;
+  if (!series) return [];
+  const ids = provinceIds.value;
+  return series.cities
+    .filter((city) => ids.has(city.location_id))
+    .map((city) => ({ location_id: city.location_id, name: city.name, values: city.values }));
+});
+
+const chordHeadline = computed(() => {
+  const rows = chordCities.value;
+  if (rows.length < 3) return "城市联动";
+  let bestA = "";
+  let bestB = "";
+  let bestR = 0;
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = i + 1; j < rows.length; j++) {
+      let n = 0;
+      let sa = 0;
+      let sb = 0;
+      let saa = 0;
+      let sbb = 0;
+      let sab = 0;
+      for (let k = 0; k < rows[i]!.values.length; k++) {
+        const x = rows[i]!.values[k];
+        const y = rows[j]!.values[k];
+        if (x == null || y == null) continue;
+        n += 1;
+        sa += x;
+        sb += y;
+        saa += x * x;
+        sbb += y * y;
+        sab += x * y;
+      }
+      if (n < 240) continue;
+      const cov = sab * n - sa * sb;
+      const denom = Math.sqrt((saa * n - sa * sa) * (sbb * n - sb * sb));
+      const r = denom > 0 ? cov / denom : 0;
+      if (r > bestR) {
+        bestR = r;
+        bestA = rows[i]!.name;
+        bestB = rows[j]!.name;
+      }
+    }
+  }
+  return bestA ? `${bestA}–${bestB} 同呼吸 · r=${bestR.toFixed(2)}` : "城市联动";
+});
+
+/* The legend is a ramp ruler with boundary ticks. */
 const ramp = computed(() => {
   if (mapMetric.value === "aqi") {
     return {
@@ -188,12 +428,10 @@ const ramp = computed(() => {
 const METRIC_ORDER: MapMetric[] = ["aqi", "pm25", "change"];
 const metricIndex = computed(() => METRIC_ORDER.indexOf(mapMetric.value));
 
-/* The ribbon traces one number: the median PM2.5 of the same 31 provinces
-   the band and the map speak for. Missing stays missing — the line breaks. */
 const ribbon = computed(() => {
   const series = pmSeries.data.value;
   if (!series) return { times: [] as string[], values: [] as (number | null)[] };
-  const ids = new Set(provinces.value.map((city) => city.location_id));
+  const ids = provinceIds.value;
   const rows = series.cities.filter((city) => ids.has(city.location_id));
   const values = series.times.map((_, i) => {
     const xs = rows
@@ -225,12 +463,10 @@ function openCity(id: number, name: string) {
 <template>
   <section class="national-workspace">
     <div v-if="national.isError.value" class="national-error" role="alert">
-      <span>全国数据暂时没有加载成功。</span>
-      <button type="button" @click="national.refetch()">重新读取</button>
+      <span>数据未加载</span>
+      <button type="button" @click="national.refetch()">重试</button>
     </div>
 
-    <!-- The night observatory: the conclusion, the field, and the time
-         machine are one stage — the first viewport is a place, not a card. -->
     <section v-reveal class="stage">
       <header class="stage-head">
         <h1 class="display-face">{{ topLine }}</h1>
@@ -245,9 +481,10 @@ function openCity(id: number, name: string) {
           v-if="provinces.length"
           :cities="displayCities"
           :metric="mapMetric"
+          :wind-field="windField"
           @select="openCity"
         />
-        <div v-else class="map-skeleton skeleton" role="status" aria-label="正在绘制全国空气状态"></div>
+        <div v-else class="map-skeleton skeleton" role="status"></div>
 
         <div class="metric-switch" aria-label="地图指标">
           <span
@@ -260,7 +497,7 @@ function openCity(id: number, name: string) {
           <button :class="{ active: mapMetric === 'change' }" @click="mapMetric = 'change'">24h 变化</button>
         </div>
 
-        <div class="map-legend" aria-label="地图图例">
+        <div class="map-legend" aria-label="图例">
           <div class="legend-ramp">
             <div class="ramp-track">
               <span
@@ -274,7 +511,6 @@ function openCity(id: number, name: string) {
               <span v-for="tick in ramp.ticks" :key="tick" class="ramp-tick">{{ tick }}</span>
             </div>
           </div>
-          <span class="legend-rule">CAMS 模式换算 · 等积圆锥投影</span>
         </div>
       </div>
 
@@ -286,7 +522,7 @@ function openCity(id: number, name: string) {
           :index="scrubIndex"
           @update:index="scrubIndex = $event"
         />
-        <div v-else class="ribbon-skeleton skeleton" role="status" aria-label="正在读取近 30 天的历史场"></div>
+        <div v-else class="ribbon-skeleton skeleton" role="status"></div>
       </div>
     </section>
 
@@ -315,25 +551,55 @@ function openCity(id: number, name: string) {
       :roster="provinces"
     />
 
-    <section v-if="provinces.length" v-reveal class="analysis-section">
-      <NationalInsightDeck
-        :regions="regions"
-        :cities="provinces"
-        :roster="cities"
-      />
+    <section v-if="streamLayers.length" v-reveal class="viz-section">
+      <header class="viz-head">
+        <h2 class="display-face">污染构成 · {{ dominantPollutant }} 领跑</h2>
+        <span class="viz-meta data-mono">30 天 · 六污染物指数</span>
+      </header>
+      <div class="viz-body stream-body">
+        <StreamGraph :times="streamTimes" :layers="streamLayers" />
+      </div>
     </section>
 
-    <section v-reveal class="deep-section">
-      <div class="section-heading">
-        <h2 class="display-face">{{ fingerprintHeadline }}</h2>
+    <section v-if="bumpEntries.length" v-reveal class="viz-section">
+      <header class="viz-head">
+        <h2 class="display-face">{{ bumpLeader }} 领跑 · 30 天排名流动</h2>
+        <span class="viz-meta data-mono">逐日 PM2.5 均值</span>
+      </header>
+      <div class="duel-grid">
+        <div class="viz-body duel-cell">
+          <BumpChart :days="bumpDays" :entries="bumpEntries" :top-n="10" />
+        </div>
+        <div class="viz-body duel-cell">
+          <WindRose :samples="roseSamples" />
+        </div>
       </div>
+      <div class="viz-subhead" v-if="roseSamples.length">
+        <h3 class="display-face">{{ roseHeadline }}</h3>
+      </div>
+    </section>
+
+    <section v-if="chordCities.length" v-reveal class="viz-section">
+      <header class="viz-head">
+        <h2 class="display-face">{{ chordHeadline }}</h2>
+        <span class="viz-meta data-mono">PM2.5 同步性 · |r|≥0.55</span>
+      </header>
+      <div class="viz-body chord-body">
+        <ChordDiagram :cities="chordCities" />
+      </div>
+    </section>
+
+    <section v-reveal class="viz-section">
+      <header class="viz-head">
+        <h2 class="display-face">{{ fingerprintHeadline }}</h2>
+      </header>
       <CityFingerprintPanel
         v-if="fingerprint.data.value"
         :fingerprint="fingerprint.data.value"
         @select="openCity"
       />
       <div v-else class="fingerprint-state">
-        <div v-if="fingerprint.isPending.value" class="skeleton fingerprint-skeleton" role="status" aria-label="正在读取城市长期结构"></div>
+        <div v-if="fingerprint.isPending.value" class="skeleton fingerprint-skeleton" role="status"></div>
       </div>
     </section>
   </section>
@@ -342,16 +608,14 @@ function openCity(id: number, name: string) {
 <style scoped>
 .national-workspace {
   min-height: calc(100vh - 64px);
-  padding: 28px var(--page-pad) 56px;
+  padding: 28px var(--page-pad) 72px;
   display: grid;
-  gap: 24px;
+  gap: 28px;
   align-content: start;
   background: var(--canvas);
 }
 
-/* ── The Stage ─────────────────────────────────────────────
-   A printed atlas plate: gradient sea, an inner rule framing the map
-   field, and the landmass lifted on its own soft shadow. */
+/* ── The Stage ───────────────────────────────────────────── */
 .stage {
   position: relative;
   display: grid;
@@ -399,7 +663,6 @@ function openCity(id: number, name: string) {
   min-height: 580px;
 }
 
-/* The plate rule: a printed-atlas frame drawn just inside the map field. */
 .map-area::before {
   content: "";
   position: absolute;
@@ -410,7 +673,6 @@ function openCity(id: number, name: string) {
   pointer-events: none;
 }
 
-/* A breath of vignette settles the field into the plate. */
 .map-area::after {
   content: "";
   position: absolute;
@@ -420,7 +682,6 @@ function openCity(id: number, name: string) {
   pointer-events: none;
 }
 
-/* Metric switch: one ink thumb slides across three equal stops. */
 .metric-switch {
   position: absolute;
   z-index: 10;
@@ -498,7 +759,6 @@ function openCity(id: number, name: string) {
   box-shadow: var(--shadow-sm);
 }
 
-/* Ramp ruler: connected segments with boundary ticks beneath. */
 .legend-ramp {
   min-width: 240px;
   flex: 1;
@@ -534,12 +794,6 @@ function openCity(id: number, name: string) {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   justify-content: unset;
-}
-
-.legend-rule {
-  color: var(--muted);
-  opacity: 0.85;
-  font-size: 11px;
 }
 
 .map-skeleton {
@@ -584,28 +838,67 @@ function openCity(id: number, name: string) {
   font-weight: var(--fw-strong);
 }
 
-.analysis-section {
-  margin-top: 4px;
+/* ── Full-bleed viz sections: hairline-topped, no card boxes ── */
+.viz-section {
+  padding-top: 26px;
+  border-top: 1px solid var(--hairline);
+  display: grid;
+  gap: 18px;
 }
 
-.deep-section {
-  padding-top: 8px;
-}
-
-.section-heading {
-  min-height: 44px;
+.viz-head {
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
   gap: 24px;
-  margin-bottom: 6px;
 }
 
-.section-heading h2 {
+.viz-head h2 {
   margin: 0;
   color: var(--ink);
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 21px;
+  font-weight: var(--fw-strong);
   letter-spacing: var(--track-title);
+}
+
+.viz-subhead {
+  margin-top: 10px;
+}
+
+.viz-subhead h3 {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+  font-weight: var(--fw-medium);
+}
+
+.viz-meta {
+  color: var(--faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.viz-body {
+  width: 100%;
+}
+
+.stream-body {
+  height: clamp(260px, 34vh, 360px);
+}
+
+.duel-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 40px;
+  align-items: stretch;
+}
+
+.duel-cell {
+  height: 420px;
+}
+
+.chord-body {
+  height: clamp(420px, 52vh, 560px);
 }
 
 .fingerprint-state {
@@ -623,7 +916,7 @@ function openCity(id: number, name: string) {
 }
 
 @media (max-width: 900px) {
-  .national-workspace { padding: 16px 16px 36px; gap: 16px; }
+  .national-workspace { padding: 16px 16px 40px; gap: 20px; }
   .stage {
     grid-template-rows: auto minmax(460px, 58vh) auto;
     border-radius: var(--radius-lg);
@@ -635,6 +928,7 @@ function openCity(id: number, name: string) {
   }
   .map-area { min-height: 460px; }
   .ribbon-dock { padding: 10px 16px 20px; }
+  .duel-grid { grid-template-columns: 1fr; gap: 28px; }
 }
 
 @media (max-width: 700px) {

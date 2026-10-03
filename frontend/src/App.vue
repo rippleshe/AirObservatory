@@ -99,15 +99,6 @@ function selectGlobalLocation(event: Event) {
           </Transition>
         </RouterView>
       </div>
-
-      <footer class="app-footer">
-        <strong>Air Observatory</strong>
-        <span>数据源 OpenAQ · Open-Meteo CAMS</span>
-        <span>AQI 口径 HJ 633-2026</span>
-        <span>模型场 ≠ 地面观测</span>
-        <span class="footer-spacer"></span>
-        <span class="data-mono">{{ runtimeState }}</span>
-      </footer>
     </main>
   </div>
 </template>

@@ -250,7 +250,7 @@ onBeforeUnmount(stop);
     class="time-ribbon"
     role="slider"
     tabindex="0"
-    aria-label="近 30 天全国时间轴，拖动可回看每小时的空气状态"
+    aria-label="全国时间轴"
     :aria-valuemin="0"
     :aria-valuemax="Math.max(0, times.length - 1)"
     :aria-valuenow="activeIndex"

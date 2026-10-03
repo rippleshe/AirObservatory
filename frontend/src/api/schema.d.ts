@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/overview/national/weather": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** National Weather */
+        get: operations["national_weather_api_overview_national_weather_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analysis/city-fingerprint": {
         parameters: {
             query?: never;
@@ -840,6 +857,34 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** NationalWeatherCity */
+        NationalWeatherCity: {
+            /** Location Id */
+            location_id: number;
+            /** Name */
+            name: string;
+            /** Province */
+            province?: string | null;
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
+            /** Wind Speed */
+            wind_speed: (number | null)[];
+            /** Wind Direction */
+            wind_direction: (number | null)[];
+            /** Temperature */
+            temperature: (number | null)[];
+        };
+        /** NationalWeatherResponse */
+        NationalWeatherResponse: {
+            /** Hours */
+            hours: number;
+            /** Times */
+            times: string[];
+            /** Cities */
+            cities: components["schemas"]["NationalWeatherCity"][];
+        };
         /** OverviewLocation */
         OverviewLocation: {
             /** Location Id */
@@ -1141,6 +1186,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NationalSeriesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    national_weather_api_overview_national_weather_get: {
+        parameters: {
+            query?: {
+                hours?: number;
+                location_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalWeatherResponse"];
                 };
             };
             /** @description Validation Error */

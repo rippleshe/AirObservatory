@@ -148,7 +148,6 @@ function render() {
   scree.setOption(
     {
       animation: !reducedMotion,
-      aria: { enabled: true, description: "各变化方向解释的整体变化比例与累计比例。" },
       grid: { left: 48, right: 18, top: 24, bottom: 38 },
       tooltip: {
         ...tooltipBase(),
@@ -239,7 +238,6 @@ function render() {
   loadings.setOption(
     {
       animation: !reducedMotion,
-      aria: { enabled: true, description: "各变量在主要变化方向上的权重热力图。" },
       grid: { left: 96, right: 58, top: 18, bottom: 48 },
       tooltip: {
         ...tooltipBase(),
@@ -300,7 +298,6 @@ function render() {
   scores.setOption(
     {
       animation: !reducedMotion,
-      aria: { enabled: true, description: "空气状态在两个主要变化方向上的分布。" },
       grid: { left: 54, right: 20, top: 22, bottom: 46 },
       tooltip: {
         ...tooltipBase(),
@@ -363,7 +360,6 @@ function render() {
   correlation.setOption(
     {
       animation: !reducedMotion,
-      aria: { enabled: true, description: "污染物与气象变量的相关矩阵。" },
       grid: { left: 92, right: 50, top: 18, bottom: 86 },
       tooltip: {
         ...tooltipBase(),

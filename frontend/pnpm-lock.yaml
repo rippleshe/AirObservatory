@@ -136,6 +136,9 @@ importers:
       echarts:
         specifier: ^6.0.0
         version: 6.1.0
+      gsap:
+        specifier: ^3.15.0
+        version: 3.15.0
       lucide-vue-next:
         specifier: ^0.544.0
         version: 0.544.0(vue@3.5.43(typescript@5.9.3))
@@ -769,6 +772,9 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  gsap@3.15.0:
+    resolution: {integrity: sha512-dMW4CWBTUK1AEEDeZc1g4xpPGIrSf9fJF960qbTZmN/QwZIWY5wgliS6JWl9/25fpTGJrMRtSjGtOmPnfjZB+A==}
 
   hookable@5.5.3:
     resolution: {integrity: sha512-Yc+BQe8SvoXH1643Qez1zqLRmbA5rCL+sSmk6TVos0LWVfNIB7PGncdlId77WzLGSIB5KaWgTaNTs2lNVEI6VQ==}
@@ -1487,6 +1493,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  gsap@3.15.0: {}
 
   hookable@5.5.3: {}
 

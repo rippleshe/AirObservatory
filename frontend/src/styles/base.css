@@ -425,21 +425,6 @@ button, a, select { outline-offset: 2px; }
   margin-inline: auto;
 }
 
-/* ── Scroll Reveal (one-shot, staggered via --reveal-delay) ── */
-.reveal {
-  opacity: 0;
-  transform: translateY(16px);
-  transition:
-    opacity 640ms var(--ease-out),
-    transform 640ms var(--ease-out);
-  transition-delay: var(--reveal-delay, 0ms);
-}
-
-.reveal.is-visible {
-  opacity: 1;
-  transform: none;
-}
-
 /* ── Route Transition ────────────────────────────────────── */
 .route-enter-active {
   transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out);
@@ -489,33 +474,6 @@ button, a, select { outline-offset: 2px; }
   margin: 6px 0;
 }
 
-/* ── App Footer ──────────────────────────────────────────── */
-.app-footer {
-  width: min(100%, var(--page-max));
-  margin-inline: auto;
-  padding: 28px var(--page-pad) 36px;
-  border-top: 1px solid var(--hairline);
-  margin-top: var(--section-gap);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 24px;
-  align-items: baseline;
-  color: var(--faint);
-  font-size: var(--fs-label);
-  letter-spacing: 0.01em;
-}
-
-.app-footer strong {
-  color: var(--muted);
-  font-family: var(--font-display);
-  font-weight: var(--fw-strong);
-  letter-spacing: var(--track-caps);
-  text-transform: uppercase;
-  font-size: var(--fs-label);
-}
-
-.app-footer .footer-spacer { flex: 1; }
-
 /* ── Press Feel ──────────────────────────────────────────── */
 .rail-link:active,
 .rail-method:active,
@@ -524,11 +482,6 @@ button:active {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
   .route-enter-active,
   .route-leave-active { transition: none; }
   .skeleton::after { animation: none; }

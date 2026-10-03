@@ -250,9 +250,6 @@ defineExpose({ headline, peakStats, pm25Color });
 
     <div v-show="showTable" class="weave-table-wrap">
       <table class="weave-table">
-        <caption class="sr-only">
-          31 省代表城市近 30 天逐小时 PM2.5 的汇总读数：均值、峰值与越过 75 µg/m³ 的小时数。
-        </caption>
         <thead>
           <tr>
             <th scope="col">省</th>
@@ -280,7 +277,7 @@ defineExpose({ headline, peakStats, pm25Color });
       <span v-for="([label, color]) in PM25_BANDS" :key="label">
         <i :style="{ background: color }"></i>{{ label }}
       </span>
-      <span class="key-rule">白线为日界</span>
+      <span class="key-rule">白线=日界</span>
     </footer>
   </article>
 </template>

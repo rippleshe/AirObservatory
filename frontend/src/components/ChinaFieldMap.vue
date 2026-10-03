@@ -8,6 +8,7 @@
    halos on the worst provinces → severity-ranked collision-free labels.
    Colours still come from the shared palette; the map owns no hues. */
 import { geoConicEqualArea, geoGraticule, geoPath } from "d3-geo";
+import { interpolateRgb } from "d3-interpolate";
 import { select } from "d3-selection";
 import { easeCubicOut } from "d3-ease";
 import "d3-transition";
@@ -15,10 +16,20 @@ import { zoom as d3Zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } f
 import type { Feature, MultiPolygon, Polygon } from "geojson";
 import { Minus, Plus, RotateCcw } from "lucide-vue-next";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
-import { aqiColor, changeColor, changeState, pm25Color } from "../lib/palette";
+import { gsap, prefersReducedMotion } from "../lib/motion";
+import { pm25Color } from "../lib/palette";
+import { aqiColor, changeColor, changeState } from "../lib/palette";
 import type { NationalCity } from "../lib/provinces";
 
 type MapMetric = "aqi" | "pm25" | "change";
+
+export type WindFieldPoint = {
+  location_id: number;
+  lat: number;
+  lon: number;
+  speed: number;
+  dir: number;
+};
 
 type ProvinceFeature = Feature<Polygon | MultiPolygon, { name?: string; adcode?: number }>;
 
@@ -26,8 +37,9 @@ const props = withDefaults(
   defineProps<{
     cities: NationalCity[];
     metric?: MapMetric;
+    windField?: WindFieldPoint[] | null;
   }>(),
-  { metric: "aqi" },
+  { metric: "aqi", windField: null },
 );
 const emit = defineEmits<{ select: [id: number, name: string] }>();
 
@@ -306,6 +318,80 @@ const tooltipStyle = computed(() => {
 const marks = computed(() => view.value.marks);
 const labels = computed(() => view.value.labels);
 
+/* ── time-machine interpolation ────────────────────────────────────────
+   Scrubbing replaces the whole city array each tick. Snapping is what made
+   the old ribbon feel like a flip-book, so the mark layer now tweens: the
+   numbers roll, colours cross-fade between bands and label anchors glide to
+   their new slots. `view` stays the target; `render` is what paints. */
+type LiveLabel = Mark & { slot: Slot; w: number; h: number };
+type LiveState = { marks: Mark[]; labels: LiveLabel[] };
+
+const anim = ref<{ from: LiveState | null; t: number }>({ from: null, t: 1 });
+
+function snapshot(state: LiveState): LiveState {
+  return {
+    marks: state.marks.map((mark) => ({ ...mark })),
+    labels: state.labels.map((label) => ({ ...label, slot: { ...label.slot } })),
+  };
+}
+
+function formatValue(city: NationalCity, value: number | null | undefined) {
+  if (props.metric === "pm25") return value == null ? "—" : value.toFixed(0);
+  if (props.metric === "change") {
+    const state = changeState(value);
+    if (value == null) return state.label;
+    return `${state.arrow}${value >= 0 ? "+" : ""}${value.toFixed(1)}`;
+  }
+  return value == null ? "—" : `${Math.round(value)}`;
+}
+
+function interpolateState(from: LiveState, t: number): LiveState {
+  const to = view.value;
+  const markFrom = new Map(from.marks.map((m) => [m.city.location_id, m]));
+  const nextMarks = to.marks.map((mark) => {
+    const prev = markFrom.get(mark.city.location_id);
+    if (!prev) return mark;
+    const a = metricValue(prev.city);
+    const b = metricValue(mark.city);
+    const value = a != null && b != null ? a + (b - a) * t : b;
+    return {
+      ...mark,
+      fill: interpolateRgb(prev.fill, mark.fill)(t),
+      valueText: formatValue(mark.city, value),
+    };
+  });
+  const labelFrom = new Map(from.labels.map((l) => [l.city.location_id, l]));
+  const nextLabels = to.labels.map((label) => {
+    const prev = labelFrom.get(label.city.location_id);
+    if (!prev) return label;
+    return {
+      ...label,
+      slot: {
+        ...label.slot,
+        tx: prev.slot.tx + (label.slot.tx - prev.slot.tx) * t,
+        ty: prev.slot.ty + (label.slot.ty - prev.slot.ty) * t,
+      },
+    };
+  });
+  return { marks: nextMarks, labels: nextLabels };
+}
+
+const render = computed<LiveState>(() => {
+  const { from, t } = anim.value;
+  if (!from || t >= 1) return { marks: view.value.marks, labels: view.value.labels };
+  return interpolateState(from, t);
+});
+
+watch(view, () => {
+  if (prefersReducedMotion()) {
+    anim.value = { from: null, t: 1 };
+    return;
+  }
+  const from = snapshot(render.value);
+  anim.value = { from, t: 0 };
+  gsap.to(anim.value, { t: 1, duration: 0.45, ease: "power2.out", overwrite: true });
+});
+
 function fmtTime(value: string | null | undefined) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("zh-CN", {
@@ -316,6 +402,327 @@ function fmtTime(value: string | null | undefined) {
     hour12: false,
   }).format(new Date(value));
 }
+
+/* ── wind-particle field ───────────────────────────────────────────────
+   A canvas layer above the plate: particles ride the interpolated wind
+   field (60 cities, IDW-smoothed) and pick up the local PM2.5 band colour.
+   Streaks come from a destination-out fade, so the canvas never fully
+   clears — the air reads as flow, not arrows. The layer is base-space: it
+   lives under the same zoom transform as the SVG and pauses when idle. */
+const fieldCanvas = ref<HTMLCanvasElement | null>(null);
+let fieldCtx: CanvasRenderingContext2D | null = null;
+let maskAlpha: Uint8ClampedArray | null = null;
+let maskW = 0;
+let maskH = 0;
+let particles: Array<{ x: number; y: number; px: number; py: number; age: number; ttl: number }> = [];
+let rafId = 0;
+let lastTs = 0;
+let fieldActive = false;
+let fieldVisible = true;
+let fieldHardClear = true;
+const FIELD_CELL = 26;
+const SPEED_SCALE = 7.5;
+const fieldGrid = {
+  cols: 0,
+  rows: 0,
+  u: new Float32Array(0),
+  v: new Float32Array(0),
+  c: new Float32Array(0),
+};
+
+function devicePixelScale() {
+  return Math.min(window.devicePixelRatio || 1, 2);
+}
+
+function insideLand(x: number, y: number) {
+  if (!maskAlpha) return false;
+  const ix = x | 0;
+  const iy = y | 0;
+  if (ix < 0 || iy < 0 || ix >= maskW || iy >= maskH) return false;
+  return maskAlpha[iy * maskW + ix] > 40;
+}
+
+function rebuildMask() {
+  const proj = projection.value;
+  const canvas = fieldCanvas.value;
+  if (!proj || !canvas || !size.value.w || !size.value.h) return;
+  const off = document.createElement("canvas");
+  off.width = size.value.w;
+  off.height = size.value.h;
+  const ctx = off.getContext("2d");
+  if (!ctx) return;
+  ctx.fillStyle = "#000";
+  const p = geoPath(proj);
+  const features = provinces.value ?? [];
+  for (const feature of features) {
+    if (!feature.properties?.name) continue;
+    const d = p(feature);
+    if (d) ctx.fill(new Path2D(d));
+  }
+  const image = ctx.getImageData(0, 0, off.width, off.height);
+  maskW = off.width;
+  maskH = off.height;
+  const alpha = new Uint8ClampedArray(maskW * maskH);
+  for (let i = 0, j = 3; i < alpha.length; i++, j += 4) alpha[i] = image.data[j]!;
+  maskAlpha = alpha;
+  fieldHardClear = true;
+}
+
+function projectedWind() {
+  const proj = projection.value;
+  if (!proj || !props.windField?.length) return [];
+  return props.windField.flatMap((point) => {
+    const xy = proj([point.lon, point.lat]);
+    if (!xy) return [];
+    const rad = (point.dir * Math.PI) / 180;
+    const u = -point.speed * Math.sin(rad);
+    const northward = -point.speed * Math.cos(rad);
+    return [{ x: xy[0]!, y: xy[1]!, u, v: -northward, speed: point.speed }];
+  });
+}
+
+function rebuildGrid() {
+  const proj = projection.value;
+  if (!proj || !size.value.w || !size.value.h) return;
+  const cols = Math.max(2, Math.ceil(size.value.w / FIELD_CELL) + 1);
+  const rows = Math.max(2, Math.ceil(size.value.h / FIELD_CELL) + 1);
+  const u = new Float32Array(cols * rows);
+  const v = new Float32Array(cols * rows);
+  const c = new Float32Array(cols * rows);
+  const wind = projectedWind();
+  const pm = props.cities.flatMap((city) => {
+    const xy = proj([city.lon, city.lat]);
+    if (!xy || city.pm25 == null) return [];
+    return [{ x: xy[0]!, y: xy[1]!, value: city.pm25 }];
+  });
+  for (let r = 0; r < rows; r++) {
+    for (let col = 0; col < cols; col++) {
+      const gx = col * FIELD_CELL;
+      const gy = r * FIELD_CELL;
+      let wu = 0;
+      let wv = 0;
+      let wc = 0;
+      let wsum = 0;
+      for (const point of wind) {
+        const d2 = (point.x - gx) ** 2 + (point.y - gy) ** 2 + 64;
+        const weight = 1 / d2;
+        wu += point.u * weight;
+        wv += point.v * weight;
+        wsum += weight;
+      }
+      let csum = 0;
+      for (const point of pm) {
+        const d2 = (point.x - gx) ** 2 + (point.y - gy) ** 2 + 100;
+        const weight = 1 / d2;
+        wc += point.value * weight;
+        csum += weight;
+      }
+      const idx = r * cols + col;
+      if (wsum > 0) {
+        u[idx] = wu / wsum;
+        v[idx] = wv / wsum;
+      }
+      c[idx] = csum > 0 ? wc / csum : -1;
+    }
+  }
+  fieldGrid.cols = cols;
+  fieldGrid.rows = rows;
+  fieldGrid.u = u;
+  fieldGrid.v = v;
+  fieldGrid.c = c;
+}
+
+function sampleGrid(x: number, y: number): [number, number, number] {
+  const gx = x / FIELD_CELL;
+  const gy = y / FIELD_CELL;
+  const x0 = Math.min(fieldGrid.cols - 1, Math.max(0, Math.floor(gx)));
+  const y0 = Math.min(fieldGrid.rows - 1, Math.max(0, Math.floor(gy)));
+  const x1 = Math.min(fieldGrid.cols - 1, x0 + 1);
+  const y1 = Math.min(fieldGrid.rows - 1, y0 + 1);
+  const fx = gx - x0;
+  const fy = gy - y0;
+  const idx = (xx: number, yy: number) => yy * fieldGrid.cols + xx;
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  const u =
+    lerp(lerp(fieldGrid.u[idx(x0, y0)]!, fieldGrid.u[idx(x1, y0)]!, fx), lerp(fieldGrid.u[idx(x0, y1)]!, fieldGrid.u[idx(x1, y1)]!, fx), fy);
+  const v =
+    lerp(lerp(fieldGrid.v[idx(x0, y0)]!, fieldGrid.v[idx(x1, y0)]!, fx), lerp(fieldGrid.v[idx(x0, y1)]!, fieldGrid.v[idx(x1, y1)]!, fx), fy);
+  const c =
+    lerp(lerp(fieldGrid.c[idx(x0, y0)]!, fieldGrid.c[idx(x1, y0)]!, fx), lerp(fieldGrid.c[idx(x0, y1)]!, fieldGrid.c[idx(x1, y1)]!, fx), fy);
+  return [u, v, c];
+}
+
+function spawnParticle(p: { x: number; y: number; age: number; ttl: number }) {
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const x = Math.random() * maskW;
+    const y = Math.random() * maskH;
+    if (insideLand(x, y)) {
+      p.x = x;
+      p.y = y;
+      p.age = 0;
+      p.ttl = 2.5 + Math.random() * 3.5;
+      return;
+    }
+  }
+  p.age = p.ttl;
+}
+
+function syncCanvasSize() {
+  const canvas = fieldCanvas.value;
+  if (!canvas || !size.value.w || !size.value.h) return;
+  const dpr = devicePixelScale();
+  const w = Math.round(size.value.w * dpr);
+  const h = Math.round(size.value.h * dpr);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+    fieldHardClear = true;
+  }
+  fieldCtx = canvas.getContext("2d");
+}
+
+function clearField() {
+  const ctx = fieldCtx;
+  if (!ctx) return;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.restore();
+}
+
+function drawStaticField() {
+  const ctx = fieldCtx;
+  if (!ctx) return;
+  clearField();
+  const t = transform.value;
+  const dpr = devicePixelScale();
+  ctx.setTransform(t.k * dpr, 0, 0, t.k * dpr, t.x * dpr, t.y * dpr);
+  ctx.lineWidth = 1.2 / Math.max(0.7, t.k);
+  ctx.lineCap = "round";
+  for (let r = 0; r < fieldGrid.rows; r++) {
+    for (let col = 0; col < fieldGrid.cols; col++) {
+      const x = col * FIELD_CELL;
+      const y = r * FIELD_CELL;
+      if (!insideLand(x, y)) continue;
+      const idx = r * fieldGrid.cols + col;
+      const [u, v, c] = [fieldGrid.u[idx]!, fieldGrid.v[idx]!, fieldGrid.c[idx]!];
+      const speed = Math.hypot(u, v);
+      if (speed < 0.2) continue;
+      const len = Math.min(18, 5 + speed * 1.8);
+      ctx.strokeStyle = c >= 0 ? pm25Color(c) : "#94a3b8";
+      ctx.globalAlpha = 0.7;
+      ctx.lineWidth = 1.6 / Math.max(0.7, t.k);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + (u / speed) * len, y + (v / speed) * len);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function fieldFrame(ts: number) {
+  if (!fieldActive) return;
+  rafId = requestAnimationFrame(fieldFrame);
+  const ctx = fieldCtx;
+  if (!ctx || document.hidden || !fieldVisible) return;
+  const dt = Math.min(0.05, (ts - lastTs) / 1000 || 0.016);
+  lastTs = ts;
+
+  if (fieldHardClear) {
+    clearField();
+    fieldHardClear = false;
+    for (const particle of particles) spawnParticle(particle);
+  } else {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.fillStyle = "rgba(0,0,0,0.085)";
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.restore();
+  }
+
+  const t = transform.value;
+  const dpr = devicePixelScale();
+  ctx.setTransform(t.k * dpr, 0, 0, t.k * dpr, t.x * dpr, t.y * dpr);
+  ctx.lineWidth = 1.5 / Math.max(0.7, t.k);
+  ctx.lineCap = "round";
+
+  for (const particle of particles) {
+    const [u, v, c] = sampleGrid(particle.x, particle.y);
+    particle.px = particle.x;
+    particle.py = particle.y;
+    particle.x += u * SPEED_SCALE * dt;
+    particle.y += v * SPEED_SCALE * dt;
+    particle.age += dt;
+    const speed = Math.hypot(u, v);
+    if (
+      particle.age > particle.ttl ||
+      speed < 0.05 ||
+      !insideLand(particle.x, particle.y)
+    ) {
+      spawnParticle(particle);
+      continue;
+    }
+    ctx.strokeStyle = c >= 0 ? pm25Color(c) : "#94a3b8";
+    ctx.globalAlpha = 0.62;
+    ctx.beginPath();
+    ctx.moveTo(particle.px, particle.py);
+    ctx.lineTo(particle.x, particle.y);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function ensureParticleCount() {
+  const target = Math.round(
+    Math.min(2000, Math.max(600, (size.value.w * size.value.h) / 700)),
+  );
+  if (particles.length === target) return;
+  particles = Array.from({ length: target }, () => {
+    const particle = { x: 0, y: 0, px: 0, py: 0, age: 0, ttl: 0 };
+    spawnParticle(particle);
+    return particle;
+  });
+}
+
+function startField() {
+  if (fieldActive || prefersReducedMotion()) {
+    if (prefersReducedMotion()) drawStaticField();
+    return;
+  }
+  fieldActive = true;
+  lastTs = performance.now();
+  rafId = requestAnimationFrame(fieldFrame);
+}
+
+function stopField() {
+  fieldActive = false;
+  cancelAnimationFrame(rafId);
+}
+
+let fieldObserver: IntersectionObserver | null = null;
+
+function refreshFieldLayer() {
+  syncCanvasSize();
+  rebuildMask();
+  rebuildGrid();
+  ensureParticleCount();
+  fieldHardClear = true;
+  if (prefersReducedMotion()) drawStaticField();
+}
+
+watch([projection, () => props.windField], () => {
+  refreshFieldLayer();
+});
+
+watch(() => props.cities, () => {
+  if (maskAlpha) rebuildGrid();
+});
+
+watch(transform, () => {
+  fieldHardClear = true;
+});
 
 /* ── zoom gestures ───────────────────────────────────────────────────── */
 
@@ -419,6 +826,20 @@ onMounted(async () => {
   } catch {
     mapError.value = true;
   }
+
+  if (fieldCanvas.value) {
+    fieldObserver = new IntersectionObserver(
+      (entries) => {
+        fieldVisible = entries[0]?.isIntersecting ?? true;
+        if (fieldVisible) startField();
+        else stopField();
+      },
+      { rootMargin: "120px" },
+    );
+    fieldObserver.observe(fieldCanvas.value);
+    refreshFieldLayer();
+    startField();
+  }
 });
 
 watch(() => [props.cities, props.metric], () => {
@@ -427,6 +848,8 @@ watch(() => [props.cities, props.metric], () => {
 
 onBeforeUnmount(() => {
   observer?.disconnect();
+  fieldObserver?.disconnect();
+  stopField();
 });
 </script>
 
@@ -438,7 +861,7 @@ onBeforeUnmount(() => {
       :width="size.w"
       :height="size.h"
       role="img"
-      aria-label="全国省级空气质量地图，一省一点，取该省当前 AQI 最高的城市。可切换 AQI、PM2.5 与 24 小时变化，点击进入城市详情。"
+      aria-label="全国空气质量地图"
     >
       <defs>
         <pattern id="atlas-dots" width="7" height="7" patternUnits="userSpaceOnUse">
@@ -476,7 +899,7 @@ onBeforeUnmount(() => {
              glow — a thin reticle on the three most severe provinces and a
              single radar ping on the worst one. -->
         <g class="marks">
-          <template v-for="mark in marks" :key="mark.city.location_id">
+          <template v-for="mark in render.marks" :key="mark.city.location_id">
             <circle
               v-if="mark.ping"
               class="ping"
@@ -516,7 +939,7 @@ onBeforeUnmount(() => {
         <!-- Labels: severity-ranked, collision-free, haloed ink -->
         <g class="labels" aria-hidden="true">
           <g
-            v-for="label in labels"
+            v-for="label in render.labels"
             :key="label.city.location_id"
             class="label"
             :class="{ reading: label.reading }"
@@ -541,6 +964,10 @@ onBeforeUnmount(() => {
         </g>
       </g>
     </svg>
+
+    <!-- Wind particles ride above the plate: translucent streaks, no pointer
+         capture, same zoom transform as the SVG geometry. -->
+    <canvas ref="fieldCanvas" class="field-canvas" aria-hidden="true"></canvas>
 
     <!-- Tooltip: the same reading the page would give, anchored to the dot -->
     <div
@@ -599,6 +1026,15 @@ onBeforeUnmount(() => {
 
 .china-map:active {
   cursor: grabbing;
+}
+
+.field-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 /* Sea: a barely-there radial lift behind the plate, then graticule ink. */

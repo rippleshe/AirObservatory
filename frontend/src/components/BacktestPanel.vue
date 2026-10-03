@@ -116,10 +116,6 @@ function lineOption(metric: "mae" | "rmse") {
   const models = [...new Set(rows.map((row) => row.model_name))];
   return {
     animation: false,
-    aria: {
-      enabled: true,
-      description: metric.toUpperCase() + " 按预测时效变化。",
-    },
     grid: { left: 52, right: 46, top: 26, bottom: 42 },
     tooltip: {
       trigger: "axis",
@@ -212,10 +208,6 @@ function scatterOption() {
   const max = Math.max(10, ...values);
   return {
     animation: false,
-    aria: {
-      enabled: true,
-      description: "预测值与地面观测真值对照，含 1:1 参考线。",
-    },
     grid: { left: 56, right: 24, top: 26, bottom: 48 },
     tooltip: {
       backgroundColor: "rgba(255,255,255,.985)",
@@ -326,11 +318,11 @@ onBeforeUnmount(() => {
     </header>
 
     <div v-if="!evidence.enough" class="not-enough">
-      <h3>样本还不够，暂时不给结论</h3>
+      <h3>样本不足</h3>
       <p class="evidence-line">
-        <b class="data-mono">已对齐样本 {{ evidence.samples.length }}</b>
-        <span>时长 {{ horizonSpan }}</span>
-        <span>{{ evidence.models.length ? evidence.models.join(" / ") : "暂无" }}</span>
+        <b class="data-mono">N {{ evidence.samples.length }}</b>
+        <span>{{ horizonSpan }}</span>
+        <span>{{ evidence.models.length ? evidence.models.join(" / ") : "—" }}</span>
       </p>
     </div>
 

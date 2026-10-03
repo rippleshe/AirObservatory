@@ -122,11 +122,6 @@ function render() {
 
   chart.setOption(
     {
-      aria: {
-        enabled: true,
-        description:
-          "PM2.5 综合时间图，同时展示模式历史、地面观测、未来预测、预测区间和空气质量浓度等级背景。",
-      },
       animation: !reduceMotion,
       animationDurationUpdate: reduceMotion ? 0 : 220,
       animationEasingUpdate: "cubicOut",
@@ -246,6 +241,7 @@ function render() {
         {
           name: "模式历史",
           type: "line",
+          universalTransition: true,
           data: history.map((point) => [point.time, point.value]),
           showSymbol: false,
           connectNulls: false,
@@ -303,6 +299,7 @@ function render() {
         {
           name: "地面观测",
           type: "line",
+          universalTransition: true,
           data: observationSeriesData(observations),
           showSymbol: true,
           symbol: "circle",
@@ -315,6 +312,7 @@ function render() {
         {
           name: "未来预测",
           type: "line",
+          universalTransition: true,
           data: forecastLine,
           showSymbol: false,
           connectNulls: false,

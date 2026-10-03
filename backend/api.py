@@ -16,6 +16,7 @@ from .schemas import (
     ModelMetricsResponse,
     NationalOverviewResponse,
     NationalSeriesResponse,
+    NationalWeatherResponse,
     OverviewResponse,
     SeriesResponse,
     SnapshotResponse,
@@ -33,6 +34,7 @@ from .services import (
     get_model_metrics,
     get_national_overview,
     get_national_series,
+    get_national_weather,
     get_overview,
     get_series,
     get_snapshot,
@@ -69,6 +71,19 @@ def national_series(
 ) -> NationalSeriesResponse:
     try:
         return get_national_series(variable=variable, hours=hours)
+    except ValueError as exc:
+        raise _bad_request(exc) from exc
+    except LookupError as exc:
+        raise _not_found(exc) from exc
+
+
+@router.get("/overview/national/weather", response_model=NationalWeatherResponse)
+def national_weather(
+    hours: Annotated[int, Query(ge=1, le=8760)] = 720,
+    location_id: Annotated[int | None, Query()] = None,
+) -> NationalWeatherResponse:
+    try:
+        return get_national_weather(hours=hours, location_id=location_id)
     except ValueError as exc:
         raise _bad_request(exc) from exc
     except LookupError as exc:

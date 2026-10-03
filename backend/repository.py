@@ -415,3 +415,25 @@ def national_series_rows(value_column: str, since: str) -> list[sqlite3.Row]:
             """,
             (since,),
         ).fetchall()
+
+
+def national_weather_rows(
+    since: str, location_id: int | None = None
+) -> list[sqlite3.Row]:
+    """Hourly weather for every active city (or one) since `since`, oldest first."""
+    query = """
+        SELECT w.location_id, l.name, l.province, l.latitude, l.longitude,
+               w.observed_at, w.wind_speed_10m, w.wind_direction_10m,
+               w.temperature_2m
+        FROM weather_observations w
+        JOIN locations l ON l.location_id=w.location_id
+        WHERE l.active=1 AND l.station_type='city_reference'
+          AND w.observed_at>=?
+    """
+    params: list[object] = [since]
+    if location_id is not None:
+        query += " AND w.location_id=?"
+        params.append(location_id)
+    query += " ORDER BY w.location_id, w.observed_at"
+    with connect() as con:
+        return con.execute(query, params).fetchall()

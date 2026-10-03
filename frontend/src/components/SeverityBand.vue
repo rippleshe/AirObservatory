@@ -143,10 +143,6 @@ function tickStyle(mark: { start: number }) {
         <dt>24h 改善</dt>
         <dd>{{ fallingCount }}<small> 省</small></dd>
       </div>
-      <div class="band-rule">
-        <dt>排列</dt>
-        <dd>一格一省，由低到高</dd>
-      </div>
     </dl>
   </section>
 </template>

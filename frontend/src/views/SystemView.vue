@@ -41,7 +41,7 @@ function retry() {
 <template>
   <section class="system-workspace">
     <header class="system-header">
-      <h1 class="display-face">数据来源与更新记录</h1>
+      <h1 class="display-face">数据管道</h1>
       <button type="button" class="refresh-button" @click="retry">
         <RefreshCw :size="14" />
         刷新
@@ -91,7 +91,7 @@ function retry() {
       <header>
         <Database :size="15" />
         <h2 class="display-face">
-          {{ system.data.value?.bindings.length ?? 0 }} 个城市绑定地面观测站点
+          站点绑定 {{ system.data.value?.bindings.length ?? 0 }}
         </h2>
       </header>
       <div class="table-scroll">
@@ -128,7 +128,7 @@ function retry() {
       <header>
         <RefreshCw :size="15" />
         <h2 class="display-face">
-          {{ system.data.value?.ingestions.length ?? 0 }} 次数据更新记录
+          数据更新 {{ system.data.value?.ingestions.length ?? 0 }}
         </h2>
       </header>
       <div class="table-scroll">

@@ -255,6 +255,23 @@ class NationalSeriesResponse(BaseModel):
     cities: list[NationalSeriesCity]
 
 
+class NationalWeatherCity(BaseModel):
+    location_id: int
+    name: str
+    province: str | None = None
+    lat: float
+    lon: float
+    wind_speed: list[float | None]
+    wind_direction: list[float | None]
+    temperature: list[float | None]
+
+
+class NationalWeatherResponse(BaseModel):
+    hours: int
+    times: list[datetime]
+    cities: list[NationalWeatherCity]
+
+
 class PCAExplainedVariance(BaseModel):
     component: str
     variance_ratio: float

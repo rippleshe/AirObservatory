@@ -26,23 +26,21 @@ const coverageHeadline = computed(() => {
 
 const coverageSummary = computed(() => {
   const days = props.coverage?.coverage ?? [];
-  if (!days.length) return "这一窗口还没有可统计的覆盖记录。";
+  if (!days.length) return "暂无记录";
   const gap = days.filter((day) => day.observation_coverage < 0.95).length;
-  if (!gap) return "地面实测逐小时完整，没有用模式数据填补空缺。";
-  return `${gap} 天地面实测存在缺口，缺口保留为空，没有用模式数据补齐。`;
+  return gap ? `${gap} 天有缺口` : "实测完整";
 });
 
 const bindingCopy = computed(() => {
   const bindings = props.coverage?.bindings ?? [];
-  if (!bindings.length) return "当前城市还没有地面实测站点接入";
-  const authoritative = bindings.filter((item) => item.is_authoritative).length;
-  return `接入 ${bindings.length} 个地面实测站点，其中 ${authoritative} 个权威源`;
+  if (!bindings.length) return "无站点接入";
+  return `接入 ${bindings.length} 站`;
 });
 
 const analysisCopy = computed(() => {
   const analyses = props.coverage?.analyses ?? [];
-  if (!analyses.length) return "当前城市还没有可复用的离线分析结果";
-  return `已生成 ${analyses.length} 项离线分析`;
+  if (!analyses.length) return "暂无分析";
+  return `${analyses.length} 项分析`;
 });
 
 const columns = computed(() => {

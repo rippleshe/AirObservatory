@@ -22,6 +22,7 @@ from .repository import (
     location_row,
     national_model_rows,
     national_series_rows,
+    national_weather_rows,
     overview_rows,
     provider_binding_rows,
     recent_ingestion_rows,
@@ -58,6 +59,8 @@ from .schemas import (
     NationalSeriesCity,
     NationalSeriesResponse,
     NationalSummary,
+    NationalWeatherCity,
+    NationalWeatherResponse,
     OverviewLocation,
     OverviewResponse,
     PCAExplainedVariance,
@@ -566,6 +569,56 @@ def get_national_series(
         times=times,
         cities=list(cities.values()),
     )
+
+
+def get_national_weather(
+    hours: int = 720, location_id: int | None = None
+) -> NationalWeatherResponse:
+    """Aligned hourly weather field (wind + temperature) for the flow layer.
+
+    One request mirrors get_national_series: an aligned matrix with holes,
+    never an interpolated field. wind_direction is meteorological degrees
+    (0 = from north, clockwise); the frontend converts to u/v. Weather
+    archives lag real time, so the newest hours are legitimately null.
+    """
+    if not 1 <= hours <= 8760:
+        raise ValueError("hours must be between 1 and 8760")
+    since = (_now() - timedelta(hours=hours)).isoformat()
+    rows = national_weather_rows(since, location_id)
+    if not rows:
+        raise LookupError("No weather series available")
+
+    times: list[datetime] = []
+    seen_times: dict[str, int] = {}
+    for row in rows:
+        stamp = row["observed_at"]
+        if stamp not in seen_times:
+            seen_times[stamp] = len(times)
+            times.append(_dt(stamp))
+
+    cities: dict[int, NationalWeatherCity] = {}
+    for row in rows:
+        loc = int(row["location_id"])
+        city = cities.get(loc)
+        if city is None:
+            city = NationalWeatherCity(
+                location_id=loc,
+                name=row["name"],
+                province=row["province"],
+                lat=float(row["latitude"]),
+                lon=float(row["longitude"]),
+                wind_speed=[None] * len(times),
+                wind_direction=[None] * len(times),
+                temperature=[None] * len(times),
+            )
+            cities[loc] = city
+        idx = seen_times[row["observed_at"]]
+        if city.wind_speed[idx] is None:
+            city.wind_speed[idx] = row["wind_speed_10m"]
+            city.wind_direction[idx] = row["wind_direction_10m"]
+            city.temperature[idx] = row["temperature_2m"]
+
+    return NationalWeatherResponse(hours=hours, times=times, cities=list(cities.values()))
 
 
 def get_national_overview() -> NationalOverviewResponse:

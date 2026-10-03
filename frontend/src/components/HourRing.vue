@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { components } from "../api/schema";
+import { gsap } from "../lib/motion";
 import { PM25_BANDS, pm25Color } from "../lib/palette";
 
 type SeriesResponse = components["schemas"]["SeriesResponse"];
@@ -107,7 +108,7 @@ const sectors = computed(() => {
   const days = dayKeys.value.length;
   const rStep = (RING_OUTER - RING_INNER) / Math.max(1, days);
   const gap = 0.12;
-  const out: { d: string; value: number; label: string; cx: number; cy: number }[] = [];
+  const out: { d: string; value: number; label: string; cx: number; cy: number; hour: number }[] = [];
   grid.value.forEach((row, dayIndex) => {
     const r0 = RING_INNER + dayIndex * rStep + gap;
     const r1 = RING_INNER + (dayIndex + 1) * rStep - gap;
@@ -134,6 +135,7 @@ const sectors = computed(() => {
         label: `${dayKeys.value[dayIndex]} · ${String(hour).padStart(2, "0")}:00`,
         cx: CENTER + ((r0 + r1) / 2) * Math.cos(mid),
         cy: CENTER + ((r0 + r1) / 2) * Math.sin(mid),
+        hour,
       });
     });
   });
@@ -170,9 +172,32 @@ function onMove(event: MouseEvent, sector: { value: number; label: string }) {
   };
 }
 
-onMounted(() => {
+function sweepIn() {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  root.value?.classList.add("bloom");
+  /* Radial sweep: every ring's same hour lights together, the sweep walks
+     the clock once — the ring is read as a clock, so it enters as one. */
+  const paths = root.value?.querySelectorAll<SVGPathElement>(".sectors path");
+  if (!paths?.length) return;
+  paths.forEach((path) => {
+    const hour = Number(path.dataset.hour ?? 0);
+    gsap.fromTo(
+      path,
+      { opacity: 0 },
+      {
+        opacity: 1,
+        duration: 0.36,
+        delay: 0.06 + (hour / 24) * 0.85,
+        ease: "power1.out",
+      },
+    );
+  });
+}
+
+let swept = false;
+watch(sectors, (next) => {
+  if (swept || !next.length) return;
+  swept = true;
+  requestAnimationFrame(sweepIn);
 });
 
 onBeforeUnmount(() => {
@@ -202,7 +227,7 @@ defineExpose({ peakCopy });
         class="ring-svg"
         :viewBox="`0 0 ${SIZE} ${SIZE}`"
         role="img"
-        :aria-label="`${windowCopy} PM2.5 日轮：外圈为最近一天，角度为小时`"
+        :aria-label="`PM2.5 日轮 ${windowCopy}`"
       >
         <g class="sectors">
           <path
@@ -210,6 +235,7 @@ defineExpose({ peakCopy });
             :key="index"
             :d="sector.d"
             :fill="pm25Color(sector.value)"
+            :data-hour="sector.hour"
             @mousemove="onMove($event, sector)"
             @mouseleave="hover = null"
           />
@@ -221,7 +247,7 @@ defineExpose({ peakCopy });
           {{ peakHour != null ? `${(hourMeans[peakHour] ?? 0).toFixed(1)} µg/m³` : "样本不足" }}
         </text>
         <text class="ring-caption" :x="CENTER" :y="CENTER + 32" text-anchor="middle">
-          全日均值最高时段
+          峰值时段
         </text>
         <text
           v-for="tick in hourTicks"
@@ -251,14 +277,14 @@ defineExpose({ peakCopy });
         <span v-for="([label, color]) in PM25_BANDS" :key="label">
           <i :style="{ background: color }"></i>{{ label }}
         </span>
-        <span class="key-rule">外圈是最近一天</span>
+        <span class="key-rule">外圈=今天</span>
       </div>
     </div>
 
     <div v-show="showTable" class="ring-table-wrap">
       <table class="ring-table">
         <caption class="sr-only">
-          {{ windowCopy }} PM2.5 按小时的分布读数：均值、最低与最高。
+          {{ windowCopy }} PM2.5 分时读数
         </caption>
         <thead>
           <tr>
@@ -366,22 +392,6 @@ defineExpose({ peakCopy });
   opacity: 1;
   stroke: var(--ink);
   stroke-width: 1.2;
-}
-
-.bloom .sectors {
-  transform-origin: center;
-  animation: bloom-in 620ms cubic-bezier(.16, .84, .3, 1) both;
-}
-
-@keyframes bloom-in {
-  from {
-    transform: scale(0.86);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
 }
 
 .ring-title {

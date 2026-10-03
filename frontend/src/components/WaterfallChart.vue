@@ -1,7 +1,7 @@
-<!-- WaterfallChart — how the month was built: the first day's level, every
-     day's delta stacked as a floating step, and the closing level. Rising
-     steps burn orange, falling steps cool green; totals take the PM2.5 band
-     colour they actually reached. Hand-written SVG. -->
+<!-- WaterfallChart — how the month was built. Thin rounded steps rise and
+     fall between two anchored levels: the opening day and the closing day
+     each get a dashed datum line with a mono readout, rising steps burn
+     orange, falling cool green. Hover raises a full-height crosshair. -->
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { gsap, prefersReducedMotion } from "../lib/motion";
@@ -17,7 +17,7 @@ const shell = ref<HTMLElement | null>(null);
 const size = useElementSize(shell);
 const hover = ref<number | null>(null);
 
-const PAD = { top: 16, right: 12, bottom: 30, left: 44 };
+const PAD = { top: 22, right: 58, bottom: 26, left: 40 };
 
 type Step = {
   label: string;
@@ -52,10 +52,31 @@ const steps = computed<Step[]>(() => {
   return out;
 });
 
+const levels = computed(() => {
+  const first = steps.value.find((s) => s.kind === "total");
+  const last = [...steps.value].reverse().find((s) => s.kind === "delta");
+  return {
+    open: first?.to ?? 0,
+    close: last ? last.to : (first?.to ?? 0),
+    has: steps.value.length > 0,
+  };
+});
+
+const connectors = computed(() => {
+  const geo = geometry.value;
+  if (!geo) return [];
+  const out: Array<{ x1: number; x2: number; y: number }> = [];
+  for (let i = 1; i < bars.value.length; i++) {
+    const prev = bars.value[i - 1]!;
+    out.push({ x1: prev.x + geo.barW, x2: bars.value[i]!.x, y: geo.y(prev.to) });
+  }
+  return out;
+});
+
 const yMax = computed(() => {
   let peak = 10;
   for (const step of steps.value) peak = Math.max(peak, step.from, step.to);
-  return peak * 1.08;
+  return peak * 1.12;
 });
 
 const geometry = computed(() => {
@@ -65,7 +86,7 @@ const geometry = computed(() => {
   const innerH = h - PAD.top - PAD.bottom;
   const n = steps.value.length;
   const slot = innerW / n;
-  const barW = Math.max(2.5, slot * 0.62);
+  const barW = Math.max(3, Math.min(14, slot * 0.42));
   const x = (i: number) => PAD.left + i * slot + (slot - barW) / 2;
   const y = (v: number) => PAD.top + innerH - (v / yMax.value) * innerH;
   return { w, h, innerW, innerH, slot, barW, x, y, n };
@@ -77,27 +98,8 @@ const bars = computed(() => {
   return steps.value.map((step, i) => {
     const top = geo.y(Math.max(step.from, step.to));
     const bottom = geo.y(Math.min(step.from, step.to));
-    return {
-      ...step,
-      i,
-      x: geo.x(i),
-      y: top,
-      height: Math.max(1.5, bottom - top),
-      color: step.kind === "total" ? step.color : step.color,
-    };
+    return { ...step, i, x: geo.x(i), y: top, height: Math.max(2, bottom - top) };
   });
-});
-
-const connectors = computed(() => {
-  const geo = geometry.value;
-  if (!geo) return [];
-  const lines: Array<{ x1: number; x2: number; y: number }> = [];
-  for (let i = 1; i < bars.value.length; i++) {
-    const prev = bars.value[i - 1]!;
-    const cur = bars.value[i]!;
-    lines.push({ x1: prev.x + geo.barW, x2: cur.x, y: geo.y(prev.to) });
-  }
-  return lines;
 });
 
 const gridLines = computed(() => {
@@ -121,12 +123,7 @@ const hoverInfo = computed(() => {
   if (hover.value == null) return null;
   const bar = bars.value[hover.value];
   if (!bar) return null;
-  return {
-    label: bar.label,
-    kind: bar.kind,
-    delta: bar.to - bar.from,
-    level: bar.to,
-  };
+  return { ...bar, delta: bar.to - bar.from };
 });
 
 let played = false;
@@ -135,17 +132,13 @@ watch(bars, (next) => {
   played = true;
   requestAnimationFrame(() => {
     const nodes = shell.value?.querySelectorAll<SVGRectElement>(".wf-bar");
-    if (!nodes?.length) return;
-    gsap.fromTo(
-      nodes,
-      { scaleY: 0, transformOrigin: "center bottom" },
-      {
-        scaleY: 1,
-        duration: 0.7,
-        stagger: 0.02,
-        ease: "power2.out",
-      },
-    );
+    if (nodes?.length) {
+      gsap.fromTo(
+        nodes,
+        { scaleY: 0, transformOrigin: "center bottom" },
+        { scaleY: 1, duration: 0.6, stagger: 0.018, ease: "power2.out" },
+      );
+    }
   });
 });
 </script>
@@ -153,6 +146,17 @@ watch(bars, (next) => {
 <template>
   <div ref="shell" class="waterfall" @mouseleave="hover = null">
     <svg :width="geometry?.w" :height="geometry?.h" v-if="geometry">
+      <defs>
+        <linearGradient id="wf-up" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#fb923c" />
+          <stop offset="100%" stop-color="#ea580c" />
+        </linearGradient>
+        <linearGradient id="wf-down" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#34d399" />
+          <stop offset="100%" stop-color="#059669" />
+        </linearGradient>
+      </defs>
+
       <g class="grid">
         <g v-for="line in gridLines" :key="line.v">
           <line :x1="PAD.left" :x2="PAD.left + geometry.innerW" :y1="line.y" :y2="line.y" />
@@ -167,6 +171,23 @@ watch(bars, (next) => {
         :x1="line.x1" :x2="line.x2" :y1="line.y" :y2="line.y"
       />
 
+      <g v-if="levels.has">
+        <line
+          class="wf-anchor"
+          :x1="PAD.left" :x2="PAD.left + geometry!.innerW" :y1="geometry!.y(levels.open)" :y2="geometry!.y(levels.open)"
+        />
+        <line
+          class="wf-anchor close"
+          :x1="PAD.left" :x2="PAD.left + geometry!.innerW" :y1="geometry!.y(levels.close)" :y2="geometry!.y(levels.close)"
+        />
+        <text class="anchor-value" :x="PAD.left + geometry!.innerW + 6" :y="geometry!.y(levels.open)">
+          {{ levels.open.toFixed(0) }}
+        </text>
+        <text class="anchor-value" :x="PAD.left + geometry!.innerW + 6" :y="geometry!.y(levels.close)">
+          {{ levels.close.toFixed(0) }}
+        </text>
+      </g>
+
       <rect
         v-for="bar in bars"
         :key="bar.i"
@@ -176,8 +197,19 @@ watch(bars, (next) => {
         :y="bar.y"
         :width="geometry.barW"
         :height="bar.height"
-        :fill="bar.color"
+        rx="2.5"
+        :style="{ fill: bar.kind === 'delta' ? (bar.to >= bar.from ? 'url(#wf-up)' : 'url(#wf-down)') : bar.color }"
         @mouseenter="hover = bar.i"
+      />
+
+      <rect
+        v-if="hover != null && geometry"
+        class="crosshair"
+        :x="bars[hover]!.x - (geometry.slot - geometry.barW) / 2"
+        :y="PAD.top"
+        :width="geometry.slot"
+        :height="geometry.innerH"
+        @mouseenter="hover = hover"
       />
 
       <g class="ticks">
@@ -185,7 +217,7 @@ watch(bars, (next) => {
           v-for="bar in xTicks"
           :key="`t-${bar.i}`"
           :x="bar.x + geometry.barW / 2"
-          :y="geometry.h - PAD.bottom + 16"
+          :y="geometry.h - PAD.bottom + 15"
         >{{ fmtDay(bar.label) }}</text>
       </g>
     </svg>
@@ -197,7 +229,7 @@ watch(bars, (next) => {
           {{ hoverInfo.delta >= 0 ? "+" : "" }}{{ hoverInfo.delta.toFixed(1) }}
         </b>
       </span>
-      <span>→ <b>{{ hoverInfo.level.toFixed(1) }}</b> µg/m³</span>
+      <span>→ <b>{{ hoverInfo.to.toFixed(1) }}</b></span>
     </div>
   </div>
 </template>
@@ -217,22 +249,43 @@ watch(bars, (next) => {
 .grid text {
   fill: var(--faint);
   font-family: var(--font-display);
-  font-size: 10.5px;
+  font-size: 10px;
   dominant-baseline: central;
 }
 
 .connector {
   stroke: var(--hairline-strong);
-  stroke-dasharray: 2 3;
+  stroke-dasharray: 1 3;
+}
+
+.wf-anchor {
+  stroke: var(--ink-soft);
+  stroke-opacity: 0.4;
+  stroke-dasharray: 4 4;
+}
+
+.anchor-value {
+  fill: var(--muted);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  dominant-baseline: central;
+  font-variant-numeric: tabular-nums;
 }
 
 .wf-bar {
   cursor: pointer;
-  transition: opacity 180ms ease;
+  transition: opacity 160ms ease;
 }
 
 .wf-bar.dim {
-  opacity: 0.35;
+  opacity: 0.3;
+}
+
+.crosshair {
+  fill: var(--ink);
+  fill-opacity: 0.04;
+  pointer-events: none;
 }
 
 .ticks text {

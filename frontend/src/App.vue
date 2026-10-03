@@ -2,13 +2,14 @@
 import { computed } from "vue";
 import { useQuery } from "@tanstack/vue-query";
 import { Database, MapPinned, Radar } from "lucide-vue-next";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { api } from "./api/client";
 import { expectData } from "./api/request";
 import { useLocationCatalog } from "./composables/useLocationCatalog";
 import { useContextStore } from "./stores/context";
 
 const route = useRoute();
+const router = useRouter();
 const context = useContextStore();
 const { locations } = useLocationCatalog();
 const status = useQuery({
@@ -33,7 +34,13 @@ const runtimeState = computed(() => {
 function selectGlobalLocation(event: Event) {
   const id = Number((event.target as HTMLSelectElement).value);
   const location = locations.data.value?.find((item) => item.location_id === id);
-  if (location) context.selectLocation(location.location_id, location.city);
+  if (!location) return;
+  context.selectLocation(location.location_id, location.city);
+  /* Switching must actually move the page: the city view derives everything
+     from the route param, not the store. */
+  if (route.name !== "city" || Number(route.params.locationId) !== location.location_id) {
+    void router.push({ name: "city", params: { locationId: location.location_id } });
+  }
 }
 </script>
 
@@ -74,10 +81,10 @@ function selectGlobalLocation(event: Event) {
               <span class="runtime-pulse" aria-hidden="true"></span>
               <span>{{ runtimeState }}</span>
             </div>
-            <label v-if="route.name !== 'overview'" class="city-context">
+            <label class="city-context">
               <span class="sr-only">选择城市</span>
               <select
-                :value="context.selectedLocationId ?? ''"
+                :value="route.name === 'city' ? Number(route.params.locationId) : context.selectedLocationId ?? ''"
                 @change="selectGlobalLocation"
               >
                 <option

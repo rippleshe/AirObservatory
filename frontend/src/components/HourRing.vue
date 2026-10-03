@@ -76,15 +76,14 @@ const windowCopy = computed(() => {
 });
 
 const peakCopy = computed(() => {
-  if (peakHour.value == null) return "近 30 天样本不足，暂无法判断高值时段";
-  return `${windowCopy.value}，${hourRange(peakHour.value)} 平均浓度最高`;
+  if (peakHour.value == null) return "样本不足";
+  return `${hourRange(peakHour.value)} 浓度最高`;
 });
 
 const peakRangeCopy = computed(() => {
   const peak = peakHour.value;
-  if (peak == null) return "日内分时均值待生成";
-  const filled = hourMeans.value.filter((mean): mean is number => mean != null);
-  return `${hourRange(peak)} 均值 ${(hourMeans.value[peak] ?? 0).toFixed(1)} µg/m³，最低时段 ${Math.min(...filled).toFixed(1)} µg/m³`;
+  if (peak == null) return "分时均值待生成";
+  return `${hourRange(peak)} 均值 ${(hourMeans.value[peak] ?? 0).toFixed(1)} µg/m³`;
 });
 
 const hourTable = computed(() =>

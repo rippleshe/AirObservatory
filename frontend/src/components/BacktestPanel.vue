@@ -46,70 +46,13 @@ const horizonSpan = computed(() => {
   return h.length ? `${h[0]}–${h[h.length - 1]} 小时` : "—";
 });
 
-/* Every heading below is built from the same rows the chart plots, so no
-   reading instructions are needed under them. */
-const overallError = computed(() => {
-  const samples = evidence.value.samples;
-  if (!samples.length) return null;
-  return samples.reduce((sum, row) => sum + Math.abs(row.error), 0) / samples.length;
-});
-
 const backtestHeadline = computed(() => {
   const count = evidence.value.samples.length;
-  const error = overallError.value;
-  if (!count || error == null) return "还没有可与地面观测对齐的预测样本";
-  return `已对齐 ${count} 组预测与实测，平均误差 ${error.toFixed(1)} µg/m³`;
+  if (!count) return "N=0";
+  return `N=${count}`;
 });
 
-const maeHeadline = computed(() => {
-  const byHorizon = new Map<number, number[]>();
-  (props.backtest?.metrics ?? []).forEach((row) => {
-    const bucket = byHorizon.get(row.horizon_hours) ?? [];
-    bucket.push(row.mae);
-    byHorizon.set(row.horizon_hours, bucket);
-  });
-  const horizons = [...byHorizon.keys()].sort((a, b) => a - b);
-  if (horizons.length < 2) return "只有一档预测时长，无法比较误差变化";
-  const mean = (horizon: number) => {
-    const values = byHorizon.get(horizon) ?? [];
-    return values.reduce((sum, value) => sum + value, 0) / values.length;
-  };
-  const first = horizons[0];
-  const last = horizons[horizons.length - 1];
-  return `MAE 误差：+${first}h ${mean(first).toFixed(1)} → +${last}h ${mean(last).toFixed(1)} µg/m³`;
-});
-
-const rmseHeadline = computed(() => {
-  const samples = evidence.value.samples;
-  if (!samples.length) return "RMSE 样本不足";
-  const worst = samples.reduce(
-    (best, row) => (Math.abs(row.error) > Math.abs(best.error) ? row : best),
-    samples[0],
-  );
-  return `最大单次偏差 ${Math.abs(worst.error).toFixed(1)} µg/m³ (+${worst.horizon_hours}h)`;
-});
-
-const fitHeadline = computed(() => {
-  const samples = evidence.value.samples;
-  if (samples.length < 3) return `${samples.length} 组预测与实测对照`;
-  const predicted = samples.map((row) => row.predicted_value);
-  const observed = samples.map((row) => row.observed_value);
-  const meanPredicted = predicted.reduce((sum, value) => sum + value, 0) / predicted.length;
-  const meanObserved = observed.reduce((sum, value) => sum + value, 0) / observed.length;
-  let covariance = 0;
-  let variancePredicted = 0;
-  let varianceObserved = 0;
-  for (let index = 0; index < predicted.length; index += 1) {
-    const dx = predicted[index] - meanPredicted;
-    const dy = observed[index] - meanObserved;
-    covariance += dx * dy;
-    variancePredicted += dx * dx;
-    varianceObserved += dy * dy;
-  }
-  if (!variancePredicted || !varianceObserved) return `${samples.length} 组预测与实测对照`;
-  const r = covariance / Math.sqrt(variancePredicted * varianceObserved);
-  return `相关性 r = ${r.toFixed(2)} · ${samples.length} 组对照`;
-});
+const chartTitles = { mae: "MAE", rmse: "RMSE", fit: "预测对实测" };
 
 function lineOption(metric: "mae" | "rmse") {
   const rows = props.backtest?.metrics ?? [];
@@ -313,8 +256,7 @@ onBeforeUnmount(() => {
 <template>
   <section ref="shell" class="backtest-panel">
     <header class="panel-header">
-      <h2 class="display-face">{{ backtestHeadline }}</h2>
-      <span class="panel-meta data-mono">N={{ evidence.samples.length }}</span>
+      <span class="panel-meta data-mono">{{ backtestHeadline }}</span>
     </header>
 
     <div v-if="!evidence.enough" class="not-enough">
@@ -328,15 +270,15 @@ onBeforeUnmount(() => {
 
     <div v-else class="backtest-grid">
       <article>
-        <h3>{{ maeHeadline }}</h3>
+        <h3>{{ chartTitles.mae }}</h3>
         <div ref="maeEl" class="metric-chart"></div>
       </article>
       <article>
-        <h3>{{ rmseHeadline }}</h3>
+        <h3>{{ chartTitles.rmse }}</h3>
         <div ref="rmseEl" class="metric-chart"></div>
       </article>
       <article class="scatter-article">
-        <h3>{{ fitHeadline }}</h3>
+        <h3>{{ chartTitles.fit }}</h3>
         <div ref="scatterEl" class="scatter-chart"></div>
       </article>
     </div>

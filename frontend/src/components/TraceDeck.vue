@@ -52,19 +52,12 @@ const windowPeakCopy = computed(() => {
   const points = (props.history?.points ?? []).filter(
     (point) => point.value != null && new Date(point.time).getTime() >= windowStartMs.value,
   );
-  if (!points.length) return "时序变化轨迹";
+  if (!points.length) return "窗口峰值";
   const peak = points.reduce(
     (best, point) => (Number(point.value) > Number(best.value) ? point : best),
     points[0],
   );
   return `窗口峰值 ${Number(peak.value).toFixed(1)} µg/m³ · ${fmtTime(peak.time)}`;
-});
-
-const observationCopy = computed(() => {
-  const points = (props.observations?.points ?? []).filter((point) => point.value != null);
-  if (!points.length) return "模式历史与预测轨迹";
-  const latest = points[points.length - 1];
-  return `地面观测最新 ${Number(latest.value).toFixed(1)} µg/m³`;
 });
 
 function setWindow(value: WindowHours) {
@@ -110,6 +103,37 @@ function render() {
     now && latestHistory != null
       ? [[now, latestHistory], ...forecast.map((point) => [point.target_at, point.value])]
       : forecast.map((point) => [point.target_at, point.value]);
+
+  /* Every other model in the forecast response rides along as a thin muted
+     trace: the ensemble spread is the honest picture of forecast uncertainty,
+     not just the primary model's band. */
+  const ALT_MODEL_COLORS = ["#8b5cf6", "#06b6d4", "#94a3b8"];
+  const altModels = (props.forecast?.series ?? [])
+    .slice(1)
+    .flatMap((series_, modelIndex) => {
+      const points = (series_?.points ?? []).filter(
+        (point) => new Date(point.target_at).getTime() >= startMs,
+      );
+      if (points.length < 2) return [];
+      const color = ALT_MODEL_COLORS[modelIndex % ALT_MODEL_COLORS.length]!;
+      return [
+        {
+          name: series_?.model_name ?? `模型 ${modelIndex + 2}`,
+          type: "line",
+          universalTransition: true,
+          data: [
+            ...(now && latestHistory != null ? [[now, latestHistory]] : []),
+            ...points.map((point) => [point.target_at, point.value]),
+          ],
+          showSymbol: false,
+          connectNulls: false,
+          smooth: 0.12,
+          lineStyle: { color, width: 1.3, opacity: 0.55 },
+          itemStyle: { color },
+          z: 2,
+        },
+      ];
+    });
 
   const lower = forecast.filter(
     (point) => point.lower_bound != null && point.upper_bound != null,
@@ -321,6 +345,7 @@ function render() {
           itemStyle: { color: FORECAST_COLOR },
           z: 6,
         },
+        ...altModels,
       ],
     },
     true,
@@ -349,7 +374,6 @@ onBeforeUnmount(() => {
     <header class="trace-header">
       <div>
         <h3>{{ windowPeakCopy }}</h3>
-        <p>{{ observationCopy }}</p>
       </div>
       <div class="header-tools">
         <div class="window-switch" aria-label="时间范围">

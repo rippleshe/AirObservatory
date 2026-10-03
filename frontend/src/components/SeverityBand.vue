@@ -97,7 +97,7 @@ function tickStyle(mark: { start: number }) {
 </script>
 
 <template>
-  <section class="severity-band" aria-label="全国省级空气质量等级分布">
+  <section class="severity-band" aria-label="省级等级分布">
     <div class="band-plot">
       <div class="units" role="list">
         <button

@@ -5,27 +5,16 @@
  *   identity   — Model Analysis / Observation / Forecast; PCA clusters
  *   magnitude  — PM2.5 concentration bands
  *
- * ── Validation (dataviz six-checks, light surface #fcfcfb) ──────────────
- * AQI_LEVEL_COLORS:
- *   [PASS] Chroma floor        all 6 >= 0.1  (no step reads gray)
- *   [PASS] CVD separation      worst adjacent 轻度污染↔良 ΔE 10.2 (deutan)
- *   [WARN] Contrast vs surface 良 #c9a521 at 2.3:1 — relieved by the
- *          mandatory level text (see aqiLevelText) and the table view.
- *   Accepted out-of-scope checks: the categorical lightness band (L .43–.77)
- *   and the normal-vision ΔE 15 floor are gates for *nominal* categories of
- *   equal weight. AQI is an ordered national severity scale — its light end
- *   (良) and dark end (严重污染) are supposed to sit outside that band, and
- *   the only pair whose confusion would misread the story (良 = acceptable vs
- *   轻度污染 = sensitive groups affected) is the pair that was fixed.
- *
- * History: the previous ramp collapsed 良 #b58a22 ↔ 轻度污染 #ce6a2f to
- * ΔE 2.5 (deutan) / 9.0 (normal) — those are the two most common levels on
- * the national map — and 严重污染 #6a2738 sat under the chroma floor (gray).
- * Re-run the validator after any edit:
- *   node scripts/validate_palette.js "<hex,...>" --mode light
+ * ── Validation (re-derived 2026-10-03, light surface #ffffff) ───────────
+ * AQI_LEVEL_COLORS (clean luminous set — the previous olive-gold 良 and
+ * plum 重度 read muddy on white, a standing user complaint):
+ *   normal-vision adjacent ΔE ≥ 34.6 (floor 15)
+ *   deutan min adjacent ΔE 21.1, protan 21.5 (floor 10)
+ *   良 #eab308 sits at 1.92:1 vs white — relieved by the mandatory level
+ *   text that ships with every AQI-coloured mark (aqiLevelText).
  *
  * Colour is never the only channel: every AQI-coloured mark ships its level
- * text, and 24h change ships ↑/↓ plus a state word. DESIGN.md requires it.
+ * text, and 24h change ships ↑/↓ plus a state word.
  */
 
 /** HJ 633-2026 severity order, best → worst. */
@@ -41,12 +30,12 @@ export const AQI_LEVELS = [
 export type AqiLevel = (typeof AQI_LEVELS)[number];
 
 export const AQI_LEVEL_COLORS: Record<string, string> = {
-  优: "#45a274",
-  良: "#c9a521",
-  轻度污染: "#c8702b",
-  中度污染: "#86251a",
-  重度污染: "#703d88",
-  严重污染: "#7a2240",
+  优: "#10b981",
+  良: "#eab308",
+  轻度污染: "#f97316",
+  中度污染: "#ef4444",
+  重度污染: "#8b5cf6",
+  严重污染: "#9f1239",
 };
 
 /** 24h change: diverging — neutral slate midpoint, saturated poles. */
@@ -56,17 +45,17 @@ export const CHANGE_COLORS: Record<string, string> = {
   明显改善: "#047857",
   改善: "#10b981",
   稳定: "#94a3b8",
-  上升: "#ea580c",
-  明显上升: "#dc2626",
+  上升: "#f97316",
+  明显上升: "#ef4444",
 };
 
 /** PM2.5 concentration bands — single-hue family, light → dark. */
 export const PM25_BANDS: ReadonlyArray<readonly [string, string]> = [
-  ["≤35", "#45a274"],
-  ["35–75", "#c9a521"],
-  ["75–115", "#c8702b"],
-  ["115–150", "#86251a"],
-  [">150", "#703d88"],
+  ["≤35", "#10b981"],
+  ["35–75", "#eab308"],
+  ["75–115", "#f97316"],
+  ["115–150", "#ef4444"],
+  [">150", "#8b5cf6"],
 ];
 
 /* Identity colours mirror the --model / --observation / --forecast tokens in
@@ -78,18 +67,28 @@ export const OBSERVATION_COLOR = "#059669";
 export const FORECAST_COLOR = "#d97706";
 export const MUTED_DATA_COLOR = "#94a3b8";
 
-/** PCA / exploratory clusters. Always shown with a persistent text legend —
- *  three slots fall under 3:1 contrast and need that relief. */
+/** PCA / exploratory clusters + nominal series (stream layers). Clean,
+ *  luminous hues; always shown with a persistent text legend. */
 export const CATEGORY_COLORS = [
-  "#2a78d6",
-  "#eb6834",
-  "#1baf7a",
-  "#eda100",
-  "#e87ba4",
-  "#008300",
-  "#4a3aa7",
-  "#e34948",
+  "#2563eb",
+  "#f97316",
+  "#10b981",
+  "#eab308",
+  "#ec4899",
+  "#8b5cf6",
+  "#06b6d4",
+  "#ef4444",
 ] as const;
+
+/** Six-pollutant identity for horizon/stream layers (nominal, not severity). */
+export const POLLUTANT_COLORS: Record<string, string> = {
+  pm25: "#f97316",
+  pm10: "#eab308",
+  no2: "#10b981",
+  o3: "#2563eb",
+  so2: "#ec4899",
+  co: "#8b5cf6",
+};
 
 export function aqiColor(level: string | null | undefined) {
   return level ? AQI_LEVEL_COLORS[level] ?? MUTED_DATA_COLOR : MUTED_DATA_COLOR;

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/vue-query";
 import { useRouter } from "vue-router";
 import { api } from "../api/client";
 import { expectData } from "../api/request";
-import BumpChart from "../components/BumpChart.vue";
+import BarChartRace from "../components/BarChartRace.vue";
 import ChordDiagram from "../components/ChordDiagram.vue";
 import CityFingerprintPanel from "../components/CityFingerprintPanel.vue";
 import ChinaFieldMap from "../components/ChinaFieldMap.vue";
@@ -21,10 +21,10 @@ import {
   aqiColor,
   levelOfAqi,
   PM25_BANDS,
+  POLLUTANT_COLORS,
   stageColor,
 } from "../lib/palette";
 import {
-  concernCount,
   provinceRepresentatives,
   type NationalCity,
 } from "../lib/provinces";
@@ -88,12 +88,12 @@ const weather = useQuery({
 /* All six pollutants ride one parallel suite: the stream needs every mean,
    and the province roster filters each matrix the same way. */
 const POLLUTANTS = [
-  { key: "pm25", label: "PM2.5", color: "#2a78d6" },
-  { key: "pm10", label: "PM10", color: "#eb6834" },
-  { key: "no2", label: "NO₂", color: "#1baf7a" },
-  { key: "o3", label: "O₃", color: "#eda100" },
-  { key: "so2", label: "SO₂", color: "#e87ba4" },
-  { key: "co", label: "CO", color: "#4a3aa7" },
+  { key: "pm25", label: "PM2.5" },
+  { key: "pm10", label: "PM10" },
+  { key: "no2", label: "NO₂" },
+  { key: "o3", label: "O₃" },
+  { key: "so2", label: "SO₂" },
+  { key: "co", label: "CO" },
 ] as const;
 
 const pollutantSuite = useQuery({
@@ -165,37 +165,16 @@ const windField = computed(() => {
   });
 });
 
-const worstCity = computed(
-  () =>
-    [...displayCities.value]
-      .filter((city) => city.china_aqi != null)
-      .sort((a, b) => (b.china_aqi ?? -1) - (a.china_aqi ?? -1))[0] ?? null,
-);
 const focusCity = computed(() =>
   [...provinces.value]
     .filter((city) => city.china_aqi != null)
     .sort((a, b) => (b.china_aqi ?? -1) - (a.china_aqi ?? -1))[0] ?? null,
 );
 
-const topLine = computed(() => {
-  const worst = worstCity.value;
-  if (!worst || worst.china_aqi == null) return "全国空气态势";
-  const concerns = concernCount(displayCities.value);
-  return `${worst.name} AQI ${worst.china_aqi} ${worst.china_aqi_level ?? ""} · ${concerns} 省关注`;
-});
-
-const fingerprintHeadline = computed(() => {
+const fingerprintMeta = computed(() => {
   const meta = fingerprint.data.value?.meta;
-  const explained = fingerprint.data.value?.explained_variance ?? [];
-  if (!meta || !explained.length) return "城市长期结构指纹";
-  let used = 0;
-  let covered = 0;
-  for (const step of explained) {
-    used += 1;
-    covered = step.cumulative_ratio;
-    if (covered >= 0.8) break;
-  }
-  return `前 ${used} 主成分解释 ${Math.round(covered * 100)}% 波动 · ${meta.cluster_count} 类污染模式`;
+  if (!meta) return "";
+  return `${meta.window_start.slice(0, 10)} → ${meta.window_end.slice(0, 10)} · ${meta.city_count} 城`;
 });
 
 /* ── stream: composition pulse ────────────────────────────── */
@@ -225,26 +204,10 @@ const streamLayers = computed(() => {
     return {
       key: pollutant.key,
       label: pollutant.label,
-      color: pollutant.color,
+      color: POLLUTANT_COLORS[pollutant.key],
       values: values.map((v) => (v == null ? null : Math.min(1.6, v / Math.max(1, p90)))),
     };
   });
-});
-
-const dominantPollutant = computed(() => {
-  const layers = streamLayers.value;
-  if (!layers.length) return "—";
-  let best = layers[0]!;
-  let bestMean = -1;
-  for (const layer of layers) {
-    const valid = layer.values.filter((v): v is number => v != null);
-    const mean = valid.reduce((a, b) => a + b, 0) / Math.max(1, valid.length);
-    if (mean > bestMean) {
-      bestMean = mean;
-      best = layer;
-    }
-  }
-  return best.label;
 });
 
 /* ── bump: rank race ──────────────────────────────────────── */
@@ -274,22 +237,6 @@ const bumpDays = computed(() => {
     .map((t) => t.slice(5, 10).replace("-", "/"));
 });
 
-const bumpLeader = computed(() => {
-  const entries = bumpEntries.value;
-  if (!entries.length) return "—";
-  let best = entries[0]!;
-  let bestMean = -1;
-  for (const entry of entries) {
-    const valid = entry.daily.filter((v): v is number => v != null);
-    const mean = valid.reduce((a, b) => a + b, 0) / Math.max(1, valid.length);
-    if (mean > bestMean) {
-      bestMean = mean;
-      best = entry;
-    }
-  }
-  return best.name;
-});
-
 /* ── wind rose samples: wind × PM2.5 over every province hour ── */
 const roseSamples = computed(() => {
   const data = weather.data.value;
@@ -316,42 +263,6 @@ const roseSamples = computed(() => {
   return out;
 });
 
-const DIRTIEST_BINS = [
-  { from: 337.5, to: 22.5, label: "北风" },
-  { from: 22.5, to: 67.5, label: "东北风" },
-  { from: 67.5, to: 112.5, label: "东风" },
-  { from: 112.5, to: 157.5, label: "东南风" },
-  { from: 157.5, to: 202.5, label: "南风" },
-  { from: 202.5, to: 247.5, label: "西南风" },
-  { from: 247.5, to: 292.5, label: "西风" },
-  { from: 292.5, to: 337.5, label: "西北风" },
-];
-
-const roseHeadline = computed(() => {
-  const samples = roseSamples.value;
-  if (samples.length < 200) return "风与污染";
-  const bins = new Map<number, { sum: number; n: number }>();
-  for (const sample of samples) {
-    const bin = Math.floor(((sample.dir % 360) + 360) % 360 / 45);
-    const cell = bins.get(bin) ?? { sum: 0, n: 0 };
-    cell.sum += sample.pm25;
-    cell.n += 1;
-    bins.set(bin, cell);
-  }
-  let bestBin = -1;
-  let bestMean = -1;
-  for (const [bin, cell] of bins) {
-    if (cell.n < 100) continue;
-    const mean = cell.sum / cell.n;
-    if (mean > bestMean) {
-      bestMean = mean;
-      bestBin = bin;
-    }
-  }
-  if (bestBin < 0) return "风与污染";
-  const label = DIRTIEST_BINS[bestBin]?.label ?? "风";
-  return `${label}携污最重 · ${bestMean.toFixed(0)} µg/m³`;
-});
 
 /* ── chord: synchrony network ─────────────────────────────── */
 const chordCities = computed(() => {
@@ -363,44 +274,6 @@ const chordCities = computed(() => {
     .map((city) => ({ location_id: city.location_id, name: city.name, values: city.values }));
 });
 
-const chordHeadline = computed(() => {
-  const rows = chordCities.value;
-  if (rows.length < 3) return "城市联动";
-  let bestA = "";
-  let bestB = "";
-  let bestR = 0;
-  for (let i = 0; i < rows.length; i++) {
-    for (let j = i + 1; j < rows.length; j++) {
-      let n = 0;
-      let sa = 0;
-      let sb = 0;
-      let saa = 0;
-      let sbb = 0;
-      let sab = 0;
-      for (let k = 0; k < rows[i]!.values.length; k++) {
-        const x = rows[i]!.values[k];
-        const y = rows[j]!.values[k];
-        if (x == null || y == null) continue;
-        n += 1;
-        sa += x;
-        sb += y;
-        saa += x * x;
-        sbb += y * y;
-        sab += x * y;
-      }
-      if (n < 240) continue;
-      const cov = sab * n - sa * sb;
-      const denom = Math.sqrt((saa * n - sa * sa) * (sbb * n - sb * sb));
-      const r = denom > 0 ? cov / denom : 0;
-      if (r > bestR) {
-        bestR = r;
-        bestA = rows[i]!.name;
-        bestB = rows[j]!.name;
-      }
-    }
-  }
-  return bestA ? `${bestA}–${bestB} 同呼吸 · r=${bestR.toFixed(2)}` : "城市联动";
-});
 
 /* The legend is a ramp ruler with boundary ticks. */
 const ramp = computed(() => {
@@ -469,7 +342,7 @@ function openCity(id: number, name: string) {
 
     <section v-reveal class="stage">
       <header class="stage-head">
-        <h1 class="display-face">{{ topLine }}</h1>
+        <h1 class="stage-title">全国空气场</h1>
         <div class="update-note">
           <strong class="data-mono">{{ formatTime(national.data.value?.latest_source_time) }}</strong>
           <span>{{ national.data.value?.aqi_standard ?? "HJ 633-2026" }}</span>
@@ -536,12 +409,7 @@ function openCity(id: number, name: string) {
     <HealthRiskCard
       v-if="focusCity"
       v-reveal="100"
-      class="health-strip"
-      compact
-      :city="focusCity.name"
       :level="focusCity.china_aqi_level"
-      :health-effect="focusCity.health_effect"
-      :advice="focusCity.advice"
     />
 
     <PollutionWeave
@@ -553,8 +421,7 @@ function openCity(id: number, name: string) {
 
     <section v-if="streamLayers.length" v-reveal class="viz-section">
       <header class="viz-head">
-        <h2 class="display-face">污染构成 · {{ dominantPollutant }} 领跑</h2>
-        <span class="viz-meta data-mono">30 天 · 六污染物指数</span>
+        <h2 class="viz-label">构成</h2>
       </header>
       <div class="viz-body stream-body">
         <StreamGraph :times="streamTimes" :layers="streamLayers" />
@@ -563,26 +430,21 @@ function openCity(id: number, name: string) {
 
     <section v-if="bumpEntries.length" v-reveal class="viz-section">
       <header class="viz-head">
-        <h2 class="display-face">{{ bumpLeader }} 领跑 · 30 天排名流动</h2>
-        <span class="viz-meta data-mono">逐日 PM2.5 均值</span>
+        <h2 class="viz-label">排名 × 风场</h2>
       </header>
       <div class="duel-grid">
         <div class="viz-body duel-cell">
-          <BumpChart :days="bumpDays" :entries="bumpEntries" :top-n="10" />
+          <BarChartRace :days="bumpDays" :entries="bumpEntries" :top-n="10" />
         </div>
         <div class="viz-body duel-cell">
           <WindRose :samples="roseSamples" />
         </div>
       </div>
-      <div class="viz-subhead" v-if="roseSamples.length">
-        <h3 class="display-face">{{ roseHeadline }}</h3>
-      </div>
     </section>
 
     <section v-if="chordCities.length" v-reveal class="viz-section">
       <header class="viz-head">
-        <h2 class="display-face">{{ chordHeadline }}</h2>
-        <span class="viz-meta data-mono">PM2.5 同步性 · |r|≥0.55</span>
+        <h2 class="viz-label">联动</h2>
       </header>
       <div class="viz-body chord-body">
         <ChordDiagram :cities="chordCities" />
@@ -591,7 +453,8 @@ function openCity(id: number, name: string) {
 
     <section v-reveal class="viz-section">
       <header class="viz-head">
-        <h2 class="display-face">{{ fingerprintHeadline }}</h2>
+        <h2 class="viz-label">污染模式</h2>
+        <span v-if="fingerprintMeta" class="viz-meta data-mono">{{ fingerprintMeta }}</span>
       </header>
       <CityFingerprintPanel
         v-if="fingerprint.data.value"
@@ -637,10 +500,6 @@ function openCity(id: number, name: string) {
 
 .stage-head h1 {
   margin: 0;
-  color: var(--stage-ink);
-  font-size: var(--fs-display-lg);
-  line-height: 1.15;
-  letter-spacing: var(--track-display);
 }
 
 .update-note {
@@ -855,21 +714,18 @@ function openCity(id: number, name: string) {
 
 .viz-head h2 {
   margin: 0;
-  color: var(--ink);
-  font-size: 21px;
+  color: var(--muted);
+  font-size: 11.5px;
   font-weight: var(--fw-strong);
-  letter-spacing: var(--track-title);
+  letter-spacing: 0.2em;
 }
 
-.viz-subhead {
-  margin-top: 10px;
-}
-
-.viz-subhead h3 {
+.stage-title {
   margin: 0;
-  color: var(--ink-soft);
+  color: var(--stage-ink);
   font-size: 15px;
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw-strong);
+  letter-spacing: 0.24em;
 }
 
 .viz-meta {

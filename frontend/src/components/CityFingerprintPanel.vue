@@ -77,13 +77,6 @@ const sigmaMax = computed(() => {
 
 const components_ = computed(() => props.fingerprint.explained_variance);
 
-/** Share of structure the first two dimensions keep, or null when absent. */
-const retainedShare = computed(() => {
-  const ev = components_.value;
-  const cumulative = ev[1]?.cumulative_ratio ?? ev[0]?.cumulative_ratio;
-  return typeof cumulative === "number" && Number.isFinite(cumulative) ? cumulative : null;
-});
-
 const cityCount = computed(() => {
   const declared = props.fingerprint.meta.city_count;
   return Number.isFinite(declared) && declared > 0 ? declared : props.fingerprint.points.length;
@@ -98,75 +91,6 @@ const provinceCount = computed(
 const onePerProvince = computed(
   () => cityCount.value > 0 && provinceCount.value === cityCount.value,
 );
-const countLabel = computed(
-  () => `${cityCount.value} ${onePerProvince.value ? "个省的代表城市" : "座城市"}`,
-);
-const unitLabel = computed(() =>
-  onePerProvince.value ? `${cityCount.value} 个省各取一城` : countLabel.value,
-);
-
-const headline = computed(() => {
-  if (cityCount.value <= 0) return "当前没有可用的城市结构指纹";
-  const clusters = props.fingerprint.meta.cluster_count;
-  if (!Number.isFinite(clusters) || clusters < 2) {
-    return `${unitLabel.value}的长期变化没有分出可分辨的模式`;
-  }
-  return `${unitLabel.value}的长期变化分成 ${clusters} 种模式`;
-});
-
-const largestCluster = computed(() => {
-  const profiles = props.fingerprint.cluster_profiles;
-  if (!profiles.length) return null;
-  return profiles.reduce((best, profile) =>
-    profile.city_count > best.city_count ||
-    (profile.city_count === best.city_count && profile.cluster < best.cluster)
-      ? profile
-      : best,
-  );
-});
-
-const scatterHeadline = computed(() => {
-  if (cityCount.value <= 0) return "结构指纹里没有城市";
-  const largest = largestCluster.value;
-  if (!largest) return "结构指纹没有可分组的结果";
-  const clusters = props.fingerprint.meta.cluster_count;
-  if (!Number.isFinite(clusters) || clusters < 2) {
-    return `第 1 组概括全部 ${cityCount.value} 城`;
-  }
-  const share = Math.round((largest.city_count / Math.max(cityCount.value, 1)) * 100);
-  return `${largest.city_count} 城（${share}%）结构最接近，归为第 ${largest.cluster} 组`;
-});
-
-const varianceHeadline = computed(() => {
-  const share = retainedShare.value;
-  if (share == null) return "解释方差暂不可用";
-  const percent = Math.round(share * 100);
-  if (percent >= 80) return `前两维保留 ${percent}%，结构差异基本完整`;
-  if (percent >= 60) return `前两维保留 ${percent}%，主要结构差异已保留`;
-  if (percent >= 40) return `前两维保留 ${percent}%，约半数结构差异被压缩`;
-  return `前两维保留 ${percent}%，大部分结构差异被压缩`;
-});
-
-/** Largest |z| across every group — the strongest deviation on screen. */
-const topDeviation = computed(() => {
-  let best: { cluster: number; feature: string; zscore: number } | null = null;
-  for (const cluster of props.fingerprint.cluster_profiles) {
-    for (const feature of cluster.top_features) {
-      if (!Number.isFinite(feature.zscore)) continue;
-      if (!best || Math.abs(feature.zscore) > Math.abs(best.zscore)) {
-        best = { cluster: cluster.cluster, feature: feature.feature, zscore: feature.zscore };
-      }
-    }
-  }
-  return best;
-});
-
-const clusterHeadline = computed(() => {
-  const top = topDeviation.value;
-  if (!top) return "各组没有可读的偏离特征";
-  const sign = top.zscore > 0 ? "+" : "";
-  return `第 ${top.cluster} 组 ${featureLabel(top.feature)}偏离最大：${sign}${top.zscore.toFixed(1)}σ`;
-});
 
 const scatterAria = computed(() =>
   cityCount.value <= 0 ? "无指纹投影" : "城市指纹投影",
@@ -314,7 +238,7 @@ function render() {
   variance.setOption(
     {
       animation: !reducedMotion,
-      aria: { enabled: true, description: "各主成分单独与累计解释比例。" },
+      aria: { enabled: false },
       grid: { left: 44, right: 14, top: 30, bottom: 34 },
       tooltip: {
         trigger: "axis",
@@ -430,34 +354,17 @@ onBeforeUnmount(() => {
 
 <template>
   <section ref="shell" class="fingerprint-panel">
-    <header class="panel-header">
-      <h2 class="display-face">{{ headline }}</h2>
-      <div class="panel-meta data-mono">
-        <span>{{ fingerprint.meta.window_start.slice(0, 10) }} → {{ fingerprint.meta.window_end.slice(0, 10) }}</span>
-        <b>{{ cityCount }} 城</b>
-      </div>
-    </header>
-
     <div class="fingerprint-layout">
       <article class="scatter-cell">
-        <div class="chart-heading">
-          <h3 class="display-face">{{ scatterHeadline }}</h3>
-        </div>
         <div ref="scatterEl" class="scatter-chart"></div>
       </article>
 
       <aside class="fingerprint-ledger">
         <section>
-          <div class="chart-heading">
-            <h3 class="display-face">{{ varianceHeadline }}</h3>
-          </div>
           <div ref="varianceEl" class="variance-chart"></div>
         </section>
 
         <section class="cluster-section">
-          <div class="chart-heading">
-            <h3 class="display-face">{{ clusterHeadline }}</h3>
-          </div>
           <div class="cluster-list">
             <div
               v-for="cluster in fingerprint.cluster_profiles"

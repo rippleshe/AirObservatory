@@ -15,15 +15,6 @@ function tone(value: number, kind: "obs" | "model" | "weather") {
   return "rgba(" + rgb + "," + alpha.toFixed(2) + ")";
 }
 
-/* The heading carries how many days are complete, the line under it carries
-   the gap policy — no paragraph about how to read the colour blocks. */
-const coverageHeadline = computed(() => {
-  const days = props.coverage?.coverage ?? [];
-  if (!days.length) return "覆盖记录尚未生成";
-  const full = days.filter((day) => day.observation_coverage >= 0.95).length;
-  return `${full} / ${days.length} 天地面实测基本完整`;
-});
-
 const coverageSummary = computed(() => {
   const days = props.coverage?.coverage ?? [];
   if (!days.length) return "暂无记录";
@@ -31,16 +22,14 @@ const coverageSummary = computed(() => {
   return gap ? `${gap} 天有缺口` : "实测完整";
 });
 
-const bindingCopy = computed(() => {
+const statusLine = computed(() => {
   const bindings = props.coverage?.bindings ?? [];
-  if (!bindings.length) return "无站点接入";
-  return `接入 ${bindings.length} 站`;
-});
-
-const analysisCopy = computed(() => {
   const analyses = props.coverage?.analyses ?? [];
-  if (!analyses.length) return "暂无分析";
-  return `${analyses.length} 项分析`;
+  const authoritative = bindings.filter((item) => item.is_authoritative).length;
+  const parts = [`站点 ${bindings.length}`];
+  if (authoritative) parts.push(`权威 ${authoritative}`);
+  parts.push(`分析 ${analyses.length}`);
+  return parts.join(" · ");
 });
 
 const columns = computed(() => {
@@ -51,11 +40,6 @@ const columns = computed(() => {
 
 <template>
   <section class="trust-panel">
-    <header class="panel-header">
-      <h2 class="display-face">{{ coverageHeadline }}</h2>
-      <span class="panel-meta data-mono">{{ coverage?.days ?? 30 }} 天</span>
-    </header>
-
     <div class="coverage-block">
       <div class="coverage-legend">
         <span><i class="obs"></i>地面实测</span>
@@ -63,7 +47,7 @@ const columns = computed(() => {
         <span><i class="weather"></i>网格气象</span>
       </div>
 
-      <p class="coverage-summary">{{ coverageSummary }}</p>
+      <p class="coverage-summary data-mono">{{ coverageSummary }}</p>
 
       <div
         class="coverage-calendar"
@@ -94,40 +78,8 @@ const columns = computed(() => {
       </div>
     </div>
 
-    <div class="trust-grid">
-      <article>
-        <h3>{{ bindingCopy }}</h3>
-        <div v-if="coverage?.bindings.length" class="binding-list">
-          <div v-for="binding in coverage.bindings" :key="binding.external_location_id">
-            <span>
-              <b>{{ binding.provider }}</b>
-              <small>{{ binding.station_name }}</small>
-            </span>
-            <span class="binding-meta">
-              <small>{{ binding.kind }}</small>
-              <strong class="data-mono">
-                {{ binding.is_authoritative ? "权威源" : "非权威源" }}
-              </strong>
-            </span>
-          </div>
-        </div>
-        <p v-else class="empty-copy">图上只显示模式数据。</p>
-      </article>
-
-      <article>
-        <h3>{{ analysisCopy }}</h3>
-        <div v-if="coverage?.analyses.length" class="analysis-list">
-          <div v-for="item in coverage.analyses" :key="item.run_id">
-            <span>
-              <b>{{ item.analysis_type }}</b>
-              <small>
-                {{ item.window_start.slice(0, 10) }} → {{ item.window_end.slice(0, 10) }}
-              </small>
-            </span>
-            <span class="data-mono">{{ item.version }}</span>
-          </div>
-        </div>
-      </article>
+    <div class="trust-status data-mono">
+      <span>{{ statusLine }}</span>
     </div>
   </section>
 </template>
@@ -139,6 +91,12 @@ const columns = computed(() => {
   border-radius: var(--radius-lg);
   background: var(--sheet);
   box-shadow: 0 10px 30px rgba(24, 41, 34, .045);
+}
+.trust-status {
+  padding: 12px 18px;
+  border-top: 1px solid var(--hairline);
+  color: var(--muted);
+  font-size: 11px;
 }
 .panel-header {
   min-height: 78px;

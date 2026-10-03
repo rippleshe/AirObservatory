@@ -1,8 +1,7 @@
-<!-- ChordDiagram — the synchrony network of the 31 province cities: whose
-     PM2.5 hours rise and fall together. Pearson correlation over the aligned
-     720h field; nodes sit on a circle ordered by pollution load, links are
-     center-pulled bezier arcs whose weight and opacity carry |r|. Fully
-     hand-written SVG, adjacency focus on hover. -->
+<!-- ChordDiagram — province PM2.5 synchrony as a true ribbon chord: every
+     correlation is a filled two-arc ribbon (width ∝ |r|, gradient running
+     source→target colour), nodes are degree-weighted arcs ordered by load so
+     the ring reads as a pollution gradient. Hover lifts adjacency. -->
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { gsap, prefersReducedMotion } from "../lib/motion";
@@ -21,7 +20,7 @@ const props = withDefaults(
     threshold?: number;
     maxEdges?: number;
   }>(),
-  { threshold: 0.55, maxEdges: 96 },
+  { threshold: 0.55, maxEdges: 110 },
 );
 
 const shell = ref<HTMLElement | null>(null);
@@ -64,16 +63,20 @@ type ChordNode = {
   degree: number;
 };
 
-type ChordEdge = {
+type Ribbon = {
   index: number;
   source: ChordNode;
   target: ChordNode;
   r: number;
   d: string;
-  width: number;
-  opacity: number;
+  gradId: string;
   from: string;
   to: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  opacity: number;
 };
 
 const geometry = computed(() => {
@@ -93,7 +96,6 @@ const nodes = computed<ChordNode[]>(() => {
     })
     .filter((row) => row.mean > 0)
     .sort((a, b) => b.mean - a.mean);
-  /* Degree first, so arc length tracks how connected a province is. */
   const n = rows.length;
   return rows.map((row, i) => ({
     ...row,
@@ -103,7 +105,7 @@ const nodes = computed<ChordNode[]>(() => {
   }));
 });
 
-const edges = computed<ChordEdge[]>(() => {
+const ribbons = computed<Ribbon[]>(() => {
   const geo = geometry.value;
   const list = nodes.value;
   if (!geo || list.length < 3) return [];
@@ -121,32 +123,58 @@ const edges = computed<ChordEdge[]>(() => {
   }
   raw.sort((x, y) => y.r - x.r);
   const kept = raw.slice(0, props.maxEdges);
+
   const strength = new Map<number, number>();
   for (const edge of kept) {
     strength.set(edge.a.id, (strength.get(edge.a.id) ?? 0) + edge.r);
     strength.set(edge.b.id, (strength.get(edge.b.id) ?? 0) + edge.r);
   }
   const maxStrength = Math.max(0.001, ...strength.values());
-  for (const node of list) node.degree = 0.5 + (strength.get(node.id) ?? 0) / maxStrength;
+  for (const node of list) node.degree = 0.6 + (strength.get(node.id) ?? 0) / maxStrength;
 
   const point = (angle: number, radius: number): [number, number] => [
     geo.cx + radius * Math.cos(angle),
     geo.cy + radius * Math.sin(angle),
   ];
+
   return kept.map((edge, index) => {
-    const [x1, y1] = point(edge.a.angle, geo.R);
-    const [x2, y2] = point(edge.b.angle, geo.R);
-    const d = `M${x1.toFixed(1)},${y1.toFixed(1)} Q${geo.cx.toFixed(1)},${geo.cy.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`;
+    const wa = 0.02 * edge.a.degree;
+    const wb = 0.02 * edge.b.degree;
+    const [ax0, ay0] = point(edge.a.angle - wa, geo.R);
+    const [ax1, ay1] = point(edge.a.angle + wa, geo.R);
+    const [bx1, by1] = point(edge.b.angle + wb, geo.R);
+    const [bx0, by0] = point(edge.b.angle - wb, geo.R);
+    /* Control points pulled hard toward the centre give the classic chord
+       bow without a full crossing at the origin. */
+    const c1: [number, number] = [geo.cx + (ax1 - geo.cx) * 0.14, geo.cy + (ay1 - geo.cy) * 0.14];
+    const c2: [number, number] = [geo.cx + (bx1 - geo.cx) * 0.14, geo.cy + (by1 - geo.cy) * 0.14];
+    const c3: [number, number] = [geo.cx + (bx0 - geo.cx) * 0.14, geo.cy + (by0 - geo.cy) * 0.14];
+    const c4: [number, number] = [geo.cx + (ax0 - geo.cx) * 0.14, geo.cy + (ay0 - geo.cy) * 0.14];
+    const large = 0;
+    const d = [
+      `M${ax0.toFixed(1)},${ay0.toFixed(1)}`,
+      `A${geo.R},${geo.R} 0 ${large} 1 ${ax1.toFixed(1)},${ay1.toFixed(1)}`,
+      `C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${bx1.toFixed(1)},${by1.toFixed(1)}`,
+      `A${geo.R},${geo.R} 0 ${large} 1 ${bx0.toFixed(1)},${by0.toFixed(1)}`,
+      `C${c3[0].toFixed(1)},${c3[1].toFixed(1)} ${c4[0].toFixed(1)},${c4[1].toFixed(1)} ${ax0.toFixed(1)},${ay0.toFixed(1)}`,
+      "Z",
+    ].join(" ");
+    const [mx1, my1] = point(edge.a.angle, geo.R);
+    const [mx2, my2] = point(edge.b.angle, geo.R);
     return {
       index,
       source: edge.a,
       target: edge.b,
       r: edge.r,
       d,
-      width: 1.4 + (edge.r - props.threshold) * 16,
-      opacity: Math.min(0.85, 0.3 + (edge.r - props.threshold) * 1.3),
+      gradId: `chord-grad-${index}`,
       from: edge.a.color,
       to: edge.b.color,
+      x1: mx1,
+      y1: my1,
+      x2: mx2,
+      y2: my2,
+      opacity: Math.min(0.75, 0.18 + (edge.r - props.threshold) * 1.1),
     };
   });
 });
@@ -154,7 +182,7 @@ const edges = computed<ChordEdge[]>(() => {
 function arcPath(node: ChordNode): string {
   const geo = geometry.value;
   if (!geo) return "";
-  const span = 0.055 * node.degree;
+  const span = 0.05 * node.degree;
   const a0 = node.angle - span;
   const a1 = node.angle + span;
   const r1 = geo.R + 5;
@@ -186,15 +214,9 @@ function labelAnchor(node: ChordNode): string {
   return flip ? "end" : "start";
 }
 
-const edgeActive = computed(() => {
-  if (hoveredNode.value == null) return null;
-  return (edge: ChordEdge) =>
-    edge.source.name === hoveredNode.value || edge.target.name === hoveredNode.value;
-});
-
 const hoverTip = computed(() => {
   if (hoveredEdge.value != null) {
-    const edge = edges.value[hoveredEdge.value];
+    const edge = ribbons.value[hoveredEdge.value];
     if (edge) return `${edge.source.name} ↔ ${edge.target.name} · r=${edge.r.toFixed(2)}`;
   }
   if (hoveredNode.value != null) {
@@ -204,17 +226,16 @@ const hoverTip = computed(() => {
   return null;
 });
 
-watch(edges, (next) => {
+watch(ribbons, (next) => {
   if (!next.length || prefersReducedMotion()) return;
   requestAnimationFrame(() => {
-    const curves = shell.value?.querySelectorAll<SVGPathElement>(".chord-edge");
-    if (curves?.length) {
-      gsap.fromTo(
-        curves,
-        { opacity: 0 },
-        { opacity: 1, duration: 1.1, stagger: 0.012, ease: "power1.inOut" },
-      );
-    }
+    const group = shell.value?.querySelector<SVGGElement>(".chord-plot");
+    if (!group) return;
+    gsap.fromTo(
+      group,
+      { rotation: -40, opacity: 0, svgOrigin: `${geometry.value?.cx ?? 0} ${geometry.value?.cy ?? 0}` },
+      { rotation: 0, opacity: 1, duration: 1.5, ease: "power3.out" },
+    );
   });
 });
 </script>
@@ -222,28 +243,42 @@ watch(edges, (next) => {
 <template>
   <div ref="shell" class="chord-diagram">
     <svg :width="size.w" :height="size.h">
+      <defs>
+        <linearGradient
+          v-for="ribbon in ribbons"
+          :key="ribbon.gradId"
+          :id="ribbon.gradId"
+          gradientUnits="userSpaceOnUse"
+          :x1="ribbon.x1" :y1="ribbon.y1" :x2="ribbon.x2" :y2="ribbon.y2"
+        >
+          <stop offset="0%" :stop-color="ribbon.from" />
+          <stop offset="100%" :stop-color="ribbon.to" />
+        </linearGradient>
+      </defs>
+
       <circle :cx="geometry?.cx" :cy="geometry?.cy" :r="geometry?.R" class="guide" />
 
-      <path
-        v-for="edge in edges"
-        :key="edge.index"
-        class="chord-edge"
-        :d="edge.d"
-        :stroke="edge.source.color"
-        :stroke-width="edge.width"
-        :style="{
-          opacity: edgeActive
-            ? (edgeActive(edge) ? 0.95 : 0.04)
-            : (hoveredEdge === edge.index ? 1 : edge.opacity),
-        }"
-        fill="none"
-        @mouseenter="hoveredEdge = edge.index"
-        @mouseleave="hoveredEdge = null"
-      />
+      <g class="chord-plot">
+        <path
+          v-for="ribbon in ribbons"
+          :key="ribbon.index"
+          class="chord-ribbon"
+          :d="ribbon.d"
+          :fill="`url(#${ribbon.gradId})`"
+          :style="{
+            opacity: hoveredNode != null
+              ? (ribbon.source.name === hoveredNode || ribbon.target.name === hoveredNode ? 0.9 : 0.04)
+              : (hoveredEdge === ribbon.index ? 0.95 : ribbon.opacity),
+          }"
+          @mouseenter="hoveredEdge = ribbon.index"
+          @mouseleave="hoveredEdge = null"
+        />
+      </g>
 
       <g
         v-for="node in nodes"
         :key="node.id"
+        class="node"
         @mouseenter="hoveredNode = node.name"
         @mouseleave="hoveredNode = null"
       >
@@ -277,11 +312,13 @@ watch(edges, (next) => {
   stroke-dasharray: 2 5;
 }
 
-.chord-edge {
-  fill: none;
-  stroke-linecap: round;
+.chord-ribbon {
   cursor: pointer;
   transition: opacity 220ms ease;
+}
+
+.node {
+  cursor: pointer;
 }
 
 .node-label {

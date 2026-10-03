@@ -47,12 +47,8 @@ function featureLabel(name: string) {
   return FEATURE_LABELS[name] ?? name;
 }
 
-/* Headings read the same numbers the charts draw, so the finding never needs
-   a paragraph of instructions underneath it. */
-const leadingComponent = computed(
-  () => props.structure.explained_variance[0]?.component ?? "PC1",
-);
-
+/* The strongest correlated pair is the one finding worth surfacing — it
+   travels up to the section heading via defineExpose. */
 const topPair = computed<{ a: string; b: string; value: number } | null>(() => {
   const features = props.structure.meta.features;
   let best: { a: string; b: string; value: number } | null = null;
@@ -77,44 +73,7 @@ const topPairCopy = computed(() => {
   return `${featureLabel(pair.a)} × ${featureLabel(pair.b)} · ${rel} r=${pair.value.toFixed(2)}`;
 });
 
-const screeCopy = computed(() => {
-  const explained = props.structure.explained_variance;
-  if (!explained.length) return "解释方差比";
-  const first = explained[0].variance_ratio;
-  const rest = explained[explained.length - 1].cumulative_ratio - first;
-  return `主成分 1 占比 ${(first * 100).toFixed(0)}% · 其余 ${(rest * 100).toFixed(0)}%`;
-});
-
-const loadingCopy = computed(() => {
-  const component = leadingComponent.value;
-  let high: { feature: string; value: number } | null = null;
-  let low: { feature: string; value: number } | null = null;
-  for (const row of props.structure.loadings) {
-    const value = row.values[component];
-    if (value == null || !Number.isFinite(value)) continue;
-    if (!high || value > high.value) high = { feature: row.feature, value };
-    if (!low || value < low.value) low = { feature: row.feature, value };
-  }
-  if (!high || !low) return "因子载荷阵";
-  return `PC1 权重：${featureLabel(high.feature)} 最高(${high.value.toFixed(2)})`;
-});
-
-const scoreCopy = computed(() => {
-  return "二维主成分投影分布";
-});
-
-const correlationCopy = computed(() => {
-  const features = props.structure.meta.features;
-  let strong = 0;
-  props.structure.correlation.forEach((row, y) => {
-    features.forEach((feature, x) => {
-      if (x <= y) return;
-      const value = row.values[feature];
-      if (value != null && Number.isFinite(value) && Math.abs(value) >= 0.6) strong += 1;
-    });
-  });
-  return `变量相关热力图 · ${strong} 组强相关 (|r|≥0.6)`;
-});
+defineExpose({ topPairCopy });
 
 function makeChart(el: HTMLDivElement | null) {
   if (!el) return null;
@@ -435,44 +394,23 @@ onBeforeUnmount(() => {
 
 <template>
   <section ref="shell" class="structure-panel">
-    <header class="panel-header">
-      <h2 class="display-face">{{ topPairCopy }}</h2>
-      <span class="panel-meta data-mono">{{ structure.meta.sample_count }} 小时样本</span>
-    </header>
-
     <div class="structure-grid">
       <article>
-        <div class="chart-heading">
-          <h3 class="display-face">{{ screeCopy }}</h3>
-        </div>
         <div ref="screeEl" class="structure-chart"></div>
       </article>
 
       <article>
-        <div class="chart-heading">
-          <h3 class="display-face">{{ loadingCopy }}</h3>
-        </div>
         <div ref="loadingEl" class="structure-chart tall"></div>
       </article>
 
       <article>
-        <div class="chart-heading">
-          <h3 class="display-face">{{ scoreCopy }}</h3>
-        </div>
         <div ref="scoreEl" class="structure-chart"></div>
       </article>
 
       <article>
-        <div class="chart-heading">
-          <h3 class="display-face">{{ correlationCopy }}</h3>
-        </div>
         <div ref="correlationEl" class="structure-chart tall"></div>
       </article>
     </div>
-
-    <footer class="panel-footer data-mono">
-      {{ structure.meta.window_start.slice(0, 10) }} → {{ structure.meta.window_end.slice(0, 10) }}
-    </footer>
   </section>
 </template>
 

@@ -1,7 +1,7 @@
-<!-- WindRose — where the dirty wind comes from. 16 bearing bins, each petal
-     stacked by wind-speed class; radius is sqrt(frequency) (area-true) and
-     segment colour is the mean PM2.5 carried at that speed. Hand-written
-     SVG annular sectors on a compass rose. -->
+<!-- WindRose — where the dirty wind comes from, drawn as a proper meteorological
+     rose: 24 bearing bins, petals stacked by wind-speed class with radial
+     gradients, a luminous halo behind the dirtiest bearing, and a rotation
+     sweep-in. Radius is sqrt(area-true), normalised to the busiest bin. -->
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { gsap, prefersReducedMotion } from "../lib/motion";
@@ -18,12 +18,13 @@ const props = defineProps<{ samples: RoseSample[] }>();
 
 const shell = ref<HTMLElement | null>(null);
 const size = useElementSize(shell);
-const hovered = ref<{ dir: number; speed: number } | null>(null);
+const hoveredDir = ref<number | null>(null);
+const hoveredBin = ref<{ dir: number; speed: number } | null>(null);
 
-const DIRS = 16;
+const DIRS = 24;
 const SPEED_STOPS = [0.5, 2, 4, 7, Infinity];
 const SPEED_LABELS = ["<2", "2–4", "4–7", "≥7"];
-const PAD = 26;
+const PAD = 30;
 
 const bins = computed(() => {
   const grid: Array<Array<{ count: number; pm25Sum: number } | null>> = Array.from(
@@ -33,13 +34,11 @@ const bins = computed(() => {
   let total = 0;
   for (const sample of props.samples) {
     if (!(sample.speed >= 0.5)) continue;
-    const speedIdx = SPEED_STOPS.findIndex(
-      (stop, i) => i > 0 && sample.speed < stop,
-    );
+    const speedIdx = SPEED_STOPS.findIndex((stop, i) => i > 0 && sample.speed < stop);
     if (speedIdx === -1) continue;
     const dirIdx = Math.min(
       DIRS - 1,
-      Math.max(0, Math.floor(((sample.dir % 360) + 360) % 360 / (360 / DIRS))),
+      Math.max(0, Math.floor((((sample.dir % 360) + 360) % 360) / (360 / DIRS))),
     );
     const cell = grid[dirIdx]![speedIdx] ?? { count: 0, pm25Sum: 0 };
     cell.count += 1;
@@ -53,20 +52,37 @@ const bins = computed(() => {
 const geometry = computed(() => {
   const { w, h } = size.value;
   if (!w || !h) return null;
-  const cx = w / 2;
-  const cy = h / 2;
-  const radius = Math.min(w, h) / 2 - PAD;
-  return { w, h, cx, cy, radius };
+  return { w, h, cx: w / 2, cy: h / 2, radius: Math.max(40, Math.min(w, h) / 2 - PAD) };
+});
+
+const dirtiestDir = computed(() => {
+  const { grid } = bins.value;
+  let best = -1;
+  let bestMean = -1;
+  for (let dir = 0; dir < DIRS; dir++) {
+    let sum = 0;
+    let n = 0;
+    for (const cell of grid[dir]!) {
+      if (!cell) continue;
+      sum += cell.pm25Sum;
+      n += cell.count;
+    }
+    if (n < 20) continue;
+    const mean = sum / n;
+    if (mean > bestMean) {
+      bestMean = mean;
+      best = dir;
+    }
+  }
+  return best;
 });
 
 const petals = computed(() => {
   const geo = geometry.value;
   const { grid, total } = bins.value;
   if (!geo || !total) return [];
-  /* Radius keeps sqrt(area-true) scaling but anchors the busiest bin near the
-     rim, so the rose fills its compass instead of huddling at the centre. */
   let maxShare = 0.001;
-  const shares: Array<Array<number | null>> = grid.map((row) =>
+  const shares = grid.map((row) =>
     row.map((cell) => {
       if (!cell || !cell.count) return null;
       const share = cell.count / total;
@@ -79,26 +95,27 @@ const petals = computed(() => {
     speed: number;
     d: string;
     color: string;
+    opacity: number;
     share: number;
     meanPm25: number;
   }> = [];
+  const span = (360 / DIRS) * (Math.PI / 180);
   for (let dir = 0; dir < DIRS; dir++) {
-    let r0 = geo.radius * 0.1;
+    let r0 = geo.radius * 0.08;
     for (let speed = 0; speed < SPEED_STOPS.length - 1; speed++) {
       const cell = grid[dir]![speed];
       const share = shares[dir]![speed];
-      if (!cell || !cell.count || share == null) {
-        continue;
-      }
-      const r1 = r0 + Math.sqrt(share / maxShare) * geo.radius * 0.9;
-      const a0 = ((dir * 360) / DIRS - 90 + 2) * (Math.PI / 180);
-      const a1 = (((dir + 1) * 360) / DIRS - 90 - 2) * (Math.PI / 180);
+      if (!cell || !cell.count || share == null) continue;
+      const r1 = r0 + Math.sqrt(share / maxShare) * geo.radius * 0.92;
+      const a0 = (dir * 2 * Math.PI) / DIRS - Math.PI / 2 + span * 0.08;
+      const a1 = ((dir + 1) * 2 * Math.PI) / DIRS - Math.PI / 2 - span * 0.08;
       const meanPm25 = cell.pm25Sum / cell.count;
       out.push({
         dir,
         speed,
         d: annularSector(geo.cx, geo.cy, r0, r1, a0, a1),
         color: pm25Color(meanPm25),
+        opacity: 0.4 + (speed / (SPEED_STOPS.length - 2)) * 0.5,
         share,
         meanPm25,
       });
@@ -134,37 +151,45 @@ function annularSector(
   ].join(" ");
 }
 
+const rings = computed(() => {
+  const geo = geometry.value;
+  if (!geo) return [];
+  return [0.33, 0.66, 1].map((f) => ({ r: geo.radius * f }));
+});
+
 const spokes = computed(() => {
   const geo = geometry.value;
   if (!geo) return [];
-  return Array.from({ length: DIRS }, (_, i) => {
+  return Array.from({ length: 24 }, (_, i) => {
     const angle = (i * 2 * Math.PI) / DIRS;
     return {
-      x1: geo.cx + geo.radius * 0.1 * Math.sin(angle),
-      y1: geo.cy - geo.radius * 0.1 * Math.cos(angle),
+      major: i % 6 === 0,
+      x1: geo.cx + geo.radius * 0.08 * Math.sin(angle),
+      y1: geo.cy - geo.radius * 0.08 * Math.cos(angle),
       x2: geo.cx + geo.radius * Math.sin(angle),
       y2: geo.cy - geo.radius * Math.cos(angle),
     };
   });
 });
 
-const rings = computed(() => {
-  const geo = geometry.value;
-  if (!geo) return [];
-  return [0.25, 0.5, 0.75, 1].map((f) => ({
-    r: geo.radius * f * 0.94 + geo.radius * 0.06,
-  }));
-});
-
 const compass = computed(() => {
   const geo = geometry.value;
   if (!geo) return [];
   return [
-    { label: "北", x: geo.cx, y: geo.cy - geo.radius - 12 },
-    { label: "东", x: geo.cx + geo.radius + 12, y: geo.cy },
-    { label: "南", x: geo.cx, y: geo.cy + geo.radius + 16 },
-    { label: "西", x: geo.cx - geo.radius - 12, y: geo.cy },
+    { label: "北", x: geo.cx, y: geo.cy - geo.radius - 14 },
+    { label: "东", x: geo.cx + geo.radius + 13, y: geo.cy },
+    { label: "南", x: geo.cx, y: geo.cy + geo.radius + 18 },
+    { label: "西", x: geo.cx - geo.radius - 13, y: geo.cy },
   ];
+});
+
+const halo = computed(() => {
+  const geo = geometry.value;
+  const dir = dirtiestDir.value;
+  if (!geo || dir < 0) return null;
+  const angle = ((dir + 0.5) * 2 * Math.PI) / DIRS - Math.PI / 2;
+  const [hx, hy] = polar(geo.cx, geo.cy, geo.radius * 0.42, angle);
+  return { cx: hx, cy: hy, r: geo.radius * 0.42 };
 });
 
 const overall = computed(() => {
@@ -175,13 +200,15 @@ const overall = computed(() => {
 });
 
 const hoverTip = computed(() => {
-  const petal = petals.value.find(
-    (p) => hovered.value && p.dir === hovered.value.dir && p.speed === hovered.value.speed,
-  );
+  const bin = hoveredBin.value;
+  if (!bin) return null;
+  const petal = petals.value.find((p) => p.dir === bin.dir && p.speed === bin.speed);
   if (!petal) return null;
+  const from = ((bin.dir * 360) / DIRS).toFixed(0);
+  const to = (((bin.dir + 1) * 360) / DIRS).toFixed(0);
   return {
-    dir: `${((petal.dir * 360) / 16).toFixed(0)}°–${(((petal.dir + 1) * 360) / 16).toFixed(0)}°`,
-    speed: SPEED_LABELS[petal.speed],
+    dir: `${from}°–${to}°`,
+    speed: SPEED_LABELS[bin.speed],
     share: (petal.share * 100).toFixed(1),
     pm25: petal.meanPm25.toFixed(1),
     color: petal.color,
@@ -191,12 +218,12 @@ const hoverTip = computed(() => {
 watch(petals, (next) => {
   if (!next.length || prefersReducedMotion()) return;
   requestAnimationFrame(() => {
-    const nodes = shell.value?.querySelectorAll<SVGGElement>(".petal");
-    if (!nodes?.length) return;
+    const group = shell.value?.querySelector<SVGGElement>(".rose-plot");
+    if (!group) return;
     gsap.fromTo(
-      nodes,
-      { scale: 0.55, opacity: 0, transformOrigin: "50% 50%" },
-      { scale: 1, opacity: 1, duration: 0.7, stagger: 0.018, ease: "back.out(1.6)" },
+      group,
+      { rotation: -70, opacity: 0, transformOrigin: "50% 50%", svgOrigin: `${geometry.value?.cx ?? 0} ${geometry.value?.cy ?? 0}` },
+      { rotation: 0, opacity: 1, duration: 1.4, ease: "power3.out" },
     );
   });
 });
@@ -205,6 +232,13 @@ watch(petals, (next) => {
 <template>
   <div ref="shell" class="wind-rose">
     <svg :width="size.w" :height="size.h">
+      <defs>
+        <radialGradient id="rose-halo">
+          <stop offset="0%" stop-color="#f97316" stop-opacity="0.28" />
+          <stop offset="100%" stop-color="#f97316" stop-opacity="0" />
+        </radialGradient>
+      </defs>
+
       <circle
         v-for="(ring, i) in rings"
         :key="i"
@@ -214,18 +248,28 @@ watch(petals, (next) => {
         class="ring"
       />
 
-      <g
-        v-for="petal in petals"
-        :key="`${petal.dir}-${petal.speed}`"
-        class="petal"
-        @mouseenter="hovered = { dir: petal.dir, speed: petal.speed }"
-        @mouseleave="hovered = null"
-      >
-        <path :d="petal.d" :fill="petal.color" fill-opacity="0.82" />
+      <circle v-if="halo" :cx="halo.cx" :cy="halo.cy" :r="halo.r" fill="url(#rose-halo)" />
+
+      <g class="rose-plot">
+        <g
+          v-for="petal in petals"
+          :key="`${petal.dir}-${petal.speed}`"
+          class="petal"
+          :style="{ opacity: hoveredDir != null && hoveredDir !== petal.dir ? 0.22 : petal.opacity }"
+          @mouseenter="hoveredDir = petal.dir; hoveredBin = { dir: petal.dir, speed: petal.speed }"
+          @mouseleave="hoveredDir = null; hoveredBin = null"
+        >
+          <path :d="petal.d" :fill="petal.color" stroke="#ffffff" stroke-width="0.5" />
+        </g>
       </g>
 
-      <g v-for="(spoke, i) in spokes" :key="`spoke-${i}`" class="spoke">
-        <line :x1="spoke.x1" :y1="spoke.y1" :x2="spoke.x2" :y2="spoke.y2" />
+      <g class="spokes">
+        <line
+          v-for="(spoke, i) in spokes"
+          :key="i"
+          :class="{ major: spoke.major }"
+          :x1="spoke.x1" :y1="spoke.y1" :x2="spoke.x2" :y2="spoke.y2"
+        />
       </g>
 
       <text
@@ -265,19 +309,23 @@ watch(petals, (next) => {
   stroke-dasharray: 2 5;
 }
 
-.spoke line {
+.spokes line {
   stroke: var(--hairline);
-  stroke-opacity: 0.7;
+  stroke-opacity: 0.55;
+}
+
+.spokes line.major {
+  stroke: var(--hairline-strong);
+  stroke-opacity: 0.8;
 }
 
 .petal {
   cursor: pointer;
+  transition: opacity 180ms ease;
 }
 
 .petal:hover path {
-  fill-opacity: 1;
-  stroke: #ffffff;
-  stroke-width: 0.8;
+  stroke-width: 1;
 }
 
 .compass-label {
@@ -292,7 +340,7 @@ watch(petals, (next) => {
 .center-value {
   fill: var(--ink);
   font-family: var(--font-display);
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 700;
   text-anchor: middle;
 }
@@ -300,7 +348,7 @@ watch(petals, (next) => {
 .center-unit {
   fill: var(--muted);
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 9.5px;
   text-anchor: middle;
 }
 

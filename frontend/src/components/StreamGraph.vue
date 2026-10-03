@@ -3,7 +3,8 @@
      so stacking is a shape language, not a unit claim. Hand-written SVG:
      smooth Catmull-Rom layers, hover lifts one strand out of the river. -->
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { RotateCcw } from "lucide-vue-next";
 import { gsap, prefersReducedMotion } from "../lib/motion";
 import { dayTicks, filled, smoothPath, useElementSize } from "../lib/viz";
 
@@ -23,6 +24,27 @@ const shell = ref<HTMLElement | null>(null);
 const size = useElementSize(shell);
 const hoverIndex = ref<number | null>(null);
 const hoveredKey = ref<string | null>(null);
+
+/* The wave: a clip rectangle sweeps the river in from its source, so the
+   composition reads as flow rather than a static poster. Replays on demand
+   from the corner button. */
+const wipeW = ref(0);
+let waveTween: gsap.core.Tween | null = null;
+
+function playWave() {
+  waveTween?.kill();
+  const full = geometry.value?.innerW ?? 0;
+  if (prefersReducedMotion() || !full) {
+    wipeW.value = full || 9999;
+    return;
+  }
+  wipeW.value = 0;
+  waveTween = gsap.to(wipeW, {
+    value: full,
+    duration: 2.4,
+    ease: "power2.inOut",
+  });
+}
 
 const PAD = { top: 14, right: 10, bottom: 26, left: 10 };
 
@@ -121,22 +143,43 @@ function onMove(event: MouseEvent) {
   hoverIndex.value = Math.min(props.times.length - 1, Math.max(0, Math.round(t * (props.times.length - 1))));
 }
 
+/* Wave fires once both gates open: the river has data AND the reader can
+   actually see it. */
+let dataReady = false;
+let seen = false;
 let played = false;
-watch(paths, (next) => {
-  if (!next.length || played || prefersReducedMotion()) {
-    played = !!next.length;
-    return;
-  }
+
+function maybePlay() {
+  if (played || !dataReady || !seen) return;
   played = true;
-  const nodes = shell.value?.querySelectorAll<SVGPathElement>(".stream-layer");
-  if (!nodes?.length) return;
-  nodes.forEach((node, i) => {
-    gsap.fromTo(
-      node,
-      { autoAlpha: 0, y: 10 },
-      { autoAlpha: 1, y: 0, duration: 0.9, delay: i * 0.09, ease: "power3.out" },
-    );
-  });
+  requestAnimationFrame(playWave);
+}
+
+watch(paths, (next) => {
+  if (!next.length || dataReady) return;
+  dataReady = true;
+  maybePlay();
+});
+
+let waveObserver: IntersectionObserver | null = null;
+onMounted(() => {
+  if (!shell.value) return;
+  waveObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries[0]?.isIntersecting && !seen) {
+        seen = true;
+        maybePlay();
+        waveObserver?.disconnect();
+      }
+    },
+    { rootMargin: "60px" },
+  );
+  waveObserver.observe(shell.value);
+});
+
+onBeforeUnmount(() => {
+  waveObserver?.disconnect();
+  waveTween?.kill();
 });
 </script>
 
@@ -144,6 +187,9 @@ watch(paths, (next) => {
   <div ref="shell" class="stream-graph" @mousemove="onMove" @mouseleave="hoverIndex = null; hoveredKey = null">
     <svg :width="size.w" :height="size.h">
       <defs>
+        <clipPath id="stream-wipe">
+          <rect :x="PAD.left" y="0" :width="wipeW" :height="size.h" />
+        </clipPath>
         <linearGradient
           v-for="layer in paths"
           :key="layer.key"
@@ -155,22 +201,24 @@ watch(paths, (next) => {
         </linearGradient>
       </defs>
 
-      <path
-        v-for="(layer, i) in paths"
-        :key="layer.key"
-        class="stream-layer"
-        :d="layer.d"
-        :style="layerStyle(i)"
-        @mouseenter="hoveredKey = layer.key"
-      />
-      <path
-        v-for="(layer, i) in paths"
-        :key="`edge-${layer.key}`"
-        class="stream-edge"
-        :d="layer.d"
-        :style="{ stroke: layer.color, opacity: hoveredKey && hoveredKey !== layer.key ? 0.15 : 0.9 }"
-        @mouseenter="hoveredKey = layer.key"
-      />
+      <g clip-path="url(#stream-wipe)">
+        <path
+          v-for="(layer, i) in paths"
+          :key="layer.key"
+          class="stream-layer"
+          :d="layer.d"
+          :style="layerStyle(i)"
+          @mouseenter="hoveredKey = layer.key"
+        />
+        <path
+          v-for="(layer, i) in paths"
+          :key="`edge-${layer.key}`"
+          class="stream-edge"
+          :d="layer.d"
+          :style="{ stroke: layer.color, opacity: hoveredKey && hoveredKey !== layer.key ? 0.15 : 0.9 }"
+          @mouseenter="hoveredKey = layer.key"
+        />
+      </g>
 
       <line
         v-if="hoverIndex != null && geometry"
@@ -189,6 +237,10 @@ watch(paths, (next) => {
         </g>
       </g>
     </svg>
+
+    <button type="button" class="replay" aria-label="重放波动" @click="playWave">
+      <RotateCcw :size="13" />
+    </button>
 
     <div v-if="hoverReadout" class="stream-tip">
       <span class="tip-time data-mono">{{ new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", hour12: false }).format(new Date(hoverReadout.time)) }}</span>
@@ -255,6 +307,29 @@ watch(paths, (next) => {
   pointer-events: none;
   font-size: 12px;
   color: var(--ink-soft);
+}
+
+.replay {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all var(--duration-fast) ease;
+  backdrop-filter: blur(8px);
+}
+
+.replay:hover {
+  color: var(--ink);
+  transform: rotate(-60deg);
 }
 
 .tip-time {

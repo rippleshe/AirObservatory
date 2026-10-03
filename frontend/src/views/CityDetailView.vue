@@ -16,7 +16,7 @@ import TrustPanel from "../components/TrustPanel.vue";
 import WaterfallChart from "../components/WaterfallChart.vue";
 import { useLocationCatalog } from "../composables/useLocationCatalog";
 import { useCountUp } from "../composables/useCountUp";
-import { aqiColor } from "../lib/palette";
+import { aqiColor, POLLUTANT_COLORS } from "../lib/palette";
 import { useContextStore } from "../stores/context";
 
 const route = useRoute();
@@ -34,14 +34,7 @@ const POLLUTANT_LABELS: Record<string, string> = {
   so2: "SO₂",
   co: "CO",
 };
-const HORIZON_COLORS: Record<string, string> = {
-  pm25: "#c8702b",
-  pm10: "#eda100",
-  no2: "#1baf7a",
-  o3: "#2a78d6",
-  so2: "#e87ba4",
-  co: "#4a3aa7",
-};
+const HORIZON_COLORS = POLLUTANT_COLORS;
 
 watch(
   [locationId, () => locations.data.value],
@@ -267,43 +260,9 @@ const trendSentence = computed(() => {
   return `${delta > 0 ? "上升" : "下降"} ${Math.abs(delta).toFixed(1)}`;
 });
 
-const trendHeadline = computed(() => {
-  const recentAvg = pm25Trend.value.recentAvg;
-  if (recentAvg == null) return "近 24 小时 PM2.5 趋势";
-  const delta = pm25Trend.value.delta;
-  const change = delta == null ? "" : ` · 较昨日 ${delta > 0 ? "+" : ""}${delta.toFixed(1)}`;
-  return `24h 日均 ${recentAvg.toFixed(1)} µg/m³${change}`;
-});
 
-const pollutantStandings = computed(() =>
-  (pulse.data.value ?? []).flatMap((item) => {
-    const values = item.points
-      .filter((point) => point.value != null)
-      .map((point) => Number(point.value));
-    if (values.length < 2) return [];
-    const latest = values[values.length - 1];
-    return [
-      {
-        variable: item.variable,
-        label: POLLUTANT_LABELS[item.variable] ?? item.variable,
-        percentile: (values.filter((value) => value <= latest).length / values.length) * 100,
-      },
-    ];
-  }),
-);
 
-const pollutantHeadline = computed(() => {
-  const rows = pollutantStandings.value;
-  if (!rows.length) return "多污染物动态监测";
-  const focus = rows.find((row) => row.variable === "pm25") ?? rows[0];
-  const high = rows.filter((row) => row.percentile >= 65).length;
-  const tail = high ? `${high} 项偏高` : "全部正常";
-  return `${focus.label} 处于历史 ${Math.round(focus.percentile)}% 分位 · ${tail}`;
-});
 
-const rhythmHeadline = computed(
-  () => heatmap.value?.peakCopy ?? "时段节律特征",
-);
 
 /* ── phase path: wind × PM2.5 ─────────────────────────────── */
 const phasePoints = computed(() => {
@@ -326,25 +285,7 @@ const phasePoints = computed(() => {
   return out;
 });
 
-const windClearance = computed(() => {
-  const points = phasePoints.value;
-  if (points.length < 200) return null;
-  const sorted = [...points].sort((a, b) => a.wind - b.wind);
-  const q = (f: number) => sorted[Math.floor(sorted.length * f)]!.wind;
-  const calmLine = q(0.25);
-  const windyLine = q(0.75);
-  const mean = (arr: typeof points) =>
-    arr.length ? arr.reduce((sum, p) => sum + p.pm25, 0) / arr.length : 0;
-  const calmMean = mean(points.filter((p) => p.wind <= calmLine));
-  const windyMean = mean(points.filter((p) => p.wind >= windyLine));
-  return { delta: calmMean - windyMean };
-});
 
-const windHeadline = computed(() => {
-  const clearance = windClearance.value;
-  if (clearance == null || clearance.delta <= 0) return "风与污染的拉锯";
-  return `静风比大风天高 ${clearance.delta.toFixed(1)} µg/m³`;
-});
 
 /* ── horizon: six pollutants folded ───────────────────────── */
 const horizonTimes = computed(
@@ -382,39 +323,8 @@ const dailyPm = computed(() => {
   return { days, values };
 });
 
-const waterfallHeadline = computed(() => {
-  const { values } = dailyPm.value;
-  const valid = values.filter((v): v is number => v != null);
-  if (valid.length < 2) return "30 天变化分解";
-  const net = valid[valid.length - 1]! - valid[0]!;
-  return `30 天净变化 ${net >= 0 ? "+" : ""}${net.toFixed(1)} µg/m³`;
-});
 
-const structureHeadline = computed(() => {
-  const item = structure.data.value;
-  const samples = item?.meta.sample_count ?? 0;
-  const features = item?.meta.features.length ?? 0;
-  const explained = item?.explained_variance ?? [];
-  if (!item || !samples || !features || !explained.length) {
-    return "气象与污染物关联结构";
-  }
-  let used = 0;
-  let covered = 0;
-  for (const step of explained) {
-    used += 1;
-    covered = step.cumulative_ratio;
-    if (covered >= 0.8) break;
-  }
-  return `${samples}h 样本 · 前 ${used} 主成分解释 ${Math.round(covered * 100)}% 波动`;
-});
 
-const trustHeadline = computed(() => {
-  const days = coverage.data.value?.coverage ?? [];
-  if (!days.length) return "数据源可信度与覆盖度";
-  const mean = (key: "observation_coverage" | "model_coverage" | "weather_coverage") =>
-    Math.round((days.reduce((sum, day) => sum + day[key], 0) / days.length) * 100);
-  return `近 30 天覆盖：实测 ${mean("observation_coverage")}% · 模式 ${mean("model_coverage")}%`;
-});
 
 /* Model-vs-observation is only a statement about model bias when both readings
    describe the same hour. Comparability is a precondition of the claim. */
@@ -439,17 +349,6 @@ const sourceGap = computed(() => {
   return Number(modelPm25.value) - Number(observedPm25.value);
 });
 
-const forecastOutlook = computed(() => {
-  const points = forecast.data.value?.series?.[0]?.points ?? [];
-  if (!points.length) return "";
-  const first = points[0]?.value;
-  const last = points.at(-1)?.value;
-  const peak = Math.max(...points.map((point) => point.value));
-  if (first == null || last == null) return `预测峰值 ${peak.toFixed(1)}`;
-  const delta = last - first;
-  const trend = Math.abs(delta) < 2 ? "平稳" : delta > 0 ? "偏高" : "改善";
-  return `未来预测 ${trend} · 峰值 ${peak.toFixed(0)}`;
-});
 </script>
 
 <template>
@@ -496,10 +395,7 @@ const forecastOutlook = computed(() => {
 
     <HealthRiskCard
       class="city-health-card"
-      :city="snapshot.data.value?.city"
       :level="nationalCity?.china_aqi_level"
-      :health-effect="nationalCity?.health_effect"
-      :advice="nationalCity?.advice"
     />
 
     <nav class="section-nav" aria-label="城市详情分区">
@@ -512,8 +408,7 @@ const forecastOutlook = computed(() => {
 
     <section id="trend" v-reveal class="detail-section first-section">
       <div class="section-heading">
-        <h2 class="display-face">{{ trendHeadline }}</h2>
-        <span class="forecast-note">{{ forecastOutlook }}</span>
+        <h2 class="sec-label">趋势</h2>
       </div>
       <TraceDeck
         :history="pm25Series"
@@ -524,8 +419,7 @@ const forecastOutlook = computed(() => {
 
     <section id="pollutants" v-reveal class="detail-section">
       <div class="section-heading">
-        <h2 class="display-face">{{ pollutantHeadline }}</h2>
-        <span class="forecast-note">六污染物层阶</span>
+        <h2 class="sec-label">构成</h2>
       </div>
       <HorizonChart
         v-if="horizonSeries.length"
@@ -545,8 +439,7 @@ const forecastOutlook = computed(() => {
 
     <section id="rhythm" v-reveal class="detail-section">
       <div class="section-heading">
-        <h2 class="display-face">{{ rhythmHeadline }}</h2>
-        <span class="forecast-note">{{ windHeadline }}</span>
+        <h2 class="sec-label">节律</h2>
       </div>
 
       <div class="rhythm-grid">
@@ -560,7 +453,7 @@ const forecastOutlook = computed(() => {
 
     <section id="structure" v-reveal class="detail-section">
       <div class="section-heading">
-        <h2 class="display-face">{{ structureHeadline }}</h2>
+        <h2 class="sec-label">结构</h2>
       </div>
       <PCAStructurePanel
         v-if="structure.data.value"
@@ -571,11 +464,10 @@ const forecastOutlook = computed(() => {
 
     <section id="trust" v-reveal class="detail-section trust-section">
       <div class="section-heading">
-        <h2 class="display-face">{{ trustHeadline }}</h2>
+        <h2 class="sec-label">回测</h2>
       </div>
 
       <div class="trust-waterfall">
-        <h3 class="display-face">{{ waterfallHeadline }}</h3>
         <WaterfallChart
           v-if="dailyPm.values.length"
           class="waterfall-body"
@@ -729,10 +621,10 @@ const forecastOutlook = computed(() => {
 }
 .section-heading h2 {
   margin: 0;
-  color: var(--ink);
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: var(--track-title);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: var(--fw-strong);
+  letter-spacing: 0.2em;
 }
 .forecast-note {
   font-size: var(--fs-label);

@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from backend.config import get_settings
 from backend.db import init_db, transaction
+from backend.ml import lstm_pipeline
 from backend.ml.forecasting import refresh_baseline_forecasts
 from backend.pipelines.cams import refresh_cams
 from backend.pipelines.openaq import refresh_openaq
@@ -67,6 +68,14 @@ async def refresh_recent_weather() -> dict:
     )
 
 
+async def refresh_lstm() -> dict:
+    # Training runs off-thread: a full sweep takes minutes of numpy and must
+    # not stall the event loop the other refresh loops live on.
+    if lstm_pipeline.artifact_ready():
+        return {"status": "ok", "action": "skipped-fresh"}
+    return await asyncio.to_thread(lstm_pipeline.train_and_register)
+
+
 def _fail_stale_running_runs() -> None:
     """A worker that died mid-run leaves 'running' rows that never resolve."""
     with transaction() as con:
@@ -114,6 +123,12 @@ async def main() -> None:
             settings.weather_refresh_seconds,
             refresh_recent_weather,
             initial_delay=20.0,
+        ),
+        periodic(
+            "LSTM nightly",
+            86_400,
+            refresh_lstm,
+            initial_delay=45.0,
         ),
     )
 

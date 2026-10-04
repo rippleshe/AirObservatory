@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime
 
 from .db import connect
 
@@ -437,3 +438,41 @@ def national_weather_rows(
     query += " ORDER BY w.location_id, w.observed_at"
     with connect() as con:
         return con.execute(query, params).fetchall()
+
+
+def overview_signal_rows() -> tuple[list[sqlite3.Row], list[sqlite3.Row]]:
+    """Latest CAMS PM2.5 snapshot per city (future hours only) plus each
+    city's newest analysis reading — the raw material for the signals strip."""
+    now = datetime.now(UTC).isoformat()
+    with connect() as con:
+        forecast_rows = con.execute(
+            """
+            SELECT f.location_id, l.city, f.target_at, f.horizon_hours,
+                   f.predicted_value
+            FROM forecasts f
+            JOIN locations l ON l.location_id = f.location_id
+            WHERE f.variable = 'pm25'
+              AND f.model_name = 'CAMS'
+              AND f.target_at > ?
+              AND f.issued_at = (
+                SELECT MAX(f2.issued_at) FROM forecasts f2
+                WHERE f2.location_id = f.location_id
+                  AND f2.model_name = 'CAMS'
+                  AND f2.variable = 'pm25'
+                  AND f2.target_at > ?
+              )
+            ORDER BY f.location_id, f.horizon_hours
+            """,
+            (now, now),
+        ).fetchall()
+        analysis_rows = con.execute(
+            """
+            SELECT a.location_id, a.pm25
+            FROM air_model_analysis a
+            WHERE a.valid_at = (
+                SELECT MAX(a2.valid_at) FROM air_model_analysis a2
+                WHERE a2.location_id = a.location_id
+            )
+            """
+        ).fetchall()
+    return forecast_rows, analysis_rows

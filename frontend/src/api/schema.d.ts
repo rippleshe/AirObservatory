@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/overview/signals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overview Signals */
+        get: operations["overview_signals_api_overview_signals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/overview": {
         parameters: {
             query?: never;
@@ -217,6 +234,23 @@ export interface paths {
         };
         /** Model Metrics */
         get: operations["model_metrics_api_models__location_id__metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models/{location_id}/lstm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Model Lstm */
+        get: operations["model_lstm_api_models__location_id__lstm_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -482,6 +516,22 @@ export interface components {
             /** Cluster Profiles */
             cluster_profiles: components["schemas"]["FingerprintClusterProfile"][];
         };
+        /** CitySignal */
+        CitySignal: {
+            /** Location Id */
+            location_id: number;
+            /** Name */
+            name: string;
+            /** Delta */
+            delta: number;
+            /** Peak */
+            peak: number;
+            /**
+             * Peak At
+             * Format: date-time
+             */
+            peak_at: string;
+        };
         /** CityStructureMeta */
         CityStructureMeta: {
             /** Run Id */
@@ -683,6 +733,80 @@ export interface components {
             lon: number;
             /** Timezone */
             timezone: string;
+        };
+        /** LstmForecastPoint */
+        LstmForecastPoint: {
+            /**
+             * Target At
+             * Format: date-time
+             */
+            target_at: string;
+            /** Horizon Hours */
+            horizon_hours: number;
+            /** Value */
+            value: number;
+        };
+        /** LstmMeta */
+        LstmMeta: {
+            /** Version */
+            version?: string | null;
+            /** Trained At */
+            trained_at?: string | null;
+            /**
+             * Eval Basis
+             * @default cams_analysis
+             */
+            eval_basis: string;
+            /** Params */
+            params: number;
+            /** Epochs */
+            epochs?: number | null;
+        };
+        /** LstmRunResponse */
+        LstmRunResponse: {
+            /** Location Id */
+            location_id: number;
+            /** City */
+            city: string;
+            /** Unit */
+            unit: string;
+            /** Hidden */
+            hidden: number;
+            /** Window Hours */
+            window_hours: number;
+            /** Replay Hours */
+            replay_hours: number;
+            /** Feature Names */
+            feature_names: string[];
+            /** Steps */
+            steps: components["schemas"]["LstmStep"][];
+            /** Forecast */
+            forecast: components["schemas"]["LstmForecastPoint"][];
+            /** Metrics */
+            metrics: components["schemas"]["ModelMetric"][];
+            meta: components["schemas"]["LstmMeta"];
+        };
+        /** LstmStep */
+        LstmStep: {
+            /**
+             * Target At
+             * Format: date-time
+             */
+            target_at: string;
+            /** X */
+            x: number[];
+            /** F */
+            f: number[];
+            /** I */
+            i: number[];
+            /** O */
+            o: number[];
+            /** G */
+            g: number[];
+            /** Cell */
+            cell: number[];
+            /** Hidden */
+            hidden: number[];
         };
         /** Meta */
         Meta: {
@@ -931,6 +1055,26 @@ export interface components {
             /** Locations */
             locations: components["schemas"]["OverviewLocation"][];
         };
+        /** OverviewSignalsResponse */
+        OverviewSignalsResponse: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Basis */
+            basis: string;
+            /** Evaluated */
+            evaluated: number;
+            peak?: components["schemas"]["SignalPeak"] | null;
+            /** Worsening */
+            worsening?: components["schemas"]["CitySignal"][];
+            /**
+             * Improving Count
+             * @default 0
+             */
+            improving_count: number;
+        };
         /** PCAExplainedVariance */
         PCAExplainedVariance: {
             /** Component */
@@ -1025,6 +1169,18 @@ export interface components {
             data_kind: "observation" | "model_analysis";
             /** Points */
             points: components["schemas"]["SeriesPoint"][];
+        };
+        /** SignalPeak */
+        SignalPeak: {
+            /** Lead Hours */
+            lead_hours: number;
+            /**
+             * Target At
+             * Format: date-time
+             */
+            target_at: string;
+            /** Value */
+            value: number;
         };
         /** SnapshotResponse */
         SnapshotResponse: {
@@ -1247,6 +1403,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CityFingerprintResponse"];
+                };
+            };
+        };
+    };
+    overview_signals_api_overview_signals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewSignalsResponse"];
                 };
             };
         };
@@ -1495,6 +1671,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelMetricsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    model_lstm_api_models__location_id__lstm_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                location_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LstmRunResponse"];
                 };
             };
             /** @description Validation Error */

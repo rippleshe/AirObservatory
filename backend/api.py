@@ -12,12 +12,14 @@ from .schemas import (
     DataKind,
     ForecastResponse,
     LocationSummary,
+    LstmRunResponse,
     Metric,
     ModelMetricsResponse,
     NationalOverviewResponse,
     NationalSeriesResponse,
     NationalWeatherResponse,
     OverviewResponse,
+    OverviewSignalsResponse,
     SeriesResponse,
     SnapshotResponse,
     StatusResponse,
@@ -27,6 +29,7 @@ from .schemas import (
 from .services import (
     get_backtest,
     get_city_fingerprint,
+    get_city_lstm,
     get_city_structure,
     get_coverage,
     get_forecast,
@@ -36,6 +39,7 @@ from .services import (
     get_national_series,
     get_national_weather,
     get_overview,
+    get_overview_signals,
     get_series,
     get_snapshot,
     get_status,
@@ -99,6 +103,11 @@ def city_fingerprint() -> CityFingerprintResponse:
         return get_city_fingerprint()
     except LookupError as exc:
         raise _not_found(exc) from exc
+
+
+@router.get("/overview/signals", response_model=OverviewSignalsResponse)
+def overview_signals() -> OverviewSignalsResponse:
+    return get_overview_signals()
 
 
 @router.get("/overview", response_model=OverviewResponse)
@@ -187,6 +196,14 @@ def forecast(
 def model_metrics(location_id: int) -> ModelMetricsResponse:
     try:
         return get_model_metrics(location_id)
+    except LookupError as exc:
+        raise _not_found(exc) from exc
+
+
+@router.get("/models/{location_id}/lstm", response_model=LstmRunResponse)
+def model_lstm(location_id: int) -> LstmRunResponse:
+    try:
+        return get_city_lstm(location_id)
     except LookupError as exc:
         raise _not_found(exc) from exc
 

@@ -194,6 +194,37 @@ const pm25Series = computed(() =>
 const modelPm25 = computed(() => snapshot.data.value?.model_analysis?.pm25);
 const observedPm25 = computed(() => snapshot.data.value?.observation?.pm25);
 
+/* 未来 24h: the CAMS peak for this city and the trend word against the
+   current reading — the hero's action cell, no new request. */
+const camsPoints = computed(
+  () =>
+    forecast.data.value?.series.find((series) => series.model_name === "CAMS")
+      ?.points ?? [],
+);
+const nextPeak = computed(() => {
+  const points = camsPoints.value;
+  if (!points.length) return null;
+  const peak = points.reduce((a, b) => (b.value > a.value ? b : a));
+  return { value: peak.value, at: peak.target_at };
+});
+const basePm25 = computed(() =>
+  modelPm25.value != null ? Number(modelPm25.value) : camsPoints.value[0]?.value ?? null,
+);
+const peakWord = computed(() => {
+  if (nextPeak.value == null || basePm25.value == null) return "";
+  const delta = nextPeak.value.value - basePm25.value;
+  if (delta >= 5) return "↑升";
+  if (delta <= -5) return "↓降";
+  return "→平";
+});
+const peakAtText = computed(() => {
+  if (!nextPeak.value) return "";
+  const at = new Date(nextPeak.value.at);
+  const now = new Date();
+  const day = at.getDate() === now.getDate() ? "今" : "明";
+  return `${day} ${String(at.getHours()).padStart(2, "0")}:00`;
+});
+
 /* Hero status numbers land with a count-up instead of popping in. */
 const aqiTarget = computed(() =>
   nationalCity.value?.china_aqi == null
@@ -414,6 +445,12 @@ const sourceGap = computed(() => {
           <p v-else-if="observedPm25 != null">{{ fmtTime(observationTime) }}</p>
           <p v-else>—</p>
         </article>
+        <article>
+          <small>未来 24h</small>
+          <strong>{{ nextPeak?.value.toFixed(0) ?? "—" }}</strong>
+          <p v-if="nextPeak">{{ peakWord }} · 峰 {{ peakAtText }}</p>
+          <p v-else>—</p>
+        </article>
       </section>
     </header>
 
@@ -555,7 +592,7 @@ const sourceGap = computed(() => {
 .current-status {
   min-height: 104px;
   display: grid;
-  grid-template-columns: 1.1fr repeat(3, 1fr);
+  grid-template-columns: 1.1fr repeat(4, 1fr);
   overflow: hidden;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);

@@ -7,6 +7,7 @@ from .analytics.aqi import STANDARD as AQI_STANDARD
 from .analytics.aqi import realtime_aqi
 from .city_catalog import region_for
 from .config import get_settings
+from .ml.lstm_pipeline import city_lstm_run
 from .repository import (
     active_location_rows,
     backtest_rows,
@@ -24,6 +25,7 @@ from .repository import (
     national_series_rows,
     national_weather_rows,
     overview_rows,
+    overview_signal_rows,
     provider_binding_rows,
     recent_ingestion_rows,
     recent_observation_rows,
@@ -38,6 +40,7 @@ from .schemas import (
     CityFingerprintMeta,
     CityFingerprintPoint,
     CityFingerprintResponse,
+    CitySignal,
     CityStructureMeta,
     CityStructureResponse,
     CorrelationRow,
@@ -50,6 +53,10 @@ from .schemas import (
     ForecastSeries,
     IngestionRun,
     LocationSummary,
+    LstmForecastPoint,
+    LstmMeta,
+    LstmRunResponse,
+    LstmStep,
     Meta,
     ModelMetric,
     ModelMetricsResponse,
@@ -63,6 +70,7 @@ from .schemas import (
     NationalWeatherResponse,
     OverviewLocation,
     OverviewResponse,
+    OverviewSignalsResponse,
     PCAExplainedVariance,
     PCALoading,
     PCAScore,
@@ -70,6 +78,7 @@ from .schemas import (
     ProviderStatus,
     SeriesPoint,
     SeriesResponse,
+    SignalPeak,
     SnapshotResponse,
     StatusResponse,
     SystemResponse,
@@ -926,4 +935,96 @@ def get_city_fingerprint() -> CityFingerprintResponse:
             )
             for item in payload["cluster_profiles"]
         ],
+    )
+
+
+def get_city_lstm(location_id: int) -> LstmRunResponse:
+    """The trained cell's genuine forward pass for one city — gates, cell and
+    hidden states for the 48h replay, the 24h decode, and the run's metrics."""
+    payload = city_lstm_run(location_id)
+    if payload is None:
+        raise LookupError(f"LSTM not ready for location {location_id}")
+    return LstmRunResponse(
+        location_id=payload["location_id"],
+        city=payload["city"],
+        unit=payload["unit"],
+        hidden=payload["hidden"],
+        window_hours=payload["window_hours"],
+        replay_hours=payload["replay_hours"],
+        feature_names=payload["feature_names"],
+        steps=[LstmStep(**step) for step in payload["steps"]],
+        forecast=[LstmForecastPoint(**point) for point in payload["forecast"]],
+        metrics=[ModelMetric(**row) for row in payload["metrics"]],
+        meta=LstmMeta(**payload["meta"]),
+    )
+
+
+def get_overview_signals() -> OverviewSignalsResponse:
+    """Data-derived conclusions, no prose: which cities deteriorate fastest
+    over the next 24h, the national peak window, how many cities improve.
+    Basis is the latest CAMS snapshot against each city's current analysis."""
+    now = datetime.now(UTC)
+    forecast_rows, analysis_rows = overview_signal_rows()
+
+    current = {
+        row["location_id"]: float(row["pm25"])
+        for row in analysis_rows
+        if row["pm25"] is not None
+    }
+    per_city: dict[int, dict] = {}
+    for row in forecast_rows:
+        if row["predicted_value"] is None:
+            continue
+        entry = per_city.setdefault(
+            row["location_id"], {"name": row["city"], "values": []}
+        )
+        entry["values"].append(
+            (int(row["horizon_hours"]), float(row["predicted_value"]), row["target_at"])
+        )
+
+    worsening: list[CitySignal] = []
+    improving_count = 0
+    lead_values: dict[int, list[float]] = {}
+    lead_time: dict[int, str] = {}
+    evaluated = 0
+    for location_id, entry in per_city.items():
+        values = entry["values"]
+        if len(values) < 12:
+            continue
+        evaluated += 1
+        base = current.get(location_id, values[0][1])
+        peak_hour, peak_value, peak_at = max(values, key=lambda item: item[1])
+        mean_next = sum(v for _, v, _ in values) / len(values)
+        if peak_value - base >= 5.0:
+            worsening.append(
+                CitySignal(
+                    location_id=location_id,
+                    name=entry["name"],
+                    delta=round(peak_value - base, 1),
+                    peak=round(peak_value, 1),
+                    peak_at=peak_at,
+                )
+            )
+        if mean_next <= base - 5.0:
+            improving_count += 1
+        for horizon, value, target_at in values:
+            lead_values.setdefault(horizon, []).append(value)
+            lead_time.setdefault(horizon, target_at)
+
+    worsening.sort(key=lambda signal: signal.delta, reverse=True)
+    national_peak = None
+    if lead_values:
+        best_lead = max(lead_values, key=lambda h: sum(lead_values[h]) / len(lead_values[h]))
+        national_peak = SignalPeak(
+            lead_hours=best_lead,
+            target_at=lead_time[best_lead],
+            value=round(sum(lead_values[best_lead]) / len(lead_values[best_lead]), 1),
+        )
+    return OverviewSignalsResponse(
+        generated_at=now,
+        basis="CAMS",
+        evaluated=evaluated,
+        peak=national_peak,
+        worsening=worsening[:3],
+        improving_count=improving_count,
     )

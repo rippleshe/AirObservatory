@@ -24,6 +24,13 @@ const plotEl = ref<HTMLElement | null>(null);
 const size = useElementSize(plotEl);
 const hovered = ref<number | null>(null);
 
+/* A focus outside the projection dims nothing here either. */
+const focusActive = computed(
+  () =>
+    props.focusId != null &&
+    props.fingerprint.points.some((point) => point.location_id === props.focusId),
+);
+
 const FEATURE_LABELS: Record<string, string> = {
   pm25_mean: "PM2.5 均值",
   pm25_p90: "PM2.5 高值",
@@ -295,7 +302,7 @@ watch(dots, (next) => {
             :fill="clusterColor(dot.cluster)"
             :stroke="hovered === dot.id || focusId === dot.id ? 'var(--ink)' : '#ffffff'"
             :stroke-width="hovered === dot.id || focusId === dot.id ? 2 : 1.5"
-            :opacity="focusId != null && focusId !== dot.id ? 0.18 : 1"
+            :opacity="focusActive && focusId !== dot.id ? 0.18 : 1"
             @mouseenter="onDotEnter(dot.id)"
             @mouseleave="hovered = null"
             @click="emit('select', dot.id, dot.name)"

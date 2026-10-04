@@ -421,3 +421,65 @@ class CityFingerprintResponse(BaseModel):
     loadings: list[PCALoading]
     points: list[CityFingerprintPoint]
     cluster_profiles: list[FingerprintClusterProfile]
+
+
+class LstmStep(BaseModel):
+    target_at: datetime
+    x: list[float]
+    f: list[float]
+    i: list[float]
+    o: list[float]
+    g: list[float]
+    cell: list[float]
+    hidden: list[float]
+
+
+class LstmForecastPoint(BaseModel):
+    target_at: datetime
+    horizon_hours: int
+    value: float
+
+
+class LstmMeta(BaseModel):
+    version: str | None = None
+    trained_at: str | None = None
+    eval_basis: str = "cams_analysis"
+    params: int
+    epochs: int | None = None
+
+
+class LstmRunResponse(BaseModel):
+    location_id: int
+    city: str
+    unit: str
+    hidden: int
+    window_hours: int
+    replay_hours: int
+    feature_names: list[str]
+    steps: list[LstmStep]
+    forecast: list[LstmForecastPoint]
+    metrics: list[ModelMetric]
+    meta: LstmMeta
+
+
+class SignalPeak(BaseModel):
+    lead_hours: int
+    target_at: datetime
+    value: float
+
+
+class CitySignal(BaseModel):
+    location_id: int
+    name: str
+    delta: float
+    peak: float
+    peak_at: datetime
+
+
+class OverviewSignalsResponse(BaseModel):
+    generated_at: datetime
+    basis: str
+    evaluated: int
+    peak: SignalPeak | None = None
+    worsening: list[CitySignal] = Field(default_factory=list)
+    improving_count: int = 0

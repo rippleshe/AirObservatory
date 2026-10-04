@@ -30,6 +30,11 @@ const props = withDefaults(
 const shell = ref<HTMLElement | null>(null);
 const size = useElementSize(shell);
 
+/* Same existence guard as the band: a focus outside the race dims nothing. */
+const focusActive = computed(
+  () => props.focusId != null && props.entries.some((entry) => entry.location_id === props.focusId),
+);
+
 const frame = ref(0);
 const playing = ref(false);
 
@@ -200,13 +205,13 @@ onBeforeUnmount(() => {
         v-for="row in allRows"
         :key="row.id"
         class="race-row"
-        :class="{ focused: props.focusId === row.id }"
+        :class="{ focused: focusActive && props.focusId === row.id }"
         :style="{
           transform: `translateY(${Math.min(row.rank, props.topN) * geometry.rowH}px)`,
           opacity:
             row.rank >= props.topN
               ? 0
-              : props.focusId != null && row.id !== props.focusId
+              : focusActive && row.id !== props.focusId
                 ? 0.22
                 : 1,
         }"

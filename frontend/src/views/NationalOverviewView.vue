@@ -11,6 +11,7 @@ import ChinaFieldMap from "../components/ChinaFieldMap.vue";
 import LiveStrip from "../components/LiveStrip.vue";
 import PollutionWeave from "../components/PollutionWeave.vue";
 import SeverityBand from "../components/SeverityBand.vue";
+import SignalStrip from "../components/SignalStrip.vue";
 import StreamGraph from "../components/StreamGraph.vue";
 import TimeRibbon from "../components/TimeRibbon.vue";
 import VizHead from "../components/VizHead.vue";
@@ -101,6 +102,15 @@ const pollutantSuite = useQuery({
   queryKey: ["national-series-suite", 720],
   queryFn: async () => Promise.all(POLLUTANTS.map((p) => fetchSeries(p.key))),
   staleTime: 15 * 60_000,
+});
+
+/* Data-derived conclusions for the next 24h — the signals strip consumes
+   this; the endpoint reads the latest CAMS snapshot per city. */
+const signals = useQuery({
+  queryKey: ["overview-signals"],
+  queryFn: () => expectData(api.GET("/api/overview/signals")),
+  refetchInterval: 5 * 60_000,
+  staleTime: 60_000,
 });
 
 const cities = computed(() => national.data.value?.cities ?? []);
@@ -479,6 +489,11 @@ onBeforeUnmount(() => {
         />
         <div v-else class="ribbon-skeleton skeleton" role="status"></div>
       </div>
+    </section>
+
+    <section v-if="signals.data.value" v-reveal="60" class="viz-section">
+      <VizHead label="信号" :meta="`CAMS 未来 24h · ${signals.data.value.evaluated} 城`" />
+      <SignalStrip :signals="signals.data.value" @focus="pinCity" />
     </section>
 
     <section v-if="displayCities.length" v-reveal="60" class="viz-section">

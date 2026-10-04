@@ -69,6 +69,12 @@ const ordered = computed(() => {
 
 const total = computed(() => props.cities.length || 1);
 
+/* Dim only when the focused city actually lives in this band — a focus
+   outside the dataset must not wash out the whole chart. */
+const focusActive = computed(
+  () => props.focusId != null && props.cities.some((city) => city.location_id === props.focusId),
+);
+
 /** Index of the first unit in each band — the boundary ruler reads off these. */
 const marks = computed(() => {
   const rows = ordered.value;
@@ -220,7 +226,7 @@ function tickStyle(mark: { start: number }) {
           :key="row.city.location_id"
           class="unit-col"
           :class="{
-            dimmed: focusId != null && focusId !== row.city.location_id,
+            dimmed: focusActive && focusId !== row.city.location_id,
           }"
           role="listitem"
         >

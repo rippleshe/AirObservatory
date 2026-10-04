@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, toRaw } from "vue";
 import { useQuery } from "@tanstack/vue-query";
 import { useRouter } from "vue-router";
 import { api } from "../api/client";
@@ -282,7 +282,13 @@ const chordCities = computed(() => {
   const ids = provinceIds.value;
   return series.cities
     .filter((city) => ids.has(city.location_id))
-    .map((city) => ({ location_id: city.location_id, name: city.name, values: city.values }));
+    .map((city) => ({
+      location_id: city.location_id,
+      name: city.name,
+      /* toRaw: the chord's Pearson pass reads 66k values per recompute —
+         through reactive proxies that alone costs half a second in dev. */
+      values: toRaw(city).values,
+    }));
 });
 
 

@@ -88,9 +88,8 @@ const geometry = computed(() => {
   return { w, h, cx: w / 2, cy: h / 2, R: Math.min(w, h) / 2 - PAD };
 });
 
-const nodes = computed<ChordNode[]>(() => {
-  const geo = geometry.value;
-  if (!geo) return [];
+/* Node means depend on data only — sizes never re-run them. */
+const nodeMeans = computed(() => {
   const rows = props.cities
     .map((city) => {
       const valid = city.values.filter((v): v is number => v != null);
@@ -99,12 +98,48 @@ const nodes = computed<ChordNode[]>(() => {
     })
     .filter((row) => row.mean > 0)
     .sort((a, b) => b.mean - a.mean);
-  const n = rows.length;
-  return rows.map((row, i) => ({
+  return rows;
+});
+
+/* The correlation matrix is the expensive part (465 pairs × 720 hours) and
+   depends on DATA only. Isolating it here means a container resize re-lays
+   out the ribbons without ever re-running a Pearson pass. */
+const pairs = computed(() => {
+  const list = nodeMeans.value;
+  if (list.length < 3) return { kept: [], strength: new Map<number, number>() };
+  const byId = new Map(props.cities.map((city) => [city.location_id, city.values]));
+  const raw: Array<{ a: (typeof list)[number]; b: (typeof list)[number]; r: number }> = [];
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const va = byId.get(list[i]!.id);
+      const vb = byId.get(list[j]!.id);
+      if (!va || !vb) continue;
+      const r = pearson(va, vb);
+      if (r == null || r < props.threshold) continue;
+      raw.push({ a: list[i]!, b: list[j]!, r });
+    }
+  }
+  raw.sort((x, y) => y.r - x.r);
+  const kept = raw.slice(0, props.maxEdges);
+  const strength = new Map<number, number>();
+  for (const edge of kept) {
+    strength.set(edge.a.id, (strength.get(edge.a.id) ?? 0) + edge.r);
+    strength.set(edge.b.id, (strength.get(edge.b.id) ?? 0) + edge.r);
+  }
+  return { kept, strength };
+});
+
+const nodes = computed<ChordNode[]>(() => {
+  const geo = geometry.value;
+  const list = nodeMeans.value;
+  if (!geo) return [];
+  const n = list.length;
+  const maxStrength = Math.max(0.001, ...pairs.value.strength.values());
+  return list.map((row, i) => ({
     ...row,
     color: pm25Color(row.mean),
     angle: (i / n) * 2 * Math.PI - Math.PI / 2,
-    degree: 1,
+    degree: 0.6 + (pairs.value.strength.get(row.id) ?? 0) / maxStrength,
   }));
 });
 
@@ -120,28 +155,10 @@ const ribbons = computed<Ribbon[]>(() => {
   const geo = geometry.value;
   const list = nodes.value;
   if (!geo || list.length < 3) return [];
-  const byId = new Map(props.cities.map((city) => [city.location_id, city.values]));
-  const raw: Array<{ a: ChordNode; b: ChordNode; r: number }> = [];
-  for (let i = 0; i < list.length; i++) {
-    for (let j = i + 1; j < list.length; j++) {
-      const va = byId.get(list[i]!.id);
-      const vb = byId.get(list[j]!.id);
-      if (!va || !vb) continue;
-      const r = pearson(va, vb);
-      if (r == null || r < props.threshold) continue;
-      raw.push({ a: list[i]!, b: list[j]!, r });
-    }
-  }
-  raw.sort((x, y) => y.r - x.r);
-  const kept = raw.slice(0, props.maxEdges);
-
-  const strength = new Map<number, number>();
-  for (const edge of kept) {
-    strength.set(edge.a.id, (strength.get(edge.a.id) ?? 0) + edge.r);
-    strength.set(edge.b.id, (strength.get(edge.b.id) ?? 0) + edge.r);
-  }
-  const maxStrength = Math.max(0.001, ...strength.values());
-  for (const node of list) node.degree = 0.6 + (strength.get(node.id) ?? 0) / maxStrength;
+  const kept = pairs.value.kept.filter(
+    (edge) =>
+      list.some((n) => n.id === edge.a.id) && list.some((n) => n.id === edge.b.id),
+  );
 
   const point = (angle: number, radius: number): [number, number] => [
     geo.cx + radius * Math.cos(angle),
@@ -149,12 +166,14 @@ const ribbons = computed<Ribbon[]>(() => {
   ];
 
   return kept.map((edge, index) => {
-    const wa = 0.02 * edge.a.degree;
-    const wb = 0.02 * edge.b.degree;
-    const [ax0, ay0] = point(edge.a.angle - wa, geo.R);
-    const [ax1, ay1] = point(edge.a.angle + wa, geo.R);
-    const [bx1, by1] = point(edge.b.angle + wb, geo.R);
-    const [bx0, by0] = point(edge.b.angle - wb, geo.R);
+    const a = list.find((n) => n.id === edge.a.id)!;
+    const b = list.find((n) => n.id === edge.b.id)!;
+    const wa = 0.02 * a.degree;
+    const wb = 0.02 * b.degree;
+    const [ax0, ay0] = point(a.angle - wa, geo.R);
+    const [ax1, ay1] = point(a.angle + wa, geo.R);
+    const [bx1, by1] = point(b.angle + wb, geo.R);
+    const [bx0, by0] = point(b.angle - wb, geo.R);
     /* Control points pulled hard toward the centre give the classic chord
        bow without a full crossing at the origin. */
     const c1: [number, number] = [geo.cx + (ax1 - geo.cx) * 0.14, geo.cy + (ay1 - geo.cy) * 0.14];
@@ -170,17 +189,17 @@ const ribbons = computed<Ribbon[]>(() => {
       `C${c3[0].toFixed(1)},${c3[1].toFixed(1)} ${c4[0].toFixed(1)},${c4[1].toFixed(1)} ${ax0.toFixed(1)},${ay0.toFixed(1)}`,
       "Z",
     ].join(" ");
-    const [mx1, my1] = point(edge.a.angle, geo.R);
-    const [mx2, my2] = point(edge.b.angle, geo.R);
+    const [mx1, my1] = point(a.angle, geo.R);
+    const [mx2, my2] = point(b.angle, geo.R);
     return {
       index,
-      source: edge.a,
-      target: edge.b,
+      source: a,
+      target: b,
       r: edge.r,
       d,
       gradId: `chord-grad-${index}`,
-      from: edge.a.color,
-      to: edge.b.color,
+      from: a.color,
+      to: b.color,
       x1: mx1,
       y1: my1,
       x2: mx2,

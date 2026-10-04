@@ -409,54 +409,68 @@ watch(
       </header>
 
       <svg class="cell-svg" viewBox="0 0 900 446">
+        <defs>
+          <marker id="arrow-ink" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+            <path d="M0.5,0.5 L8,4.5 L0.5,8.5 Z" fill="#334155" />
+          </marker>
+          <marker id="arrow-accent" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+            <path d="M0.5,0.5 L8,4.5 L0.5,8.5 Z" fill="#0284c7" />
+          </marker>
+          <marker id="arrow-soft" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+            <path d="M0.5,0.5 L7,4 L0.5,7.5 Z" fill="#94a3b8" />
+          </marker>
+        </defs>
         <rect x="8" y="8" width="884" height="414" rx="18" class="cell-boundary" />
 
         <!-- memory lane -->
         <text x="46" y="152" class="d-label">c₋₁</text>
         <text x="46" y="174" class="d-value data-mono">{{ fmt(diagram?.cellPrev ?? 0) }}</text>
-        <line x1="88" y1="180" x2="154" y2="180" class="flow memory" :stroke-width="flowW(cellNorm(diagram?.cellPrev ?? 0))" :stroke-opacity="flowO(cellNorm(diagram?.cellPrev ?? 0))" />
+        <line x1="88" y1="180" x2="150" y2="180" class="flow memory" :stroke-width="flowW(cellNorm(diagram?.cellPrev ?? 0))" :stroke-opacity="flowO(cellNorm(diagram?.cellPrev ?? 0))" marker-end="url(#arrow-ink)" />
 
         <circle cx="170" cy="180" r="15" class="node" />
         <text x="170" y="186" text-anchor="middle" class="d-op">×</text>
+        <text x="144" y="163" text-anchor="end" class="role-word">保留</text>
         <rect x="108" y="238" width="124" height="54" rx="10" class="chip" :class="{ hot: (diagram?.f ?? 0) > 0.5 }" />
         <text x="118" y="258" class="chip-name">遗忘门</text>
         <text x="222" y="260" text-anchor="end" class="chip-value data-mono">{{ fmt(diagram?.f ?? 0) }}</text>
         <path :d="sparkPath('f', 118, 266, 104, 18)" class="chip-spark" :stroke="ACCENT" fill="none" />
-        <line x1="170" y1="237" x2="170" y2="196" class="flow accent" :stroke-width="flowW(diagram?.f ?? 0)" :stroke-opacity="flowO(diagram?.f ?? 0)" />
+        <line x1="170" y1="237" x2="170" y2="200" class="flow accent" :stroke-width="flowW(diagram?.f ?? 0)" :stroke-opacity="flowO(diagram?.f ?? 0)" marker-end="url(#arrow-accent)" />
 
-        <line x1="185" y1="180" x2="374" y2="180" class="flow memory" :stroke-width="flowW(cellNorm(diagram?.retained ?? 0))" :stroke-opacity="flowO(cellNorm(diagram?.retained ?? 0))" />
+        <line x1="185" y1="180" x2="370" y2="180" class="flow memory" :stroke-width="flowW(cellNorm(diagram?.retained ?? 0))" :stroke-opacity="flowO(cellNorm(diagram?.retained ?? 0))" marker-end="url(#arrow-ink)" />
 
         <circle cx="390" cy="180" r="15" class="node" />
         <text x="390" y="186" text-anchor="middle" class="d-op">+</text>
+        <text x="364" y="163" text-anchor="end" class="role-word">写入</text>
 
         <text x="428" y="146" class="d-label">c</text>
         <text x="428" y="168" class="d-value data-mono">{{ fmt(diagram?.cell ?? 0) }}</text>
-        <line x1="405" y1="180" x2="452" y2="180" class="flow memory" :stroke-width="flowW(cellNorm(diagram?.cell ?? 0))" :stroke-opacity="flowO(cellNorm(diagram?.cell ?? 0))" />
+        <line x1="405" y1="180" x2="448" y2="180" class="flow memory" :stroke-width="flowW(cellNorm(diagram?.cell ?? 0))" :stroke-opacity="flowO(cellNorm(diagram?.cell ?? 0))" marker-end="url(#arrow-ink)" />
 
         <rect x="456" y="162" width="64" height="36" rx="9" class="tanh-box" />
         <text x="488" y="185" text-anchor="middle" class="d-op">tanh</text>
-        <line x1="488" y1="161" x2="488" y2="102" class="flow" stroke-width="2" stroke-opacity="0.7" />
+        <line x1="488" y1="161" x2="488" y2="106" class="flow" stroke-width="2" stroke-opacity="0.7" marker-end="url(#arrow-soft)" />
 
         <circle cx="488" cy="86" r="15" class="node" />
         <text x="488" y="92" text-anchor="middle" class="d-op">×</text>
+        <text x="462" y="69" text-anchor="end" class="role-word">读出</text>
         <rect x="560" y="20" width="124" height="54" rx="10" class="chip" :class="{ hot: (diagram?.o ?? 0) > 0.5 }" />
         <text x="570" y="40" class="chip-name">输出门</text>
         <text x="674" y="42" text-anchor="end" class="chip-value data-mono">{{ fmt(diagram?.o ?? 0) }}</text>
         <path :d="sparkPath('o', 570, 48, 104, 18)" class="chip-spark" :stroke="ACCENT" fill="none" />
         <line x1="574" y1="74" x2="499" y2="92" class="flow accent" :stroke-width="flowW(diagram?.o ?? 0)" :stroke-opacity="flowO(diagram?.o ?? 0)" />
-        <line x1="503" y1="86" x2="672" y2="86" class="flow accent" :stroke-width="flowW(hiddenNorm(diagram?.hidden ?? 0) + 0.3)" :stroke-opacity="flowO(hiddenNorm(diagram?.hidden ?? 0))" />
+        <line x1="503" y1="86" x2="666" y2="86" class="flow accent" :stroke-width="flowW(hiddenNorm(diagram?.hidden ?? 0) + 0.3)" :stroke-opacity="flowO(hiddenNorm(diagram?.hidden ?? 0))" marker-end="url(#arrow-accent)" />
         <text x="680" y="80" class="d-label">h</text>
         <text x="680" y="100" class="d-value data-mono">{{ fmt(diagram?.hidden ?? 0) }}</text>
         <text x="726" y="90" class="decode-tag">→ 24h 解码</text>
-        <text x="580" y="296" class="cell-note">c = f·c₋₁ + i·g</text>
-        <text x="580" y="322" class="cell-note">h = o·tanh(c)</text>
+        <text x="580" y="296" class="cell-note"><tspan fill="#64748b">c = </tspan><tspan fill="#334155">f·c₋₁</tspan><tspan fill="#64748b"> + </tspan><tspan fill="#0284c7">i·g</tspan></text>
+        <text x="580" y="322" class="cell-note"><tspan fill="#64748b">h = </tspan><tspan fill="#0284c7">o·tanh(c)</tspan></text>
         <text x="580" y="348" class="cell-note faint">芯片曲线 = 16 单元均值 × 48 步</text>
 
         <!-- bottom branch -->
         <text x="46" y="336" class="d-label">xₜ</text>
-        <line x1="66" y1="331" x2="86" y2="331" class="flow" stroke-width="2" stroke-opacity="0.55" />
-        <path d="M86 331 L86 317 L112 317" class="flow thin" fill="none" />
-        <path d="M86 331 L86 383 L112 383" class="flow thin" fill="none" />
+        <line x1="66" y1="331" x2="82" y2="331" class="flow" stroke-width="2" stroke-opacity="0.55" marker-end="url(#arrow-soft)" />
+        <path d="M86 331 L86 317 L108 317" class="flow thin" fill="none" marker-end="url(#arrow-soft)" />
+        <path d="M86 331 L86 383 L108 383" class="flow thin" fill="none" marker-end="url(#arrow-soft)" />
         <rect x="116" y="290" width="124" height="54" rx="10" class="chip" :class="{ hot: (diagram?.i ?? 0) > 0.5 }" />
         <text x="126" y="310" class="chip-name">输入门</text>
         <text x="230" y="312" text-anchor="end" class="chip-value data-mono">{{ fmt(diagram?.i ?? 0) }}</text>
@@ -465,11 +479,11 @@ watch(
         <text x="126" y="376" class="chip-name">候选</text>
         <text x="230" y="378" text-anchor="end" class="chip-value data-mono">{{ fmt(diagram?.g ?? 0) }}</text>
         <path :d="sparkPath('g', 126, 384, 104, 18)" class="chip-spark" :stroke="ACCENT" fill="none" />
-        <line x1="240" y1="317" x2="322" y2="352" class="flow accent" :stroke-width="flowW(diagram?.i ?? 0)" :stroke-opacity="flowO(diagram?.i ?? 0)" />
-        <line x1="240" y1="383" x2="322" y2="370" class="flow accent" :stroke-width="flowW(Math.abs(diagram?.g ?? 0))" :stroke-opacity="flowO(Math.abs(diagram?.g ?? 0))" />
+        <line x1="240" y1="317" x2="316" y2="352" class="flow accent" :stroke-width="flowW(diagram?.i ?? 0)" :stroke-opacity="flowO(diagram?.i ?? 0)" marker-end="url(#arrow-accent)" />
+        <line x1="240" y1="383" x2="316" y2="370" class="flow accent" :stroke-width="flowW(Math.abs(diagram?.g ?? 0))" :stroke-opacity="flowO(Math.abs(diagram?.g ?? 0))" marker-end="url(#arrow-accent)" />
         <circle cx="336" cy="362" r="13" class="node" />
         <text x="336" y="367" text-anchor="middle" class="d-op">×</text>
-        <path d="M336 349 L336 240 L390 240 L390 196" class="flow accent" fill="none" :stroke-width="flowW(diagram?.written ?? 0)" :stroke-opacity="flowO(diagram?.written ?? 0)" />
+        <path d="M336 349 L336 240 L386 240 L386 200" class="flow accent" fill="none" :stroke-width="flowW(diagram?.written ?? 0)" :stroke-opacity="flowO(diagram?.written ?? 0)" marker-end="url(#arrow-accent)" />
       </svg>
     </div>
 
@@ -783,6 +797,13 @@ watch(
   fill: #475569;
   font-size: 13px;
   font-weight: 700;
+}
+
+.role-word {
+  fill: var(--faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
 }
 
 .decode-tag {

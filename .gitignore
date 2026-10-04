@@ -1,9 +1,6 @@
 .venv/
 __pycache__/
 *.pyc
-.env
-data/*.db
-data/*.db-*
 models/*.pt
 models/*.joblib
 frontend/node_modules/

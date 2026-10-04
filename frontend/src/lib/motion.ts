@@ -82,6 +82,40 @@ export function drawIn(
   });
 }
 
+/* FLIP re-order for keyed flex/grid children: measure each element's slot,
+   let `apply()` produce the new order (it must await the DOM update), then
+   play every element from its old slot to its new one. Works on rows and
+   columns alike — the delta is taken per axis. */
+export function flipReorder(
+  items: HTMLElement[],
+  apply: () => Promise<void> | void,
+  options: { duration?: number } = {},
+) {
+  const { duration = 0.55 } = options;
+  if (prefersReducedMotion()) {
+    void apply();
+    return;
+  }
+  const first = new Map(items.map((el) => [el, el.getBoundingClientRect()]));
+  Promise.resolve(apply()).then(() => {
+    requestAnimationFrame(() => {
+      for (const el of items) {
+        const before = first.get(el);
+        if (!before) continue;
+        const after = el.getBoundingClientRect();
+        const dx = before.left - after.left;
+        const dy = before.top - after.top;
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+        gsap.fromTo(
+          el,
+          { x: dx, y: dy },
+          { x: 0, y: 0, duration, ease: "power3.out", clearProps: "x,y" },
+        );
+      }
+    });
+  });
+}
+
 /* Clip-path wipe used by area/ridge/stream sections: the band rises out of
    its baseline instead of popping. `from` is a CSS clip-path inset value. */
 export function wipeUp(el: gsap.TweenTarget, delay = 0) {

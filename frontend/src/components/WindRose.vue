@@ -215,8 +215,10 @@ const hoverTip = computed(() => {
   };
 });
 
+let swept = false;
 watch(petals, (next) => {
-  if (!next.length || prefersReducedMotion()) return;
+  if (!next.length || swept || prefersReducedMotion()) return;
+  swept = true;
   requestAnimationFrame(() => {
     const group = shell.value?.querySelector<SVGGElement>(".rose-plot");
     if (!group) return;

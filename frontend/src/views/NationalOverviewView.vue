@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useQuery } from "@tanstack/vue-query";
 import { useRouter } from "vue-router";
 import { api } from "../api/client";
@@ -8,11 +8,12 @@ import BarChartRace from "../components/BarChartRace.vue";
 import ChordDiagram from "../components/ChordDiagram.vue";
 import CityFingerprintPanel from "../components/CityFingerprintPanel.vue";
 import ChinaFieldMap from "../components/ChinaFieldMap.vue";
-import HealthRiskCard from "../components/HealthRiskCard.vue";
+import LiveStrip from "../components/LiveStrip.vue";
 import PollutionWeave from "../components/PollutionWeave.vue";
 import SeverityBand from "../components/SeverityBand.vue";
 import StreamGraph from "../components/StreamGraph.vue";
 import TimeRibbon from "../components/TimeRibbon.vue";
+import VizHead from "../components/VizHead.vue";
 import WindRose from "../components/WindRose.vue";
 import {
   AQI_LEVELS,
@@ -316,6 +317,17 @@ const ribbon = computed(() => {
   return { times: series.times, values };
 });
 
+/* 48h tails for the map's pinned overview cards. */
+const sparks = computed(() => {
+  const series = pmSeries.data.value;
+  if (!series) return {};
+  const out: Record<number, number[]> = {};
+  for (const city of series.cities) {
+    out[city.location_id] = city.values.slice(-48).filter((v): v is number => v != null);
+  }
+  return out;
+});
+
 function formatTime(value: string | null | undefined) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("zh-CN", {
@@ -331,6 +343,67 @@ function openCity(id: number, name: string) {
   context.selectLocation(id, name);
   void router.push({ name: "city", params: { locationId: id } });
 }
+
+/* Click = inspect: pinning a city floods every chart with the same focus;
+   navigation stays with the map card's CTA. ESC or an empty click releases. */
+function pinCity(id: number, name: string) {
+  context.setFocus(id, name);
+}
+
+function onMapPin(id: number | null) {
+  if (id == null) {
+    context.clearFocus();
+    return;
+  }
+  const city = displayCities.value.find((row) => row.location_id === id);
+  context.setFocus(id, city?.name ?? null);
+}
+
+/* The loom weaves whatever the suite already carries — aqi rides its own
+   series; switching variables never waits on the network. */
+const weaveSources = computed(() => {
+  const suite = pollutantSuite.data.value;
+  const byKey = new Map((suite ?? []).map((s, i) => [POLLUTANTS[i]!.key, s] as const));
+  return {
+    aqi: aqiSeries.data.value,
+    pm25: pmSeries.data.value,
+    pm10: byKey.get("pm10"),
+    o3: byKey.get("o3"),
+    no2: byKey.get("no2"),
+    so2: byKey.get("so2"),
+    co: byKey.get("co"),
+  };
+});
+
+/* 24h median trace for the live strip's sparkline — reuse of the ribbon series. */
+const stripSpark = computed(() =>
+  ribbon.value.values.slice(-24).filter((v): v is number => v != null),
+);
+
+const stageEl = ref<HTMLElement | null>(null);
+const liveOn = ref(false);
+let stageIO: IntersectionObserver | null = null;
+
+function onViewportKey(event: KeyboardEvent) {
+  if (event.key === "Escape") context.clearFocus();
+}
+
+onMounted(() => {
+  stageIO = new IntersectionObserver(
+    (entries) => {
+      liveOn.value = !entries[0]?.isIntersecting;
+    },
+    { threshold: 0 },
+  );
+  if (stageEl.value) stageIO.observe(stageEl.value);
+  window.addEventListener("keydown", onViewportKey);
+});
+
+onBeforeUnmount(() => {
+  stageIO?.disconnect();
+  window.removeEventListener("keydown", onViewportKey);
+  context.clearFocus();
+});
 </script>
 
 <template>
@@ -340,7 +413,15 @@ function openCity(id: number, name: string) {
       <button type="button" @click="national.refetch()">重试</button>
     </div>
 
-    <section v-reveal class="stage">
+    <LiveStrip
+      :cities="displayCities"
+      :metric="mapMetric"
+      :updated="national.data.value?.latest_source_time ?? null"
+      :spark="stripSpark"
+      :on="liveOn"
+    />
+
+    <section ref="stageEl" v-reveal class="stage">
       <header class="stage-head">
         <h1 class="stage-title">全国空气场</h1>
         <div class="update-note">
@@ -355,6 +436,7 @@ function openCity(id: number, name: string) {
           :cities="displayCities"
           :metric="mapMetric"
           :wind-field="windField"
+          :sparks="sparks"
           @select="openCity"
         />
         <div v-else class="map-skeleton skeleton" role="status"></div>
@@ -399,42 +481,35 @@ function openCity(id: number, name: string) {
       </div>
     </section>
 
-    <SeverityBand
-      v-if="displayCities.length"
-      v-reveal="60"
-      :cities="displayCities"
-      @select="openCity"
-    />
+    <section v-if="displayCities.length" v-reveal="60" class="viz-section">
+      <VizHead label="分布" />
+      <SeverityBand
+        :cities="displayCities"
+        :metric="mapMetric"
+        :focus-id="context.focusId"
+        @select="pinCity"
+      />
 
-    <HealthRiskCard
-      v-if="focusCity"
-      v-reveal="100"
-      :level="focusCity.china_aqi_level"
-    />
-
-    <PollutionWeave
-      v-if="pmSeries.data.value"
-      v-reveal
-      :series="pmSeries.data.value"
-      :roster="provinces"
-    />
+      <PollutionWeave
+        v-if="weaveSources.pm25 || weaveSources.aqi"
+        :sources="weaveSources"
+        :roster="provinces"
+        :focus-id="context.focusId"
+      />
+    </section>
 
     <section v-if="streamLayers.length" v-reveal class="viz-section">
-      <header class="viz-head">
-        <h2 class="viz-label">构成</h2>
-      </header>
+      <VizHead label="构成" />
       <div class="viz-body stream-body">
         <StreamGraph :times="streamTimes" :layers="streamLayers" />
       </div>
     </section>
 
     <section v-if="bumpEntries.length" v-reveal class="viz-section">
-      <header class="viz-head">
-        <h2 class="viz-label">排名 × 风场</h2>
-      </header>
+      <VizHead label="排名 × 风场" />
       <div class="duel-grid">
         <div class="viz-body duel-cell">
-          <BarChartRace :days="bumpDays" :entries="bumpEntries" :top-n="10" />
+          <BarChartRace :days="bumpDays" :entries="bumpEntries" :top-n="10" :focus-id="context.focusId" />
         </div>
         <div class="viz-body duel-cell">
           <WindRose :samples="roseSamples" />
@@ -442,27 +517,32 @@ function openCity(id: number, name: string) {
       </div>
     </section>
 
-    <section v-if="chordCities.length" v-reveal class="viz-section">
-      <header class="viz-head">
-        <h2 class="viz-label">联动</h2>
-      </header>
-      <div class="viz-body chord-body">
-        <ChordDiagram :cities="chordCities" />
-      </div>
-    </section>
-
-    <section v-reveal class="viz-section">
-      <header class="viz-head">
-        <h2 class="viz-label">污染模式</h2>
-        <span v-if="fingerprintMeta" class="viz-meta data-mono">{{ fingerprintMeta }}</span>
-      </header>
-      <CityFingerprintPanel
-        v-if="fingerprint.data.value"
-        :fingerprint="fingerprint.data.value"
-        @select="openCity"
-      />
-      <div v-else class="fingerprint-state">
-        <div v-if="fingerprint.isPending.value" class="skeleton fingerprint-skeleton" role="status"></div>
+    <section
+      v-if="chordCities.length || fingerprint.data.value"
+      v-reveal
+      class="viz-section"
+    >
+      <VizHead label="联动 × 指纹" :meta="fingerprintMeta" />
+      <div class="duo-grid">
+        <div class="viz-body duo-cell duo-chord">
+          <ChordDiagram
+            v-if="chordCities.length"
+            :cities="chordCities"
+            :focus-id="context.focusId"
+            @select="pinCity"
+          />
+        </div>
+        <div class="viz-body duo-cell duo-finger">
+          <CityFingerprintPanel
+            v-if="fingerprint.data.value"
+            :fingerprint="fingerprint.data.value"
+            :focus-id="context.focusId"
+            @select="pinCity"
+          />
+          <div v-else class="fingerprint-state">
+            <div v-if="fingerprint.isPending.value" class="skeleton fingerprint-skeleton" role="status"></div>
+          </div>
+        </div>
       </div>
     </section>
   </section>
@@ -705,33 +785,12 @@ function openCity(id: number, name: string) {
   gap: 18px;
 }
 
-.viz-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.viz-head h2 {
-  margin: 0;
-  color: var(--muted);
-  font-size: 11.5px;
-  font-weight: var(--fw-strong);
-  letter-spacing: 0.2em;
-}
-
 .stage-title {
   margin: 0;
   color: var(--stage-ink);
   font-size: 15px;
   font-weight: var(--fw-strong);
   letter-spacing: 0.24em;
-}
-
-.viz-meta {
-  color: var(--faint);
-  font-size: 11.5px;
-  white-space: nowrap;
 }
 
 .viz-body {
@@ -753,8 +812,27 @@ function openCity(id: number, name: string) {
   height: 420px;
 }
 
-.chord-body {
-  height: clamp(420px, 52vh, 560px);
+.duo-grid {
+  display: grid;
+  /* The fingerprint needs the wide cell: its ledger is a fixed-width
+     citizen, while the chord scales to whatever height the row takes. */
+  grid-template-columns: 1fr 1.25fr;
+  align-items: stretch;
+}
+
+.duo-cell {
+  min-width: 0;
+}
+
+.duo-chord {
+  height: 100%;
+  min-height: 480px;
+  padding-right: 36px;
+}
+
+.duo-finger {
+  border-left: 1px solid var(--hairline-soft);
+  padding-left: 36px;
 }
 
 .fingerprint-state {
@@ -785,6 +863,9 @@ function openCity(id: number, name: string) {
   .map-area { min-height: 460px; }
   .ribbon-dock { padding: 10px 16px 20px; }
   .duel-grid { grid-template-columns: 1fr; gap: 28px; }
+  .duo-grid { grid-template-columns: 1fr; }
+  .duo-chord { padding-right: 0; min-height: 0; height: clamp(380px, 52vh, 460px); }
+  .duo-finger { border-left: 0; padding-left: 0; margin-top: 28px; }
 }
 
 @media (max-width: 700px) {

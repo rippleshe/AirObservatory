@@ -1,27 +1,28 @@
+<!-- CityFingerprintPanel — 31 cities in PC space, hand-drawn: each cluster
+     wears a convex-hull membrane (the group shape reads before any label),
+     isolated cities get greedy anti-collision name tags, and the variance
+     story collapses into one cumulative strip. No chart library. -->
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import type { components } from "../api/schema";
-import { chartTheme, init, type ECharts } from "../lib/charts";
-import { useInView } from "../composables/useInView";
-
-/* Charts stay blank until the reader scrolls to them: the first paint is
-   the animated entrance, never a show that already ended. */
-const shell = ref<HTMLElement | null>(null);
-const inView = useInView(shell);
+import { gsap, prefersReducedMotion } from "../lib/motion";
 import { clusterColor, FORECAST_COLOR, MODEL_COLOR, MUTED_DATA_COLOR } from "../lib/palette";
+import { useElementSize } from "../lib/viz";
 
 type Fingerprint = components["schemas"]["CityFingerprintResponse"];
 
-const props = defineProps<{ fingerprint: Fingerprint }>();
+const props = withDefaults(
+  defineProps<{ fingerprint: Fingerprint; focusId?: number | null }>(),
+  { focusId: null },
+);
 const emit = defineEmits<{
   select: [locationId: number, city: string];
 }>();
 
-const scatterEl = ref<HTMLDivElement | null>(null);
-const varianceEl = ref<HTMLDivElement | null>(null);
-let scatter: ECharts | null = null;
-let variance: ECharts | null = null;
-let observer: ResizeObserver | null = null;
+const shell = ref<HTMLElement | null>(null);
+const plotEl = ref<HTMLElement | null>(null);
+const size = useElementSize(plotEl);
+const hovered = ref<number | null>(null);
 
 const FEATURE_LABELS: Record<string, string> = {
   pm25_mean: "PM2.5 均值",
@@ -51,9 +52,6 @@ function featureLabel(name: string) {
   return FEATURE_LABELS[name] ?? name;
 }
 
-/* Deviation from the mean of the provincial representatives is polarity, not
-   status: the diverging pair is cool↔warm with a neutral grey midpoint,
-   deliberately not the good/bad status green↔red. */
 const SIGMA_COOL = MODEL_COLOR;
 const SIGMA_WARM = FORECAST_COLOR;
 const SIGMA_ZERO = MUTED_DATA_COLOR;
@@ -64,7 +62,6 @@ function sigmaColor(z: number) {
   return SIGMA_ZERO;
 }
 
-/** Widest |z| in the whole profile set — one shared scale across groups. */
 const sigmaMax = computed(() => {
   let max = 1;
   for (const cluster of props.fingerprint.cluster_profiles) {
@@ -75,293 +72,285 @@ const sigmaMax = computed(() => {
   return max;
 });
 
-const components_ = computed(() => props.fingerprint.explained_variance);
+const explained = computed(() => props.fingerprint.explained_variance);
 
-const cityCount = computed(() => {
-  const declared = props.fingerprint.meta.city_count;
-  return Number.isFinite(declared) && declared > 0 ? declared : props.fingerprint.points.length;
+const PAD = 34;
+
+type Dot = {
+  id: number;
+  name: string;
+  province: string | null;
+  cluster: number;
+  x: number;
+  y: number;
+  sampleHours: number;
+};
+
+const geometry = computed(() => {
+  const { w, h } = size.value;
+  if (!w || !h || !props.fingerprint.points.length) return null;
+  const xs = props.fingerprint.points.map((p) => p.values.PC1 ?? 0);
+  const ys = props.fingerprint.points.map((p) => p.values.PC2 ?? 0);
+  const xMin = Math.min(...xs);
+  const xMax = Math.max(...xs);
+  const yMin = Math.min(...ys);
+  const yMax = Math.max(...ys);
+  const spanX = Math.max(0.5, xMax - xMin);
+  const spanY = Math.max(0.5, yMax - yMin);
+  const sx = (v: number) => PAD + ((v - xMin) / spanX) * (w - PAD * 2);
+  const sy = (v: number) => h - PAD - ((v - yMin) / spanY) * (h - PAD * 2);
+  return { w, h, sx, sy, xMid: sx(0), yMid: sy(0) };
 });
 
-const provinceCount = computed(
-  () => new Set(props.fingerprint.points.map((point) => point.province || point.city)).size,
-);
+const dots = computed<Dot[]>(() => {
+  const geo = geometry.value;
+  if (!geo) return [];
+  return props.fingerprint.points.map((point) => ({
+    id: point.location_id,
+    name: point.city,
+    province: point.province ?? null,
+    cluster: point.cluster,
+    x: geo.sx(point.values.PC1 ?? 0),
+    y: geo.sy(point.values.PC2 ?? 0),
+    sampleHours: point.sample_hours,
+  }));
+});
 
-/* One city per province is the analysis unit; the wording follows the data so a
-   multi-city artifact is never described as provincial. */
-const onePerProvince = computed(
-  () => cityCount.value > 0 && provinceCount.value === cityCount.value,
-);
-
-const scatterAria = computed(() =>
-  cityCount.value <= 0 ? "无指纹投影" : "城市指纹投影",
-);
-
-function render() {
-  if (!inView.value) return;
-  if (!scatter || !variance) return;
-  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const clusters = Array.from(
-    new Set(props.fingerprint.points.map((point) => point.cluster)),
-  ).sort((a, b) => a - b);
-  const axisInk = chartTheme().axisInk;
-  const axisSize = 12;
-  const ev = components_.value;
-
-  scatter.setOption(
-    {
-      animation: !reducedMotion,
-      aria: {
-        enabled: true,
-        description: scatterAria.value,
-      },
-      grid: { left: 58, right: 66, top: 26, bottom: 54 },
-      tooltip: {
-        backgroundColor: "rgba(255,255,255,.985)",
-        borderColor: chartTheme().tooltipBorder,
-        borderWidth: 1,
-        padding: [11, 13],
-        textStyle: { color: chartTheme().ink, fontSize: 13, lineHeight: 21 },
-        extraCssText: "box-shadow:0 12px 32px rgba(15,23,42,.14);border-radius:8px;",
-        formatter(params: any) {
-          const row = params.data;
-          return [
-            `<b>${row.city}</b> · ${row.region}`,
-            `第 ${row.cluster} 组`,
-            `主成分 1 <b>${Number(row.value[0]).toFixed(2)}</b>`,
-            `主成分 2 <b>${Number(row.value[1]).toFixed(2)}</b>`,
-            `样本 ${row.sampleHours} 小时`,
-          ].join("<br/>");
-        },
-      },
-      legend: {
-        top: 0,
-        right: 0,
-        itemWidth: 10,
-        itemHeight: 10,
-        itemGap: 14,
-        textStyle: { color: axisInk, fontSize: axisSize },
-      },
-      xAxis: {
-        type: "value",
-        name: `主成分 1 · ${Math.round((ev[0]?.variance_ratio ?? 0) * 100)}%`,
-        nameLocation: "middle",
-        nameGap: 32,
-        nameTextStyle: { color: chartTheme().inkSoft, fontSize: axisSize, fontWeight: 650 },
-        axisLabel: { color: axisInk, fontSize: axisSize },
-        axisLine: { lineStyle: { color: chartTheme().axisLine } },
-        splitLine: { lineStyle: { color: chartTheme().splitLine } },
-      },
-      yAxis: {
-        type: "value",
-        name: `主成分 2 · ${Math.round((ev[1]?.variance_ratio ?? 0) * 100)}%`,
-        nameTextStyle: {
-          color: chartTheme().inkSoft,
-          fontSize: axisSize,
-          fontWeight: 650,
-          padding: [0, 0, 8, 0],
-        },
-        axisLabel: { color: axisInk, fontSize: axisSize },
-        axisLine: { lineStyle: { color: chartTheme().axisLine } },
-        splitLine: { lineStyle: { color: chartTheme().splitLine } },
-      },
-      series: clusters.map((cluster, clusterIndex) => {
-        const rows = props.fingerprint.points
-          .filter((point) => point.cluster === cluster)
-          .map((point) => ({
-            value: [point.values.PC1 ?? 0, point.values.PC2 ?? 0],
-            locationId: point.location_id,
-            city: point.city,
-            region: point.region,
-            cluster: point.cluster,
-            sampleHours: point.sample_hours,
-          }));
-        return {
-          name: "第 " + cluster + " 组",
-          type: "scatter",
-          symbolSize: 15,
-          data: rows,
-          animationDuration: 720,
-          animationDelay: (idx: number) => clusterIndex * 200 + idx * 26,
-          itemStyle: {
-            color: clusterColor(cluster),
-            opacity: 0.95,
-            borderColor: chartTheme().surface,
-            borderWidth: 2,
-          },
-          // Names on as many points as the canvas can seat; the resolver culls
-          // the rest rather than printing them over each other.
-          label: {
-            show: true,
-            formatter: (params: any) => params.data.city,
-            position: "right",
-            distance: 4,
-            color: chartTheme().inkSoft,
-            fontSize: 12,
-            fontWeight: 650,
-            textBorderColor: chartTheme().surface,
-            textBorderWidth: 3,
-          },
-          labelLayout: { moveOverlap: "shiftY", hideOverlap: true },
-          emphasis: {
-            scale: 1.5,
-            focus: "series",
-            itemStyle: { borderColor: chartTheme().ink, borderWidth: 2 },
-            label: {
-              show: true,
-              formatter: (params: any) => params.data.city,
-              position: "top",
-              color: chartTheme().ink,
-              fontSize: 13,
-              fontWeight: 700,
-              backgroundColor: "rgba(255,255,255,.96)",
-              borderColor: chartTheme().tooltipBorder,
-              borderWidth: 1,
-              borderRadius: 5,
-              padding: [5, 8],
-              textBorderWidth: 0,
-            },
-          },
-        };
-      }),
-    },
-    true,
-  );
-
-  scatter.off("click");
-  scatter.on("click", (params: any) => {
-    const data = params.data;
-    if (data?.locationId && data?.city) {
-      emit("select", Number(data.locationId), String(data.city));
-    }
+/* Monotone-chain convex hull, expanded outward from the centroid so the
+   membrane breathes instead of hugging the dots. */
+function hullPath(points: Array<{ x: number; y: number }>): string {
+  if (points.length < 3) return "";
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (
+    o: { x: number; y: number },
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: typeof sorted = [];
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: typeof sorted = [];
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const p = sorted[i]!;
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  const hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+  if (hull.length < 3) return "";
+  const cx = hull.reduce((sum, p) => sum + p.x, 0) / hull.length;
+  const cy = hull.reduce((sum, p) => sum + p.y, 0) / hull.length;
+  const grown = hull.map((p) => {
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const dist = Math.max(1, Math.hypot(dx, dy));
+    return { x: cx + (dx / dist) * (dist + 16), y: cy + (dy / dist) * (dist + 16) };
   });
-
-  variance.setOption(
-    {
-      animation: !reducedMotion,
-      aria: { enabled: false },
-      grid: { left: 44, right: 14, top: 30, bottom: 34 },
-      tooltip: {
-        trigger: "axis",
-        backgroundColor: "rgba(255,255,255,.985)",
-        borderColor: chartTheme().tooltipBorder,
-        borderWidth: 1,
-        textStyle: { color: chartTheme().ink, fontSize: 13 },
-        extraCssText: "box-shadow:0 12px 32px rgba(15,23,42,.14);border-radius:8px;",
-      },
-      legend: {
-        top: 0,
-        right: 0,
-        itemWidth: 12,
-        itemHeight: 8,
-        textStyle: { color: axisInk, fontSize: axisSize },
-      },
-      xAxis: {
-        type: "category",
-        data: ev.map((item) => item.component),
-        axisTick: { show: false },
-        axisLine: { lineStyle: { color: chartTheme().axisLine } },
-        axisLabel: { color: axisInk, fontSize: axisSize },
-      },
-      yAxis: {
-        type: "value",
-        min: 0,
-        max: 1,
-        axisLabel: {
-          color: axisInk,
-          fontSize: axisSize,
-          formatter: (value: number) => Math.round(value * 100) + "%",
-        },
-        splitLine: { lineStyle: { color: chartTheme().splitLine } },
-      },
-      series: [
-        {
-          name: "单独解释",
-          type: "bar",
-          barMaxWidth: 24,
-          data: ev.map((item) => item.variance_ratio),
-          animationDuration: 760,
-          animationDelay: (idx: number) => idx * 90,
-          itemStyle: {
-            color: {
-              type: "linear",
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: MODEL_COLOR },
-                { offset: 1, color: "#7dd3fc" },
-              ],
-            },
-            borderRadius: [3, 3, 0, 0],
-          },
-          label: {
-            show: true,
-            position: "top",
-            color: chartTheme().inkSoft,
-            fontSize: 12,
-            fontWeight: 650,
-            formatter: (params: any) =>
-              Math.round(Number(params.value) * 100) + "%",
-          },
-        },
-        {
-          name: "累计解释",
-          type: "line",
-          data: ev.map((item) => item.cumulative_ratio),
-          showSymbol: true,
-          symbolSize: 6,
-          animationDuration: 1100,
-          animationDelay: 420,
-          lineStyle: { color: FORECAST_COLOR, width: 2 },
-          itemStyle: { color: FORECAST_COLOR, borderColor: chartTheme().surface, borderWidth: 2 },
-          endLabel: {
-            show: true,
-            formatter: (params: any) => Math.round(Number(params.value) * 100) + "%",
-            color: FORECAST_COLOR,
-            fontSize: 12,
-            fontWeight: 700,
-            distance: 4,
-          },
-        },
-      ],
-    },
-    true,
-  );
+  return grown.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ") + " Z";
 }
 
-onMounted(() => {
-  if (scatterEl.value) scatter = init(scatterEl.value, undefined, { renderer: "svg" });
-  if (varianceEl.value) variance = init(varianceEl.value, undefined, { renderer: "svg" });
-  observer = new ResizeObserver(() => {
-    scatter?.resize();
-    variance?.resize();
+const clusters = computed(() => {
+  const byId = new Map<number, Dot[]>();
+  for (const dot of dots.value) {
+    const list = byId.get(dot.cluster) ?? [];
+    list.push(dot);
+    byId.set(dot.cluster, list);
+  }
+  return [...byId.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([cluster, list]) => ({
+      cluster,
+      color: clusterColor(cluster),
+      path: hullPath(list),
+      centroid: {
+        x: list.reduce((sum, p) => sum + p.x, 0) / list.length,
+        y: list.reduce((sum, p) => sum + p.y, 0) / list.length,
+      },
+    }));
+});
+
+/* Greedy tags: most-isolated cities claim a label first, later ones only if
+   the text box stays clear — dense cores stay clean, outliers stay named. */
+const labels = computed(() => {
+  const placed: Array<{ x: number; y: number; name: string; cluster: number }> = [];
+  const boxes: Array<{ x: number; y: number; w: number; h: number }> = [];
+  const isolation = (dot: Dot) => {
+    let min = Infinity;
+    for (const other of dots.value) {
+      if (other.id === dot.id) continue;
+      min = Math.min(min, Math.hypot(other.x - dot.x, other.y - dot.y));
+    }
+    return min;
+  };
+  const ranked = [...dots.value].sort((a, b) => isolation(b) - isolation(a));
+  for (const dot of ranked) {
+    if (placed.length >= 14) break;
+    const w = dot.name.length * 11 + 10;
+    /* keep the tag inside the plot: edge cities clamp instead of clipping */
+    const lx = Math.min(dot.x + 9, (geometry.value?.w ?? 0) - w - 6);
+    const box = { x: lx, y: dot.y - 21, w, h: 15 };
+    if (boxes.some((b) => !(box.x + box.w + 4 <= b.x || b.x + b.w + 4 <= box.x || box.y + box.h + 3 <= b.y || b.y + b.h + 3 <= box.y))) continue;
+    boxes.push(box);
+    placed.push({ x: lx, y: dot.y - 9, name: dot.name, cluster: dot.cluster });
+  }
+  return placed;
+});
+
+const varianceStrip = computed(() => {
+  const ev = explained.value;
+  const total = ev.reduce((sum, step) => sum + step.variance_ratio, 0);
+  if (total <= 0) return [];
+  let acc = 0;
+  return ev.map((step) => {
+    const from = acc / total;
+    acc += step.variance_ratio;
+    return {
+      component: step.component,
+      share: step.variance_ratio / total,
+      ratio: step.variance_ratio,
+      /* the strip widths normalise to 100%, but the readout stays honest:
+         cumulative is the share of TOTAL variance the components explain. */
+      cumulative: step.cumulative_ratio,
+      from,
+    };
   });
-  if (scatterEl.value) observer.observe(scatterEl.value);
-  if (varianceEl.value) observer.observe(varianceEl.value);
-  render();
 });
 
-watch(() => props.fingerprint, render, { deep: true });
-watch(inView, () => render());
+const pcLabels = computed(() => ({
+  x: explained.value[0] ? `主成分 1 · ${Math.round(explained.value[0].variance_ratio * 100)}%` : "",
+  y: explained.value[1] ? `主成分 2 · ${Math.round(explained.value[1].variance_ratio * 100)}%` : "",
+}));
 
-onBeforeUnmount(() => {
-  observer?.disconnect();
-  scatter?.dispose();
-  variance?.dispose();
+const hoverDot = computed(() => dots.value.find((d) => d.id === hovered.value) ?? null);
+
+function onDotEnter(id: number) {
+  hovered.value = id;
+}
+
+let played = false;
+watch(dots, (next) => {
+  if (!next.length || played || prefersReducedMotion()) return;
+  played = true;
+  requestAnimationFrame(() => {
+    const membranes = shell.value?.querySelectorAll<SVGPathElement>(".membrane");
+    if (membranes?.length) {
+      membranes.forEach((path, i) => {
+        const cluster = clusters.value[i];
+        gsap.fromTo(
+          path,
+          { opacity: 0 },
+          {
+            opacity: 1,
+            duration: 0.9,
+            delay: i * 0.15,
+            ease: "power2.out",
+            svgOrigin: `${cluster?.centroid.x ?? 0} ${cluster?.centroid.y ?? 0}`,
+            scale: 0.85,
+          },
+        );
+      });
+    }
+    const nodes = shell.value?.querySelectorAll<SVGCircleElement>(".city-dot");
+    if (nodes?.length) {
+      gsap.fromTo(
+        nodes,
+        { scale: 0, opacity: 0, transformOrigin: "center" },
+        { scale: 1, opacity: 1, duration: 0.5, stagger: 0.02, delay: 0.25, ease: "back.out(1.8)" },
+      );
+    }
+  });
 });
+
+
 </script>
 
 <template>
   <section ref="shell" class="fingerprint-panel">
     <div class="fingerprint-layout">
-      <article class="scatter-cell">
-        <div ref="scatterEl" class="scatter-chart"></div>
+      <article ref="plotEl" class="scatter-cell">
+        <svg :width="geometry?.w" :height="geometry?.h" v-if="geometry" role="img" aria-label="城市指纹投影">
+          <line class="axis-zero" :x1="geometry.xMid" :x2="geometry.xMid" :y1="PAD - 12" :y2="geometry.h - PAD + 12" />
+          <line class="axis-zero" :x1="PAD - 12" :x2="geometry.w - PAD + 12" :y1="geometry.yMid" :y2="geometry.yMid" />
+
+          <path
+            v-for="cluster in clusters"
+            :key="`hull-${cluster.cluster}`"
+            class="membrane"
+            :d="cluster.path"
+            :fill="cluster.color"
+            fill-opacity="0.08"
+            :stroke="cluster.color"
+            stroke-opacity="0.35"
+            stroke-width="1.2"
+          />
+
+          <circle
+            v-for="dot in dots"
+            :key="dot.id"
+            class="city-dot"
+            :cx="dot.x"
+            :cy="dot.y"
+            r="5.5"
+            :fill="clusterColor(dot.cluster)"
+            :stroke="hovered === dot.id || focusId === dot.id ? 'var(--ink)' : '#ffffff'"
+            :stroke-width="hovered === dot.id || focusId === dot.id ? 2 : 1.5"
+            :opacity="focusId != null && focusId !== dot.id ? 0.18 : 1"
+            @mouseenter="onDotEnter(dot.id)"
+            @mouseleave="hovered = null"
+            @click="emit('select', dot.id, dot.name)"
+          />
+
+          <text
+            v-for="label in labels"
+            :key="`l-${label.name}`"
+            class="dot-label"
+            :x="label.x"
+            :y="label.y"
+            :fill="clusterColor(label.cluster)"
+          >{{ label.name }}</text>
+
+          <text class="pc-label x" :x="geometry.w / 2" :y="geometry.h - 8">{{ pcLabels.x }}</text>
+          <text class="pc-label y" :x="12" :y="PAD - 14">{{ pcLabels.y }}</text>
+        </svg>
+
+        <div v-if="hoverDot" class="scatter-tip">
+          <strong>{{ hoverDot.name }}</strong>
+          <span>{{ hoverDot.province ?? "" }} · 第 {{ hoverDot.cluster }} 组</span>
+          <span class="data-mono">{{ hoverDot.sampleHours }}h 样本</span>
+        </div>
+
       </article>
+
+      <div class="cluster-chips">
+        <span v-for="cluster in clusters" :key="`chip-${cluster.cluster}`">
+          <i :style="{ background: cluster.color }"></i>第 {{ cluster.cluster }} 组
+        </span>
+      </div>
 
       <aside class="fingerprint-ledger">
         <section>
-          <div ref="varianceEl" class="variance-chart"></div>
+          <div v-if="varianceStrip.length" class="variance-strip">
+            <div class="strip-bar">
+              <span
+                v-for="seg in varianceStrip"
+                :key="seg.component"
+                :style="{
+                  width: `${seg.share * 100}%`,
+                  left: `${seg.from * 100}%`,
+                  background: `rgba(2, 132, 199, ${0.32 + seg.from * 0.6})`,
+                }"
+              ></span>
+            </div>
+            <div class="strip-labels">
+              <span
+                v-for="seg in varianceStrip"
+                :key="`sl-${seg.component}`"
+                class="data-mono"
+              >{{ seg.component }} {{ Math.round(seg.ratio * 100) }}%</span>
+            </div>
+            <div class="strip-cumulative data-mono">累计 {{ Math.round((varianceStrip.at(-1)?.cumulative ?? 0) * 100) }}%</div>
+          </div>
         </section>
 
         <section class="cluster-section">
@@ -411,124 +400,197 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .fingerprint-panel {
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--sheet);
-}
-.panel-header {
-  min-height: 62px;
-  padding: 16px 20px 12px;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 20px;
-  border-bottom: 1px solid var(--hairline-soft);
-}
-.panel-header h2 {
-  margin: 0;
-  color: var(--ink);
-  font-size: var(--fs-sub);
-  letter-spacing: var(--track-title);
-}
-.panel-meta {
-  display: flex;
-  gap: 14px;
-  color: var(--muted);
-  font-size: var(--fs-label);
-  white-space: nowrap;
-}
-.panel-meta b {
-  color: var(--ink);
-  font-weight: var(--fw-strong);
+  width: 100%;
 }
 
 .fingerprint-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(320px, .85fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  gap: 32px;
+  align-items: start;
 }
+
 .scatter-cell {
-  min-width: 0;
-  padding: 18px 20px;
-  border-right: 1px solid var(--hairline-soft);
-}
-.chart-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 10px;
-}
-.chart-heading h3 {
-  margin: 0;
-  color: var(--ink);
-  font-size: var(--fs-body);
-  letter-spacing: var(--track-title);
-}
-.scatter-chart {
+  position: relative;
   width: 100%;
-  height: 470px;
+  aspect-ratio: 16 / 10;
+  min-height: 480px;
 }
+
+.axis-zero {
+  stroke: var(--hairline);
+  stroke-dasharray: 3 4;
+}
+
+.membrane {
+  stroke-linejoin: round;
+}
+
+.city-dot {
+  cursor: pointer;
+}
+
+.dot-label {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.pc-label {
+  fill: var(--muted);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+}
+
+.pc-label.x {
+  text-anchor: middle;
+}
+
+.scatter-tip {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: grid;
+  gap: 2px;
+  padding: 10px 13px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow-sm);
+  font-size: 11.5px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.scatter-tip strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.cluster-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding-top: 10px;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.cluster-chips span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cluster-chips i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.variance-strip {
+  display: grid;
+  gap: 8px;
+  padding: 4px 0 10px;
+}
+
+.strip-bar {
+  position: relative;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--canvas-subtle);
+  overflow: hidden;
+}
+
+.strip-bar span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.strip-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.strip-cumulative {
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.cluster-section {
+  border-top: 1px solid var(--hairline);
+  padding-top: 12px;
+}
+
 
 .fingerprint-ledger {
   min-width: 0;
 }
+
 .fingerprint-ledger > section {
-  padding: 18px 20px;
-}
-.fingerprint-ledger > section + section {
-  border-top: 1px solid var(--hairline-soft);
-}
-.variance-chart {
-  width: 100%;
-  height: 200px;
+  padding: 18px 4px;
 }
 
 .cluster-list {
   display: grid;
 }
+
 .cluster-row {
   padding: 14px 0;
   border-top: 1px solid var(--hairline-soft);
 }
+
 .cluster-row:first-child {
   border-top: 0;
   padding-top: 2px;
 }
+
 .cluster-title {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+
 .cluster-title i {
   width: 10px;
   height: 10px;
   border-radius: 50%;
 }
+
 .cluster-title b {
   color: var(--ink);
   font-size: var(--fs-label);
   font-weight: var(--fw-strong);
 }
+
 .cluster-title span {
   margin-left: auto;
   color: var(--muted);
   font-size: var(--fs-label);
 }
 
-/* σ as a diverging bar on a shared scale — polarity read off position,
-   value read off the number. Replaces a table of ±σ digits. */
 .sigma-list {
   margin-top: 10px;
   display: grid;
   gap: 7px;
 }
+
 .sigma-row {
   display: grid;
   grid-template-columns: 8.5em minmax(0, 1fr) 3.6em;
   align-items: center;
   gap: 10px;
 }
+
 .sigma-name {
   color: var(--muted);
   font-size: var(--fs-label);
@@ -536,12 +598,14 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .sigma-track {
   position: relative;
   height: 12px;
   border-radius: 2px;
   background: var(--sheet-sunken);
 }
+
 .sigma-zero {
   position: absolute;
   top: -2px;
@@ -550,29 +614,30 @@ onBeforeUnmount(() => {
   width: 1px;
   background: var(--hairline-strong);
 }
+
 .sigma-bar {
   position: absolute;
-  top: 2px;
-  bottom: 2px;
+  top: 1px;
+  bottom: 1px;
   border-radius: 2px;
 }
+
 .sigma-value {
-  color: var(--ink);
-  font-size: var(--fs-label);
   text-align: right;
-  white-space: nowrap;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-strong);
 }
 
-@media (max-width: 980px) {
-  .fingerprint-layout { grid-template-columns: 1fr; }
-  .scatter-cell {
-    border-right: 0;
-    border-bottom: 1px solid var(--hairline-soft);
-  }
+/* The scatter+ledger pairing follows the PANEL's own width, not the
+   viewport: inside a duo column it must keep two columns down to ~900px
+   of its own box, then stack. */
+.fingerprint-panel {
+  container-type: inline-size;
 }
-@media (max-width: 680px) {
-  .panel-header { display: grid; }
-  .scatter-chart { height: 400px; }
-  .sigma-row { grid-template-columns: 7em minmax(0, 1fr) 3.4em; }
+
+@container (max-width: 680px) {
+  .fingerprint-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

@@ -1,16 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useQuery } from "@tanstack/vue-query";
 import { useRoute } from "vue-router";
 import { Activity, BarChart3, Clock3, Layers3, ShieldCheck } from "lucide-vue-next";
 import { api } from "../api/client";
 import { expectData } from "../api/request";
-import BacktestPanel from "../components/BacktestPanel.vue";
-import HealthRiskCard from "../components/HealthRiskCard.vue";
+import BacktestAnatomy from "../components/BacktestAnatomy.vue";
 import HorizonChart from "../components/HorizonChart.vue";
 import HourRing from "../components/HourRing.vue";
 import PCAStructurePanel from "../components/PCAStructurePanel.vue";
-import PhasePath from "../components/PhasePath.vue";
+import WindClearance from "../components/WindClearance.vue";
 import TraceDeck from "../components/TraceDeck.vue";
 import TrustPanel from "../components/TrustPanel.vue";
 import WaterfallChart from "../components/WaterfallChart.vue";
@@ -24,6 +23,31 @@ const context = useContextStore();
 const { locations } = useLocationCatalog();
 
 const locationId = computed(() => Number(route.params.locationId));
+const activeSection = ref("trend");
+let spy: IntersectionObserver | null = null;
+
+/* The editorial rail fills its hairline down to the section you're reading. */
+const RAIL_SECTIONS = ["trend", "pollutants", "rhythm", "structure", "trust"] as const;
+const railIndex = computed(() =>
+  Math.max(0, RAIL_SECTIONS.indexOf(activeSection.value as (typeof RAIL_SECTIONS)[number])),
+);
+
+onMounted(() => {
+  spy = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) activeSection.value = entry.target.id;
+      }
+    },
+    { rootMargin: "-38% 0px -52% 0px" },
+  );
+  for (const id of ["trend", "pollutants", "rhythm", "structure", "trust"]) {
+    const el = document.getElementById(id);
+    if (el) spy.observe(el);
+  }
+});
+
+onBeforeUnmount(() => spy?.disconnect());
 const heatmap = ref<InstanceType<typeof HourRing> | null>(null);
 const POLLUTANTS = ["pm25", "pm10", "no2", "o3", "so2", "co"] as const;
 const POLLUTANT_LABELS: Record<string, string> = {
@@ -393,10 +417,6 @@ const sourceGap = computed(() => {
       </section>
     </header>
 
-    <HealthRiskCard
-      class="city-health-card"
-      :level="nationalCity?.china_aqi_level"
-    />
 
     <nav class="section-nav" aria-label="城市详情分区">
       <a href="#trend"><Activity :size="15" />趋势</a>
@@ -406,6 +426,22 @@ const sourceGap = computed(() => {
       <a href="#trust"><ShieldCheck :size="15" />回测</a>
     </nav>
 
+    <div class="city-body">
+    <nav class="section-rail" aria-label="城市详情分区">
+      <span class="rail-line" aria-hidden="true"></span>
+      <span
+        class="rail-fill"
+        :style="{ height: `calc(${railIndex} * var(--rail-pitch) + 12px)` }"
+        aria-hidden="true"
+      ></span>
+      <a href="#trend" :class="{ active: activeSection === 'trend' }"><span class="rail-no">01</span><span class="rail-word">趋势</span></a>
+      <a href="#pollutants" :class="{ active: activeSection === 'pollutants' }"><span class="rail-no">02</span><span class="rail-word">构成</span></a>
+      <a href="#rhythm" :class="{ active: activeSection === 'rhythm' }"><span class="rail-no">03</span><span class="rail-word">节律</span></a>
+      <a href="#structure" :class="{ active: activeSection === 'structure' }"><span class="rail-no">04</span><span class="rail-word">结构</span></a>
+      <a href="#trust" :class="{ active: activeSection === 'trust' }"><span class="rail-no">05</span><span class="rail-word">回测</span></a>
+    </nav>
+
+    <div class="city-sections">
     <section id="trend" v-reveal class="detail-section first-section">
       <div class="section-heading">
         <h2 class="sec-label">趋势</h2>
@@ -445,7 +481,7 @@ const sourceGap = computed(() => {
       <div class="rhythm-grid">
         <HourRing ref="heatmap" class="rhythm-cell" :series="pm25Series" />
         <div class="rhythm-cell rhythm-phase">
-          <PhasePath v-if="phasePoints.length" :points="phasePoints" />
+          <WindClearance v-if="phasePoints.length" :points="phasePoints" />
           <div v-else class="section-state">风场数据不足</div>
         </div>
       </div>
@@ -475,9 +511,11 @@ const sourceGap = computed(() => {
           :values="dailyPm.values"
         />
       </div>
-      <BacktestPanel :backtest="backtest.data.value" />
+      <BacktestAnatomy :backtest="backtest.data.value" />
       <TrustPanel :coverage="coverage.data.value" />
     </section>
+    </div>
+    </div>
   </section>
 </template>
 
@@ -569,8 +607,6 @@ const sourceGap = computed(() => {
 }
 .status-main strong { font-size: 24px; }
 
-.city-health-card { margin-top: 16px; }
-
 .section-nav {
   position: sticky;
   top: 60px;
@@ -606,16 +642,133 @@ const sourceGap = computed(() => {
   background: var(--sheet-soft);
 }
 
+.city-body {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+/* Editorial running rail: a bare hairline with numbered stops — no pill, no
+   icons, no tooltips. The ink fill grows to the section in view. */
+.section-rail {
+  --rail-pitch: 42px;
+  position: sticky;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  gap: calc(var(--rail-pitch) - 24px);
+  justify-items: start;
+  padding: 6px 0;
+}
+
+.rail-line,
+.rail-fill {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  pointer-events: none;
+}
+
+.rail-line {
+  background: var(--hairline);
+}
+
+.rail-fill {
+  bottom: auto;
+  width: 1.5px;
+  background: var(--ink);
+  transition: height 0.45s var(--ease-out);
+}
+
+.section-rail a {
+  position: relative;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 14px;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* The stop dot sits centred on the hairline. */
+.section-rail a::before {
+  content: "";
+  position: absolute;
+  left: 0.5px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--hairline-strong);
+  transition: background var(--duration-fast) ease, transform var(--duration-fast) ease;
+}
+
+.rail-no {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  transition: color var(--duration-fast) ease;
+}
+
+.rail-word {
+  font-size: 12px;
+  font-weight: 500;
+  transition: color var(--duration-fast) ease;
+}
+
+.section-rail a:hover .rail-word,
+.section-rail a:hover .rail-no {
+  color: var(--ink);
+}
+
+.section-rail a.active .rail-no,
+.section-rail a.active .rail-word {
+  color: var(--ink);
+}
+
+.section-rail a.active .rail-word {
+  font-weight: 700;
+}
+
+.section-rail a.active::before {
+  background: var(--ink);
+  transform: translate(-50%, -50%) scale(1.35);
+}
+
+.city-sections {
+  min-width: 0;
+}
+
 .detail-section {
   scroll-margin-top: 110px;
   padding-top: 32px;
+}
+
+@media (min-width: 1181px) {
+  .section-nav { display: none; }
+}
+
+@media (max-width: 1180px) {
+  .section-rail { display: none; }
+  .city-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
 }
 .first-section { padding-top: 24px; }
 .section-heading {
   min-height: 48px;
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
+  justify-content: center;
   gap: 24px;
   margin-bottom: 14px;
 }

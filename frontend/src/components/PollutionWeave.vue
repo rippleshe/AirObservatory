@@ -3,27 +3,33 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { components } from "../api/schema";
 import { chartTheme, init, token, type ECharts } from "../lib/charts";
 import { useInView } from "../composables/useInView";
+import { VARIABLE_BANDS } from "../lib/palette";
+import { gsap, prefersReducedMotion } from "../lib/motion";
 
 /* Charts stay blank until the reader scrolls to them: the first paint is
    the animated entrance, never a show that already ended. */
 const shell = ref<HTMLElement | null>(null);
 const inView = useInView(shell);
-import { PM25_BANDS, pm25Color } from "../lib/palette";
 
 type NationalSeriesResponse = components["schemas"]["NationalSeriesResponse"];
 type NationalCity = components["schemas"]["NationalCity"];
 
 const props = defineProps<{
-  series: NationalSeriesResponse | undefined;
+  /* One series per weavable variable — the view already fetches them all;
+     switching never waits on the network. */
+  sources: Record<string, NationalSeriesResponse | undefined>;
   roster: NationalCity[];
+  focusId?: number | null;
 }>();
+
+const active = ref<string>("pm25");
+const series = computed(() => props.sources[active.value]);
+const band = computed(() => VARIABLE_BANDS[active.value] ?? VARIABLE_BANDS.pm25);
 
 const el = ref<HTMLDivElement | null>(null);
 const showTable = ref(false);
 let chart: ECharts | null = null;
 let observer: ResizeObserver | null = null;
-
-const EXCEED = 75;
 
 /* Rows are the same 31 provincial representatives as the band, the map and the
    matrix, so every mark on the national layer describes one set. Order is
@@ -31,7 +37,7 @@ const EXCEED = 75;
    the loom instead of as an arbitrary pile. */
 const rows = computed(() => {
   const roster = new Map(props.roster.map((city) => [city.location_id, city]));
-  return (props.series?.cities ?? [])
+  return (series.value?.cities ?? [])
     .filter((city) => roster.has(city.location_id))
     .map((city) => ({
       ...city,
@@ -42,7 +48,15 @@ const rows = computed(() => {
     .sort((a, b) => a.lat - b.lat);
 });
 
-const times = computed(() => props.series?.times ?? []);
+const times = computed(() => series.value?.times ?? []);
+
+/* The focused province keeps its ink label while the rest of the loom reads
+   normally — a quiet anchor, not a strobe. */
+const focusLabel = computed(() => {
+  if (props.focusId == null) return null;
+  const row = rows.value.find((city) => city.location_id === props.focusId);
+  return row ? row.province || row.name : null;
+});
 
 function timeLabel(iso: string) {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -61,17 +75,20 @@ function dayLabel(iso: string) {
   }).format(new Date(iso));
 }
 
+const unitSuffix = computed(() => (band.value.unit ? ` ${band.value.unit}` : ""));
+
 /* The loom's own conclusion: the hour when the most representatives sat at or
-   above 75 µg/m³ at once. Numbers first, then the state of the fabric. */
+   above the variable's threshold at once. Numbers first, then the fabric. */
 const headline = computed(() => {
   const ts = times.value;
   const rs = rows.value;
+  const exceed = band.value.exceed;
   if (!ts.length || !rs.length) return "近 30 天逐小时时空演变";
   let best = -1;
   let bestAt = 0;
   ts.forEach((_, index) => {
     const count = rs.reduce(
-      (sum, row) => sum + ((row.values[index] ?? 0) >= EXCEED ? 1 : 0),
+      (sum, row) => sum + ((row.values[index] ?? 0) >= exceed ? 1 : 0),
       0,
     );
     if (count > best) {
@@ -79,8 +96,26 @@ const headline = computed(() => {
       bestAt = index;
     }
   });
-  if (best <= 0) return `${rs.length} 省全时段低于 75 µg/m³`;
-  return `${dayLabel(ts[bestAt])} ${String(new Date(ts[bestAt]).getHours()).padStart(2, "0")}:00 · 峰值高位集中（${best} 省达标警戒）`;
+  if (best <= 0) return `${rs.length} 省全时段低于 ${exceed}${unitSuffix.value}`;
+  return `${dayLabel(ts[bestAt]!)} ${String(new Date(ts[bestAt]!).getHours()).padStart(2, "0")}:00 · 峰值时刻（${best} 省超 ${exceed}）`;
+});
+
+/* One ceiling per variable: at least wide enough for the threshold plus
+   headroom, else the data's own p98 — a static 160 µg/m³ would wash CO into
+   the first band and clip O₃ spikes into one flat cell. */
+const vmax = computed(() => {
+  const all: number[] = [];
+  rows.value.forEach((row) =>
+    row.values.forEach((value) => {
+      if (value != null) all.push(value);
+    }),
+  );
+  all.sort((a, b) => a - b);
+  const p98 = all[Math.floor(all.length * 0.98)] ?? 0;
+  return Math.max(
+    Math.ceil((band.value.exceed * 1.15) / 10) * 10,
+    Math.ceil(p98 / 10) * 10,
+  );
 });
 
 const peakStats = computed(() =>
@@ -94,7 +129,7 @@ const peakStats = computed(() =>
       if (value == null) return;
       sum += value;
       count += 1;
-      if (value >= EXCEED) exceedHours += 1;
+      if (value >= band.value.exceed) exceedHours += 1;
       if (value > peak) {
         peak = value;
         peakAt = times.value[index] ?? null;
@@ -150,7 +185,7 @@ function render() {
           const p = Array.isArray(params) ? params[0] : params;
           const [x, y, value] = p.value as [number, number, number];
           const row = rs[y];
-          return `${row.name} · ${timeLabel(ts[x])}<br/><b>${Number(value).toFixed(1)}</b> µg/m³`;
+          return `${row.name} · ${timeLabel(ts[x]!)}<br/><b>${Number(value).toFixed(1)}</b>${unitSuffix.value}`;
         },
       },
       xAxis: {
@@ -177,21 +212,23 @@ function render() {
         data: rs.map((row) => row.province || row.name),
         axisLine: { show: false },
         axisTick: { show: false },
-        axisLabel: { color: inkSoft, fontSize: 12 },
+        axisLabel: {
+          color: inkSoft,
+          fontSize: 12,
+          formatter: (value: string) =>
+            focusLabel.value && value === focusLabel.value ? `{f|${value}}` : value,
+          rich: {
+            f: { color: token("--ink", chartTheme().ink), fontWeight: 700 },
+          },
+        },
         splitLine: { show: false },
       },
       visualMap: {
         show: false,
         min: 0,
-        max: 160,
+        max: vmax.value,
         inRange: {
-          color: [
-            PM25_BANDS[0][1],
-            PM25_BANDS[1][1],
-            PM25_BANDS[2][1],
-            PM25_BANDS[3][1],
-            PM25_BANDS[4][1],
-          ],
+          color: band.value.bands.map(([, color]) => color),
         },
       },
       series: [
@@ -221,21 +258,44 @@ onMounted(() => {
   render();
 });
 
-watch(() => [props.series, props.roster], render, { deep: true });
+watch(() => [series.value, props.roster, props.focusId], render, { deep: true });
 watch(inView, () => render());
+
+/* A variable swap repaints every cell: dip the loom so the exchange reads as
+   one deliberate dissolve instead of a hard cut. */
+watch(active, () => {
+  render();
+  if (!el.value || prefersReducedMotion()) return;
+  gsap.fromTo(
+    el.value,
+    { autoAlpha: 0.3 },
+    { autoAlpha: 1, duration: 0.5, ease: "power2.out" },
+  );
+});
 
 onBeforeUnmount(() => {
   observer?.disconnect();
   chart?.dispose();
 });
 
-defineExpose({ headline, peakStats, pm25Color });
+defineExpose({ headline, peakStats });
 </script>
 
 <template>
-  <article ref="shell" class="weave-card">
+  <article ref="shell" class="weave">
     <header class="weave-header">
-      <h2 class="display-face">{{ headline }}</h2>
+      <div class="var-switch" role="tablist" aria-label="织物变量">
+        <button
+          v-for="(vb, id) in VARIABLE_BANDS"
+          :key="id"
+          type="button"
+          :class="{ active: active === id }"
+          @click="active = String(id)"
+        >
+          {{ vb.label }}
+        </button>
+      </div>
+      <span class="weave-meta">{{ headline }}</span>
       <button
         type="button"
         class="table-toggle"
@@ -254,10 +314,10 @@ defineExpose({ headline, peakStats, pm25Color });
           <tr>
             <th scope="col">省</th>
             <th scope="col">代表城市</th>
-            <th scope="col">30 天均值</th>
-            <th scope="col">峰值</th>
+            <th scope="col">均值{{ band.unit }}</th>
+            <th scope="col">峰值{{ band.unit }}</th>
             <th scope="col">峰值时刻</th>
-            <th scope="col">≥75 小时数</th>
+            <th scope="col">≥{{ band.exceed }} 小时</th>
           </tr>
         </thead>
         <tbody>
@@ -274,7 +334,7 @@ defineExpose({ headline, peakStats, pm25Color });
     </div>
 
     <footer class="weave-key" aria-label="织物图例">
-      <span v-for="([label, color]) in PM25_BANDS" :key="label">
+      <span v-for="([label, color]) in band.bands" :key="label">
         <i :style="{ background: color }"></i>{{ label }}
       </span>
       <span class="key-rule">白线=日界</span>
@@ -283,32 +343,62 @@ defineExpose({ headline, peakStats, pm25Color });
 </template>
 
 <style scoped>
-.weave-card {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--sheet);
-  box-shadow: var(--shadow-sm);
-  padding: 18px 22px 14px;
-  transition: border-color var(--duration-fast) ease;
-}
-.weave-card:hover {
-  border-color: var(--hairline-strong);
+.weave {
+  min-width: 0;
 }
 
 .weave-header {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: 16px;
   margin-bottom: 12px;
 }
 
-.weave-header h2 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: var(--track-title);
+.var-switch {
+  flex: none;
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--sheet);
+}
+
+.var-switch button {
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all var(--duration-fast) ease;
+  white-space: nowrap;
+}
+
+.var-switch button:hover {
   color: var(--ink);
+  background: var(--sheet-soft);
+}
+
+.var-switch button.active {
+  background: var(--ink);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.weave-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--muted);
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
 }
 
 .table-toggle {

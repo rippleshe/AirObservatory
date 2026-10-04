@@ -19,9 +19,12 @@ const props = withDefaults(
     cities: ChordCity[];
     threshold?: number;
     maxEdges?: number;
+    focusId?: number | null;
   }>(),
-  { threshold: 0.55, maxEdges: 110 },
+  { threshold: 0.55, maxEdges: 110, focusId: null },
 );
+
+const emit = defineEmits<{ select: [id: number, name: string] }>();
 
 const shell = ref<HTMLElement | null>(null);
 const size = useElementSize(shell);
@@ -103,6 +106,14 @@ const nodes = computed<ChordNode[]>(() => {
     angle: (i / n) * 2 * Math.PI - Math.PI / 2,
     degree: 1,
   }));
+});
+
+/* Hover wins, but a pinned city elsewhere on the page keeps its adjacency
+   lifted here too — one focus, every view answers. */
+const activeName = computed(() => {
+  if (hoveredNode.value != null) return hoveredNode.value;
+  if (props.focusId == null) return null;
+  return nodes.value.find((node) => node.id === props.focusId)?.name ?? null;
 });
 
 const ribbons = computed<Ribbon[]>(() => {
@@ -226,8 +237,10 @@ const hoverTip = computed(() => {
   return null;
 });
 
+let swept = false;
 watch(ribbons, (next) => {
-  if (!next.length || prefersReducedMotion()) return;
+  if (!next.length || swept || prefersReducedMotion()) return;
+  swept = true;
   requestAnimationFrame(() => {
     const group = shell.value?.querySelector<SVGGElement>(".chord-plot");
     if (!group) return;
@@ -266,8 +279,8 @@ watch(ribbons, (next) => {
           :d="ribbon.d"
           :fill="`url(#${ribbon.gradId})`"
           :style="{
-            opacity: hoveredNode != null
-              ? (ribbon.source.name === hoveredNode || ribbon.target.name === hoveredNode ? 0.9 : 0.04)
+            opacity: activeName != null
+              ? (ribbon.source.name === activeName || ribbon.target.name === activeName ? 0.9 : 0.04)
               : (hoveredEdge === ribbon.index ? 0.95 : ribbon.opacity),
           }"
           @mouseenter="hoveredEdge = ribbon.index"
@@ -279,8 +292,10 @@ watch(ribbons, (next) => {
         v-for="node in nodes"
         :key="node.id"
         class="node"
+        :class="{ 'node-focus': focusId === node.id }"
         @mouseenter="hoveredNode = node.name"
         @mouseleave="hoveredNode = null"
+        @click.stop="emit('select', node.id, node.name)"
       >
         <path :d="arcPath(node)" :fill="node.color" />
         <text
@@ -289,7 +304,7 @@ watch(ribbons, (next) => {
           :y="geometry!.cy + (geometry!.R + 20) * Math.sin(node.angle)"
           :text-anchor="labelAnchor(node)"
           :transform="labelTransform(node)"
-          :style="{ opacity: hoveredNode && hoveredNode !== node.name ? 0.25 : 0.9 }"
+          :style="{ opacity: activeName && activeName !== node.name ? 0.25 : 0.9 }"
         >{{ node.name }}</text>
       </g>
     </svg>
@@ -319,6 +334,11 @@ watch(ribbons, (next) => {
 
 .node {
   cursor: pointer;
+}
+
+.node.node-focus > path {
+  stroke: var(--ink);
+  stroke-width: 1.4;
 }
 
 .node-label {

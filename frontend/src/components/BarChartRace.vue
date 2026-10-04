@@ -22,8 +22,9 @@ const props = withDefaults(
     entries: RaceEntry[];
     topN?: number;
     stepsPerSecond?: number;
+    focusId?: number | null;
   }>(),
-  { topN: 10, stepsPerSecond: 2.1 },
+  { topN: 10, stepsPerSecond: 2.1, focusId: null },
 );
 
 const shell = ref<HTMLElement | null>(null);
@@ -199,9 +200,15 @@ onBeforeUnmount(() => {
         v-for="row in allRows"
         :key="row.id"
         class="race-row"
+        :class="{ focused: props.focusId === row.id }"
         :style="{
           transform: `translateY(${Math.min(row.rank, props.topN) * geometry.rowH}px)`,
-          opacity: row.rank < props.topN ? 1 : 0,
+          opacity:
+            row.rank >= props.topN
+              ? 0
+              : props.focusId != null && row.id !== props.focusId
+                ? 0.22
+                : 1,
         }"
       >
         <span class="race-name">{{ row.name }}</span>
@@ -298,6 +305,14 @@ onBeforeUnmount(() => {
   gap: 10px;
   transition: opacity 220ms ease;
   will-change: transform;
+}
+
+.race-row.focused .race-name {
+  color: var(--ink);
+}
+
+.race-row.focused .race-bar {
+  box-shadow: 0 0 0 1.5px var(--ink);
 }
 
 .race-name {

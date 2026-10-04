@@ -112,6 +112,17 @@ const activeIndex = computed(() =>
 
 const activeValue = computed(() => props.values[activeIndex.value] ?? null);
 
+/* The scrub readout follows the pointer, not the playhead. */
+const hoverReadout = computed(() => {
+  if (hovered.value == null || hovered.value === activeIndex.value) return null;
+  const value = props.values[hovered.value];
+  const time = fmtTime(props.times[hovered.value]);
+  return {
+    x: xAt(hovered.value),
+    text: value == null ? time : `${time} · ${value.toFixed(1)}`,
+  };
+});
+
 const timeFmt = new Intl.DateTimeFormat("zh-CN", {
   month: "numeric",
   day: "numeric",
@@ -145,8 +156,19 @@ const positionLabel = computed(() => {
 const axisMarks = computed(() => {
   const n = props.times.length;
   if (n < 2) return [];
-  const picks = [0, Math.floor(n / 2), n - 1];
-  return picks.map((i) => ({ x: xAt(i), label: i === n - 1 ? "现在" : fmtDay(props.times[i]) }));
+  const picks = [0, Math.round(n * 0.25), Math.round(n * 0.5), Math.round(n * 0.75), n - 1];
+  const seen = new Set<number>();
+  const out: { x: number; label: string; anchor: string }[] = [];
+  for (const i of picks) {
+    if (seen.has(i)) continue;
+    seen.add(i);
+    out.push({
+      x: xAt(i),
+      label: i === n - 1 ? "现在" : fmtDay(props.times[i]),
+      anchor: i === 0 ? "start" : i === n - 1 ? "end" : "middle",
+    });
+  }
+  return out;
 });
 
 function setFromClientX(clientX: number) {
@@ -279,8 +301,10 @@ onBeforeUnmount(stop);
       <div class="readout">
         <strong class="data-mono clock">{{ fmtTime(times[activeIndex]) }}</strong>
         <span class="position" :class="{ live: index == null }">{{ positionLabel }}</span>
-        <span v-if="activeValue != null" class="data-mono value">
-          中位 PM2.5 {{ activeValue.toFixed(1) }} µg/m³
+        <span v-if="activeValue != null" class="value">
+          <em>中位 PM2.5</em>
+          <b class="data-mono">{{ activeValue.toFixed(1) }}</b>
+          <small>µg/m³</small>
         </span>
       </div>
 
@@ -301,8 +325,8 @@ onBeforeUnmount(stop);
     >
       <defs>
         <linearGradient id="ribbon-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#0284c7" stop-opacity=".15" />
-          <stop offset="100%" stop-color="#0284c7" stop-opacity=".01" />
+          <stop offset="0%" class="ribbon-fill-stop" stop-opacity=".15" />
+          <stop offset="100%" class="ribbon-fill-stop" stop-opacity=".01" />
         </linearGradient>
       </defs>
 
@@ -342,8 +366,8 @@ onBeforeUnmount(stop);
         <path :d="seg.area" fill="url(#ribbon-fill)" />
         <path
           :d="seg.line"
+          class="trace-line"
           fill="none"
-          stroke="#0f172a"
           stroke-width="1.8"
           stroke-linejoin="round"
           stroke-linecap="round"
@@ -355,53 +379,57 @@ onBeforeUnmount(stop);
         <text
           v-for="mark in axisMarks"
           :key="mark.label + mark.x"
-          :x="Math.min(Math.max(mark.x, 2), plotW - 30)"
+          class="axis-label"
+          :x="Math.min(Math.max(mark.x, 2), plotW - 34)"
           :y="HEIGHT - 6"
-          fill="#64748b"
-          font-size="11"
-          :text-anchor="mark.x < 40 ? 'start' : mark.x > plotW - 40 ? 'end' : 'middle'"
+          :text-anchor="mark.anchor"
         >
           {{ mark.label }}
         </text>
       </g>
 
-      <!-- hover guide -->
+      <!-- hover guide + scrub readout -->
       <g v-if="hovered != null && hovered !== activeIndex">
         <line
+          class="hover-guide"
           :x1="xAt(hovered)"
           :x2="xAt(hovered)"
           :y1="PAD_TOP"
           :y2="PAD_TOP + PLOT_H"
-          stroke="#94a3b8"
-          stroke-opacity=".4"
-          stroke-width="1"
         />
+        <text
+          v-if="hoverReadout"
+          class="hover-readout data-mono"
+          :x="Math.min(Math.max(hoverReadout.x, 4), plotW - 4)"
+          :y="PAD_TOP + 11"
+          :text-anchor="hoverReadout.x > plotW - 90 ? 'end' : hoverReadout.x < 90 ? 'start' : 'middle'"
+        >
+          {{ hoverReadout.text }}
+        </text>
       </g>
 
       <!-- playhead -->
       <g>
         <line
+          class="playhead-line"
           :x1="xAt(activeIndex)"
           :x2="xAt(activeIndex)"
           :y1="PAD_TOP - 4"
           :y2="PAD_TOP + PLOT_H + 4"
-          stroke="#0f172a"
-          stroke-width="1.5"
         />
         <circle
           v-if="activeValue != null"
+          class="playhead-halo"
           :cx="xAt(activeIndex)"
           :cy="yAt(activeValue)"
           r="8"
-          fill="#0284c7"
-          opacity=".18"
         />
         <circle
           v-if="activeValue != null"
+          class="playhead-knob"
           :cx="xAt(activeIndex)"
           :cy="yAt(activeValue)"
           r="3.5"
-          fill="#0284c7"
         />
       </g>
     </svg>
@@ -481,10 +509,25 @@ onBeforeUnmount(stop);
   font-weight: 600;
 }
 .value {
-  color: var(--muted);
-  font-size: var(--fs-label);
-  font-weight: 500;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
   white-space: nowrap;
+}
+.value em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.value b {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+.value small {
+  color: var(--faint);
+  font-size: 10.5px;
 }
 
 .head-right {
@@ -518,7 +561,42 @@ onBeforeUnmount(stop);
 
 .ribbon-plot {
   display: block;
-  overflow: visible;
+}
+
+/* SVG colours ride tokens through scoped classes — no hex in the markup. */
+.ribbon-fill-stop {
+  stop-color: var(--accent);
+}
+.trace-line {
+  stroke: var(--stage-ink);
+}
+.axis-label {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.hover-guide {
+  stroke: var(--muted);
+  stroke-opacity: 0.4;
+  stroke-width: 1;
+}
+.hover-readout {
+  fill: var(--ink-soft);
+  font-size: 10.5px;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.85);
+  stroke-width: 3px;
+}
+.playhead-line {
+  stroke: var(--stage-ink);
+  stroke-width: 2;
+}
+.playhead-halo {
+  fill: var(--accent);
+  opacity: 0.16;
+}
+.playhead-knob {
+  fill: var(--accent);
 }
 
 @media (max-width: 900px) {

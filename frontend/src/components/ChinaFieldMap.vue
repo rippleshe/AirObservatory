@@ -38,10 +38,14 @@ const props = withDefaults(
     cities: NationalCity[];
     metric?: MapMetric;
     windField?: WindFieldPoint[] | null;
+    sparks?: Record<number, number[]>;
   }>(),
-  { metric: "aqi", windField: null },
+  { metric: "aqi", windField: null, sparks: () => ({}) },
 );
-const emit = defineEmits<{ select: [id: number, name: string] }>();
+const emit = defineEmits<{
+  select: [id: number, name: string];
+  pin: [id: number | null];
+}>();
 
 const el = ref<HTMLDivElement | null>(null);
 const svgEl = ref<SVGSVGElement | null>(null);
@@ -51,6 +55,9 @@ const mapError = ref(false);
 const wide = ref(true);
 const hoveredProvince = ref<string | null>(null);
 const hoveredCity = ref<NationalCity | null>(null);
+/* Click pins a city overview card: navigation becomes a decision, not an
+   accident. The card is anchored to the dot and survives hover. */
+const pinned = ref<NationalCity | null>(null);
 
 const provinces = shallowRef<ProvinceFeature[] | null>(null);
 
@@ -757,7 +764,50 @@ function onMarkLeave() {
   hoveredCity.value = null;
 }
 function onMarkClick(city: NationalCity) {
-  emit("select", city.location_id, city.name);
+  pinned.value = pinned.value?.location_id === city.location_id ? null : city;
+  emit("pin", pinned.value?.location_id ?? null);
+}
+
+const pinnedStyle = computed(() => {
+  const mark = render.value.marks.find((m) => m.city === pinned.value);
+  if (!mark) return {};
+  const t = transform.value;
+  const x = mark.x * t.k + t.x;
+  const y = mark.y * t.k + t.y;
+  return {
+    left: `${Math.min(Math.max(x + 14, 12), size.value.w - 264)}px`,
+    top: `${Math.min(Math.max(y - 40, 12), size.value.w - 240)}px`,
+  };
+});
+
+const pinnedSpark = computed(() => props.sparks[pinned.value?.location_id ?? -1] ?? []);
+
+const pinnedSparkPath = computed(() => {
+  const series = pinnedSpark.value;
+  if (series.length < 2) return "";
+  const min = Math.min(...series);
+  const max = Math.max(...series);
+  const span = Math.max(0.5, max - min);
+  return series
+    .map((v, i) => {
+      const x = (i / (series.length - 1)) * 118;
+      const y = 28 - ((v - min) / span) * 24;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+});
+
+function openPinned() {
+  if (!pinned.value) return;
+  emit("select", pinned.value.location_id, pinned.value.name);
+  pinned.value = null;
+  emit("pin", null);
+}
+
+function onStageClick() {
+  if (pinned.value == null) return;
+  pinned.value = null;
+  emit("pin", null);
 }
 
 function syncWidth() {
@@ -862,6 +912,7 @@ onBeforeUnmount(() => {
       :height="size.h"
       role="img"
       aria-label="全国空气质量地图"
+      @click="onStageClick"
     >
       <defs>
         <pattern id="atlas-dots" width="7" height="7" patternUnits="userSpaceOnUse">
@@ -931,7 +982,7 @@ onBeforeUnmount(() => {
               :fill="mark.fill"
               @mouseenter="onMarkEnter(mark.city)"
               @mouseleave="onMarkLeave()"
-              @click="onMarkClick(mark.city)"
+              @click.stop="onMarkClick(mark.city)"
             />
           </template>
         </g>
@@ -999,6 +1050,37 @@ onBeforeUnmount(() => {
         更新 {{ fmtTime(hoveredCity.source_time)
         }}<template v-if="hoveredCity.has_recent_ground_observation"> · 有近期地面观测</template>
       </div>
+    </div>
+
+    <!-- Pinned overview card: the city at a glance without leaving the map -->
+    <div v-if="pinned" class="city-card" :style="pinnedStyle">
+      <header>
+        <strong>{{ pinned.name }}</strong>
+        <span>{{ pinned.province }}</span>
+        <button type="button" class="card-close" aria-label="关闭" @click.stop="pinned = null">✕</button>
+      </header>
+      <div class="card-stats">
+        <div class="card-stat main">
+          <b :style="{ color: cityColor(pinned) }">{{ pinned.china_aqi ?? "—" }}</b>
+          <small>{{ pinned.china_aqi_level ?? "暂无" }}</small>
+        </div>
+        <div class="card-stat">
+          <b>{{ pinned.pm25?.toFixed(1) ?? "—" }}</b>
+          <small>PM2.5</small>
+        </div>
+        <div class="card-stat">
+          <b :class="pinned.pm25_change_24h != null && pinned.pm25_change_24h < 0 ? 'good' : 'bad'">
+            {{ pinned.pm25_change_24h == null ? "—" : changeState(pinned.pm25_change_24h).arrow + Math.abs(pinned.pm25_change_24h).toFixed(1) }}
+          </b>
+          <small>24h</small>
+        </div>
+      </div>
+      <svg v-if="pinnedSparkPath" class="card-spark" viewBox="0 0 118 30">
+        <path :d="pinnedSparkPath" fill="none" stroke="#0284c7" stroke-width="1.8" stroke-linecap="round" />
+      </svg>
+      <button type="button" class="card-open" @click.stop="openPinned">
+        进入详情 →
+      </button>
     </div>
 
     <div class="map-actions" aria-label="地图缩放控制">
@@ -1194,6 +1276,104 @@ onBeforeUnmount(() => {
   margin-top: 6px;
   font-size: 12px;
   color: var(--muted);
+}
+
+.city-card {
+  position: absolute;
+  z-index: 14;
+  width: 240px;
+  padding: 13px 14px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(8px);
+}
+
+.city-card header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.city-card header strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.city-card header span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.card-close {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--faint);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.card-close:hover {
+  color: var(--ink);
+}
+
+.card-stats {
+  margin-top: 9px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 8px;
+}
+
+.card-stat {
+  display: grid;
+  gap: 1px;
+}
+
+.card-stat b {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.card-stat.main b {
+  font-size: 21px;
+}
+
+.card-stat b.good { color: var(--ok); }
+.card-stat b.bad { color: var(--error); }
+
+.card-stat small {
+  color: var(--faint);
+  font-size: 9.5px;
+}
+
+.card-spark {
+  width: 100%;
+  height: 30px;
+  margin-top: 9px;
+}
+
+.card-open {
+  margin-top: 9px;
+  width: 100%;
+  min-height: 28px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: var(--fw-strong);
+  cursor: pointer;
+  transition: all var(--duration-fast) ease;
+}
+
+.card-open:hover {
+  background: var(--ink-soft);
 }
 
 /* Zoom controls: unchanged placement, glass over the plate */

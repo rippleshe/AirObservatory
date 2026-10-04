@@ -1,77 +1,192 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { AQI_LEVELS, AQI_LEVEL_COLORS, MUTED_DATA_COLOR, changeState } from "../lib/palette";
+import { computed, nextTick, ref, watch } from "vue";
+import { flipReorder, gsap, prefersReducedMotion } from "../lib/motion";
+import {
+  AQI_LEVEL_COLORS,
+  CHANGE_COLORS,
+  CHANGE_LEVELS,
+  MUTED_DATA_COLOR,
+  PM25_BANDS,
+  changeState,
+} from "../lib/palette";
 import type { NationalCity } from "../lib/provinces";
 
-const props = defineProps<{ cities: NationalCity[] }>();
+type BandMetric = "aqi" | "pm25" | "change";
+
+const props = withDefaults(
+  defineProps<{ cities: NationalCity[]; metric?: BandMetric; focusId?: number | null }>(),
+  { metric: "aqi", focusId: null },
+);
 const emit = defineEmits<{ select: [id: number, name: string] }>();
 
-/* Missing stays missing: a province with no AQI sorts last and keeps the
-   neutral mark rather than being folded into a level. */
+/* The band re-encodes itself to whatever the map above is speaking: AQI
+   levels, PM2.5 bands or 24h change — one reading per metric, never a mix. */
+function bandOf(city: NationalCity): { value: number | null; key: string; color: string } | null {
+  if (props.metric === "pm25") {
+    const v = city.pm25 ?? null;
+    if (v == null) return null;
+    const band = PM25_BANDS.find(([, color], i) => {
+      const hi = [35, 75, 115, 150, Infinity][i]!;
+      return v <= hi;
+    });
+    return { value: v, key: band?.[0] ?? "—", color: band?.[1] ?? MUTED_DATA_COLOR };
+  }
+  if (props.metric === "change") {
+    const v = city.pm25_change_24h ?? null;
+    if (v == null) return null;
+    const key = changeState(v).label;
+    return { value: v, key, color: CHANGE_COLORS[key as keyof typeof CHANGE_COLORS] ?? MUTED_DATA_COLOR };
+  }
+  const level = city.china_aqi_level;
+  if (!level) return null;
+  return {
+    value: city.china_aqi ?? null,
+    key: level,
+    color: AQI_LEVEL_COLORS[level] ?? MUTED_DATA_COLOR,
+  };
+}
+
+const BAND_ORDER: Record<BandMetric, string[]> = {
+  aqi: Object.keys(AQI_LEVEL_COLORS),
+  pm25: PM25_BANDS.map(([label]) => label),
+  change: [...CHANGE_LEVELS],
+};
+
+/* Missing stays missing: a province with no reading sorts last and keeps the
+   neutral mark rather than being folded into a band. */
 const ordered = computed(() => {
   const rows = props.cities.map((city) => ({
     city,
-    aqi: city.china_aqi ?? null,
-    level: city.china_aqi_level ?? null,
+    ...(bandOf(city) ?? { value: null, key: "暂无", color: MUTED_DATA_COLOR }),
   }));
   rows.sort((a, b) => {
-    if (a.aqi == null) return 1;
-    if (b.aqi == null) return -1;
-    return a.aqi - b.aqi;
+    if (a.value == null) return 1;
+    if (b.value == null) return -1;
+    return a.value - b.value;
   });
   return rows;
 });
 
 const total = computed(() => props.cities.length || 1);
 
-/** Index of the first unit in each level — the boundary ruler reads off these. */
+/** Index of the first unit in each band — the boundary ruler reads off these. */
 const marks = computed(() => {
   const rows = ordered.value;
   const out: { level: string; count: number; start: number }[] = [];
   let cursor = 0;
-  for (const level of AQI_LEVELS) {
-    const count = rows.filter((row) => row.level === level).length;
-    if (count === 0) continue;
-    const at = rows.findIndex((row) => row.level === level);
-    out.push({ level, count, start: at < 0 ? cursor : at });
+  for (const key of BAND_ORDER[props.metric]) {
+    const at = rows.findIndex((row) => row.key === key);
+    if (at < 0) continue;
+    const count = rows.filter((row) => row.key === key).length;
+    out.push({ level: key, count, start: at });
     cursor += count;
   }
-  const missing = rows.filter((row) => row.level == null).length;
+  const missing = rows.filter((row) => row.key === "暂无").length;
   if (missing) out.push({ level: "暂无", count: missing, start: rows.length - missing });
   return out;
 });
 
-const medianPm25 = computed(() => {
-  const values = props.cities
-    .map((city) => city.pm25)
-    .filter((value): value is number => value != null)
-    .sort((a, b) => a - b);
-  if (!values.length) return null;
-  const mid = values.length >> 1;
-  return values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+/* The fact row re-encodes with the metric too: the median and its unit move
+   together, never a PM2.5 number sitting under an AQI headline. */
+const facts = computed(() => {
+  const cities = props.cities;
+  const median = (pick: (city: NationalCity) => number | null | undefined) => {
+    const values = cities
+      .map(pick)
+      .filter((value): value is number => value != null)
+      .sort((a, b) => a - b);
+    if (!values.length) return null;
+    const mid = values.length >> 1;
+    return values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+  };
+  const rising = cities.filter((city) => (city.pm25_change_24h ?? 0) >= 8).length;
+  const falling = cities.filter((city) => (city.pm25_change_24h ?? 0) <= -8).length;
+  if (props.metric === "pm25") {
+    const m = median((city) => city.pm25);
+    return [
+      { dt: "PM2.5 中位", dd: m == null ? "—" : m.toFixed(1), small: " µg/m³" },
+      { dt: "24h 上升", dd: String(rising), small: " 省" },
+      { dt: "24h 改善", dd: String(falling), small: " 省" },
+    ];
+  }
+  if (props.metric === "change") {
+    const m = median((city) => city.pm25_change_24h);
+    const text = m == null ? "—" : `${m > 0 ? "+" : ""}${m.toFixed(1)}`;
+    return [
+      { dt: "24h 变化中位", dd: text, small: " µg/m³" },
+      { dt: "上升", dd: String(rising), small: " 省" },
+      { dt: "改善", dd: String(falling), small: " 省" },
+    ];
+  }
+  const m = median((city) => city.china_aqi);
+  return [
+    { dt: "AQI 中位", dd: m == null ? "—" : String(Math.round(m)), small: "" },
+    { dt: "24h 上升", dd: String(rising), small: " 省" },
+    { dt: "24h 改善", dd: String(falling), small: " 省" },
+  ];
 });
 
-const risingCount = computed(
-  () => props.cities.filter((city) => (city.pm25_change_24h ?? 0) >= 8).length,
-);
-const fallingCount = computed(
-  () => props.cities.filter((city) => (city.pm25_change_24h ?? 0) <= -8).length,
-);
-
-function bandColor(level: string | null) {
-  if (!level) return MUTED_DATA_COLOR;
-  return AQI_LEVEL_COLORS[level] ?? MUTED_DATA_COLOR;
+/** The number inside each square is the metric's own reading, not always AQI. */
+function readingText(row: { value: number | null }) {
+  if (row.value == null) return "—";
+  if (props.metric === "change") {
+    return `${row.value > 0 ? "+" : ""}${row.value.toFixed(1)}`;
+  }
+  return String(Math.round(row.value));
 }
 
-function unitTip(row: { city: NationalCity; aqi: number | null; level: string | null }) {
+const unitsEl = ref<HTMLElement | null>(null);
+
+/* Metric swaps re-encode every square: slots glide to their new order (FLIP)
+   while the numbers crossfade in place — nothing teleports or blinks. */
+watch(
+  () => props.metric,
+  () => {
+    const container = unitsEl.value;
+    if (!container) return;
+    const items = Array.from(container.querySelectorAll<HTMLElement>(".unit-col"));
+    flipReorder(items, async () => {
+      await nextTick();
+    });
+    if (prefersReducedMotion()) return;
+    gsap.fromTo(
+      container.querySelectorAll(".unit-aqi"),
+      { autoAlpha: 0, y: 4 },
+      {
+        autoAlpha: 1,
+        y: 0,
+        duration: 0.45,
+        stagger: 0.006,
+        ease: "power2.out",
+        clearProps: "transform",
+      },
+    );
+  },
+);
+
+function shortName(name: string) {
+  return name.slice(0, 2);
+}
+
+
+
+function unitTip(row: {
+  city: NationalCity;
+  value: number | null;
+  key: string;
+}) {
   const state = changeState(row.city.pm25_change_24h);
   const change =
     row.city.pm25_change_24h == null
       ? "历史不足"
       : `${state.arrow} ${state.label} ${Math.abs(row.city.pm25_change_24h).toFixed(1)}`;
-  return `${row.city.name} · ${row.city.province ?? row.city.region}\n${
-    row.level ?? "暂无"
-  } AQI ${row.aqi ?? "—"}\nPM2.5 ${row.city.pm25?.toFixed(1) ?? "—"} µg/m³ · 24h ${change}`;
+  const reading =
+    row.value == null ? "—" : props.metric === "change" ? row.value.toFixed(1) : row.value.toFixed(0);
+  return `${row.city.name} · ${row.city.province ?? row.city.region}
+${row.key} ${reading}
+PM2.5 ${
+    row.city.pm25?.toFixed(1) ?? "—"
+  } µg/m³ · 24h ${change}`;
 }
 
 /* Position and alignment come from one function as inline styles, not from a
@@ -99,20 +214,30 @@ function tickStyle(mark: { start: number }) {
 <template>
   <section class="severity-band" aria-label="省级等级分布">
     <div class="band-plot">
-      <div class="units" role="list">
-        <button
+      <div ref="unitsEl" class="units" role="list">
+        <div
           v-for="(row, index) in ordered"
           :key="row.city.location_id"
-          type="button"
+          class="unit-col"
+          :class="{
+            dimmed: focusId != null && focusId !== row.city.location_id,
+          }"
           role="listitem"
-          class="unit"
-          :style="{ background: bandColor(row.level) }"
-          :title="unitTip(row)"
-          :aria-label="`${index + 1}/${total} ${unitTip(row)}`"
-          @click="emit('select', row.city.location_id, row.city.name)"
         >
-          <span class="sr-only">{{ row.city.name }}</span>
-        </button>
+          <button
+            type="button"
+            class="unit"
+            :style="{ background: row.color }"
+            :class="{ focused: focusId === row.city.location_id }"
+            :title="unitTip(row)"
+            :aria-label="`${index + 1}/${total} ${unitTip(row)}`"
+            @click="emit('select', row.city.location_id, row.city.name)"
+          >
+            <b class="unit-aqi data-mono">{{ readingText(row) }}</b>
+            <span class="sr-only">{{ row.city.name }}</span>
+          </button>
+          <span class="unit-name">{{ shortName(row.city.name) }}</span>
+        </div>
       </div>
 
       <div class="ruler" aria-hidden="true">
@@ -123,7 +248,7 @@ function tickStyle(mark: { start: number }) {
           :style="rulerStyle(mark)"
         >
           <i class="tick" :style="tickStyle(mark)"></i>
-          <i class="swatch" :style="{ background: bandColor(mark.level) }"></i>
+          <i class="swatch" :style="{ background: ordered[mark.start]?.color ?? MUTED_DATA_COLOR }"></i>
           {{ mark.level }}
           <b class="data-mono">{{ mark.count }}</b>
         </span>
@@ -131,17 +256,9 @@ function tickStyle(mark: { start: number }) {
     </div>
 
     <dl class="band-facts">
-      <div>
-        <dt>PM2.5 中位</dt>
-        <dd>{{ medianPm25 == null ? "—" : medianPm25.toFixed(1) }}<small> µg/m³</small></dd>
-      </div>
-      <div>
-        <dt>24h 上升</dt>
-        <dd>{{ risingCount }}<small> 省</small></dd>
-      </div>
-      <div>
-        <dt>24h 改善</dt>
-        <dd>{{ fallingCount }}<small> 省</small></dd>
+      <div v-for="fact in facts" :key="fact.dt">
+        <dt>{{ fact.dt }}</dt>
+        <dd>{{ fact.dd }}<small>{{ fact.small }}</small></dd>
       </div>
     </dl>
   </section>
@@ -151,15 +268,7 @@ function tickStyle(mark: { start: number }) {
 .severity-band {
   display: grid;
   gap: 14px;
-  padding: 18px 24px 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: var(--sheet);
-  box-shadow: var(--shadow-sm);
-  transition: border-color var(--duration-fast) ease;
-}
-.severity-band:hover {
-  border-color: var(--hairline-strong);
+  padding: 0;
 }
 
 .band-plot {
@@ -173,23 +282,58 @@ function tickStyle(mark: { start: number }) {
   gap: 3px;
 }
 
-.unit {
+.unit-col {
   flex: 1 1 0;
   min-width: 0;
-  height: 52px;
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  transition: opacity var(--duration-fast) ease;
+}
+.unit-col.dimmed {
+  opacity: 0.28;
+}
+
+.unit {
+  width: 100%;
+  height: 46px;
   padding: 0;
   border: 0;
   border-radius: 2px;
   cursor: pointer;
   opacity: 0.92;
+  display: grid;
+  place-items: center;
   transition: transform var(--duration-fast) ease, opacity var(--duration-fast) ease;
 }
 .unit:hover,
 .unit:focus-visible {
   opacity: 1;
-  transform: scaleY(1.1);
+  transform: scaleY(1.08);
   outline: 2px solid var(--ink);
   outline-offset: 1px;
+}
+.unit.focused {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.unit-aqi {
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.45);
+  font-variant-numeric: tabular-nums;
+}
+
+.unit-name {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 100%;
 }
 
 .ruler {

@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from "vue-router";
 const NationalOverviewView = () => import("../views/NationalOverviewView.vue");
 const CityDetailView = () => import("../views/CityDetailView.vue");
 const SystemView = () => import("../views/SystemView.vue");
+const ModelView = () => import("../views/ModelView.vue");
 
 /* One narrative: national picture → city explanation → data provenance.
    Forecast, structure and trust live inside the city page, so there is no
@@ -22,6 +23,12 @@ export default createRouter({
       name: "city",
       component: CityDetailView,
       meta: { title: "城市详情" },
+    },
+    {
+      path: "/model",
+      name: "model",
+      component: ModelView,
+      meta: { title: "预测引擎" },
     },
     {
       path: "/system",

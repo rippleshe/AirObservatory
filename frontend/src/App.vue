@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useQuery } from "@tanstack/vue-query";
-import { Database, MapPinned, Radar } from "lucide-vue-next";
+import { Cpu, Database, MapPinned, Radar } from "lucide-vue-next";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "./api/client";
 import { expectData } from "./api/request";
@@ -60,6 +60,10 @@ function selectGlobalLocation(event: Event) {
         <RouterLink :to="cityTo" class="rail-link">
           <Radar :size="20" stroke-width="1.9" />
           <span>城市</span>
+        </RouterLink>
+        <RouterLink to="/model" class="rail-link">
+          <Cpu :size="20" stroke-width="1.9" />
+          <span>引擎</span>
         </RouterLink>
       </nav>
 

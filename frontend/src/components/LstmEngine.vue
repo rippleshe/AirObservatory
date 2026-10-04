@@ -1,11 +1,10 @@
 <!-- LstmEngine — the engine page as one instrument plus a decode act.
-     单元计算: the input tape (the exact feature vectors the cell consumed)
-     and the six activation lanes (forget / input / output / candidate gates,
-     cell state, hidden state — recorded from a genuine forward pass of the
-     trained numpy LSTM) share one axis and one cursor; the schematic cell on
-     the right redraws the current timestep with colah's grammar, gate values
-     modulating flow weight. 解码: the dense head's 24h forecast and the
-     MAE-vs-horizon race against the baselines evaluated on the same windows. -->
+     单元计算: the hero is a large colah-style cell redrawing the current
+     timestep of a genuine forward pass of the trained numpy LSTM — each gate
+     chip carries its own 48-step mean history with the cursor ticked inside;
+     below it, the full-width evidence ribbon (input tape + six 48×16 unit
+     activation lanes) shares the same cursor. 解码: the dense head's 24h
+     forecast and the MAE-vs-horizon race against the baselines. -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useElementSize } from "../lib/viz";
@@ -59,8 +58,6 @@ export type LstmRun = {
 
 const props = defineProps<{
   run: LstmRun;
-  /* CAMS/baseline forecasts for the decode act (optional; the LSTM lane
-     comes from the run itself). */
   cams?: Array<{
     name: string;
     points: { target: string; value: number; lower: number | null; upper: number | null }[];
@@ -76,6 +73,7 @@ const ACCENT = "#0284c7";
 const WARM = "#f97316";
 const COOL = "#2563eb";
 const MUTED = "#94a3b8";
+const MEMORY = "#334155";
 
 const steps = computed(() => props.run.steps);
 const T = computed(() => steps.value.length);
@@ -91,34 +89,10 @@ function fmtDay(iso: string): string {
   return `${at.getMonth() + 1}/${at.getDate()}`;
 }
 
-/* ── the instrument: input tape + activation lanes on one shared axis ── */
-const INPUT_LANES = [
-  { index: 0, label: "PM2.5", unit: "µg/m³", color: "#f97316" },
-  { index: 1, label: "气温", unit: "°C", color: "#ec4899" },
-  { index: 2, label: "湿度", unit: "%", color: "#10b981" },
-  { index: 3, label: "风速", unit: "m/s", color: "#0ea5e9" },
-  { index: 6, label: "边界层", unit: "m", color: "#8b5cf6" },
-];
+const meanAt = (row: number[] | undefined) =>
+  row && row.length ? row.reduce((sum, v) => sum + v, 0) / row.length : 0;
 
-function laneSeries(lane: (typeof INPUT_LANES)[number]): number[] {
-  return steps.value.map((step) => step.x[lane.index] ?? 0);
-}
-
-type LaneKey = "f" | "i" | "o" | "g" | "cell" | "hidden";
-
-const LANES: Array<{ key: LaneKey; label: string; diverging: boolean; hint: string }> = [
-  { key: "f", label: "遗忘门", diverging: false, hint: "0→1" },
-  { key: "i", label: "输入门", diverging: false, hint: "0→1" },
-  { key: "o", label: "输出门", diverging: false, hint: "0→1" },
-  { key: "g", label: "候选", diverging: true, hint: "-1↔1" },
-  { key: "cell", label: "细胞状态", diverging: true, hint: "记忆" },
-  { key: "hidden", label: "隐状态", diverging: true, hint: "输出" },
-];
-
-const GUTTER = 78;
-const INPUT_H = 30;
-const LANE_H = 62;
-
+/* ── cursor state, shared by cell chips and ribbon ── */
 const cursor = ref(0);
 const playing = ref(false);
 let playTimer: number | null = null;
@@ -145,27 +119,118 @@ function togglePlay() {
 watch(() => props.run, stopPlay);
 onBeforeUnmount(stopPlay);
 
-const plotW = computed(() => Math.max(360, (size.value.w || 980) * 0.6 - GUTTER));
-const cellW = computed(() => plotW.value / Math.max(1, T.value));
-const unitH = computed(() => LANE_H / Math.max(1, H.value));
+const currentStep = computed(() => steps.value[Math.min(cursor.value, T.value - 1)]);
 
-function laneValues(key: LaneKey): number[][] {
-  return steps.value.map((step) => step[key] as number[]);
-}
+type LaneKey = "f" | "i" | "o" | "g" | "cell" | "hidden";
+
+const LANES: Array<{ key: LaneKey; label: string; diverging: boolean; hint: string }> = [
+  { key: "f", label: "遗忘门", diverging: false, hint: "0→1" },
+  { key: "i", label: "输入门", diverging: false, hint: "0→1" },
+  { key: "o", label: "输出门", diverging: false, hint: "0→1" },
+  { key: "g", label: "候选", diverging: true, hint: "-1↔1" },
+  { key: "cell", label: "细胞状态", diverging: true, hint: "记忆" },
+  { key: "hidden", label: "隐状态", diverging: true, hint: "输出" },
+];
+
+/* per-gate mean history — what the hero chips draw inside themselves */
+const gateMeans = computed<Record<LaneKey, number[]>>(() => {
+  const out = {} as Record<LaneKey, number[]>;
+  for (const lane of LANES) {
+    out[lane.key] = steps.value.map((step) => meanAt(step[lane.key] as number[]));
+  }
+  return out;
+});
 
 const laneExtents = computed(() => {
   const out = {} as Record<LaneKey, number>;
   for (const lane of LANES) {
     if (!lane.diverging) continue;
     const magnitudes: number[] = [];
-    for (const row of laneValues(lane.key)) {
-      for (const v of row) magnitudes.push(Math.abs(v));
+    for (const row of steps.value) {
+      for (const v of row[lane.key] as number[]) magnitudes.push(Math.abs(v));
     }
     magnitudes.sort((a, b) => a - b);
     out[lane.key] = Math.max(0.3, magnitudes[Math.floor(magnitudes.length * 0.9)] ?? 1);
   }
   return out;
 });
+
+const cellNorm = (v: number) => Math.min(1, Math.abs(v) / (laneExtents.value.cell ?? 1));
+const hiddenNorm = (v: number) => Math.min(1, Math.abs(v) / (laneExtents.value.hidden ?? 1));
+const flowW = (frac: number) => 1.5 + 9 * Math.min(1, Math.max(0, frac));
+const flowO = (v: number) => 0.16 + 0.72 * Math.min(1, Math.max(0.05, v));
+
+const fmt = (v: number) => v.toFixed(2);
+
+function sparkPath(key: LaneKey, x: number, y: number, w: number, h: number): string {
+  const series = gateMeans.value[key] ?? [];
+  if (series.length < 2) return "";
+  const diverging = LANES.find((l) => l.key === key)?.diverging ?? false;
+  const max = diverging ? laneExtents.value[key] ?? 1 : 1;
+  const lo = diverging ? -max : 0;
+  return series
+    .map((v, i) => {
+      const px = x + (i / (series.length - 1)) * w;
+      const py = y + h - ((v - lo) / (max - lo)) * h;
+      return `${i ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function sparkZero(key: LaneKey, y: number, h: number): number {
+  const diverging = LANES.find((l) => l.key === key)?.diverging ?? false;
+  if (!diverging) return y + h;
+  const max = laneExtents.value[key] ?? 1;
+  return y + h - (0 - -max) / (max - -max) * h;
+}
+
+/* ── the hero cell (viewBox 900×470) ── */
+const diagram = computed(() => {
+  const step = currentStep.value;
+  if (!step) return null;
+  const prev = cursor.value > 0 ? steps.value[cursor.value - 1]! : null;
+  const cellPrev = prev ? meanAt(prev.cell) : 0;
+  const f = meanAt(step.f);
+  const i = meanAt(step.i);
+  const g = meanAt(step.g);
+  return {
+    time: fmtTime(step.target_at),
+    f,
+    i,
+    o: meanAt(step.o),
+    g,
+    cellPrev,
+    cell: meanAt(step.cell),
+    hidden: meanAt(step.hidden),
+    retained: cellPrev * f,
+    written: i * g,
+  };
+});
+
+/* ── the evidence ribbon (full width) ── */
+const INPUT_LANES = [
+  { index: 0, label: "PM2.5", color: "#f97316" },
+  { index: 1, label: "气温", color: "#ec4899" },
+  { index: 2, label: "湿度", color: "#10b981" },
+  { index: 3, label: "风速", color: "#0ea5e9" },
+  { index: 6, label: "边界层", color: "#8b5cf6" },
+];
+
+function laneSeries(lane: (typeof INPUT_LANES)[number]): number[] {
+  return steps.value.map((step) => step.x[lane.index] ?? 0);
+}
+
+const GUTTER = 92;
+const INPUT_H = 16;
+const LANE_H = 50;
+const INPUT_BLOCK_H = INPUT_LANES.length * (INPUT_H + 4) + 30;
+const ribbonW = computed(() => Math.max(480, (size.value.w || 980) - GUTTER));
+const cellW = computed(() => ribbonW.value / Math.max(1, T.value));
+const unitH = computed(() => LANE_H / Math.max(1, H.value));
+
+function laneValues(key: LaneKey): number[][] {
+  return steps.value.map((step) => step[key] as number[]);
+}
 
 function cellFill(lane: (typeof LANES)[number], value: number): { color: string; opacity: number } {
   if (!lane.diverging) {
@@ -196,50 +261,13 @@ const axisTicks = computed(() => {
   return out;
 });
 
-const currentStep = computed(() => steps.value[Math.min(cursor.value, T.value - 1)]);
+const hovered = ref<{ left: number; text: string } | null>(null);
 
-const meanAt = (row: number[] | undefined) =>
-  row && row.length ? row.reduce((sum, v) => sum + v, 0) / row.length : 0;
-
-/* ── the schematic cell: one timestep, colah's grammar ── */
-const diagram = computed(() => {
-  const step = currentStep.value;
-  if (!step) return null;
-  const prev = cursor.value > 0 ? steps.value[cursor.value - 1]! : null;
-  const cellPrev = prev ? meanAt(prev.cell) : 0;
-  const f = meanAt(step.f);
-  return {
-    time: fmtTime(step.target_at),
-    f,
-    i: meanAt(step.i),
-    o: meanAt(step.o),
-    g: meanAt(step.g),
-    cellPrev,
-    cell: meanAt(step.cell),
-    hidden: meanAt(step.hidden),
-    retained: (cellPrev * f) / (laneExtents.value.cell ?? 1),
-    written: Math.abs(meanAt(step.i) * meanAt(step.g)),
-  };
-});
-
-const fmt = (v: number) => v.toFixed(2);
-const cellNorm = (v: number) => Math.min(1, Math.abs(v) / (laneExtents.value.cell ?? 1));
-const hiddenNorm = (v: number) => Math.min(1, Math.abs(v) / (laneExtents.value.hidden ?? 1));
-const flowW = (frac: number) => 1 + 6 * Math.min(1, Math.max(0, frac));
-const flowO = (v: number) => 0.18 + 0.7 * Math.min(1, Math.max(0.05, v));
-
-/* scrubbing + per-cell hover readout */
-const hovered = ref<{ t: number; unit: number; label: string; value: number } | null>(null);
-
-function locate(event: PointerEvent): { t: number; unit: number; localY: number } {
+function locate(event: PointerEvent): { t: number; localY: number } {
   const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
   const t = Math.max(0, Math.min(T.value - 1, Math.floor((event.clientX - box.left - GUTTER) / cellW.value)));
-  const localY = event.clientY - box.top;
-  const unit = Math.max(0, Math.min(H.value - 1, Math.floor((localY - INPUT_BLOCK_H) / unitH.value)));
-  return { t, unit, localY };
+  return { t, localY: event.clientY - box.top };
 }
-
-const INPUT_BLOCK_H = INPUT_LANES.length * (INPUT_H + 5) + 26;
 
 function onScrubDown(event: PointerEvent) {
   stopPlay();
@@ -248,25 +276,18 @@ function onScrubDown(event: PointerEvent) {
 }
 
 function onScrubMove(event: PointerEvent) {
-  const { t, unit, localY } = locate(event);
-  const overGates = localY > INPUT_BLOCK_H;
-  let label = "";
-  let value = 0;
-  if (overGates) {
-    const laneIndex = Math.floor((localY - INPUT_BLOCK_H) / (LANE_H + 8));
-    const lane = LANES[Math.max(0, Math.min(LANES.length - 1, laneIndex))]!;
-    label = lane.label;
-    value = (steps.value[t]![lane.key] as number[])[unit] ?? 0;
-    hovered.value = { t, unit, label, value };
-  } else {
-    const inputIndex = Math.max(
-      0,
-      Math.min(INPUT_LANES.length - 1, Math.floor((localY - 22) / (INPUT_H + 5))),
-    );
+  const { t, localY } = locate(event);
+  if (localY > INPUT_BLOCK_H) {
+    const laneIndex = Math.max(0, Math.min(LANES.length - 1, Math.floor((localY - INPUT_BLOCK_H) / (LANE_H + 6))));
+    const lane = LANES[laneIndex]!;
+    const unit = Math.max(0, Math.min(H.value - 1, Math.floor((localY - INPUT_BLOCK_H - laneIndex * (LANE_H + 6)) / unitH.value)));
+    const value = (steps.value[t]![lane.key] as number[])[unit] ?? 0;
+    hovered.value = { left: GUTTER + t * cellW.value, text: `${fmtTime(steps.value[t]!.target_at)} · ${lane.label} · 单元 ${unit + 1} · ${fmt(value)}` };
+  } else if (localY > 20) {
+    const inputIndex = Math.max(0, Math.min(INPUT_LANES.length - 1, Math.floor((localY - 22) / (INPUT_H + 4))));
     const lane = INPUT_LANES[inputIndex]!;
-    label = lane.label;
-    value = steps.value[t]!.x[lane.index] ?? 0;
-    hovered.value = { t, unit: 0, label, value };
+    const value = steps.value[t]!.x[lane.index] ?? 0;
+    hovered.value = { left: GUTTER + t * cellW.value, text: `${fmtTime(steps.value[t]!.target_at)} · ${lane.label} ${fmt(value)}` };
   }
   if (event.buttons === 1) cursor.value = t;
 }
@@ -274,14 +295,6 @@ function onScrubMove(event: PointerEvent) {
 function onScrubLeave() {
   hovered.value = null;
 }
-
-const hoverTip = computed(() => {
-  if (!hovered.value) return null;
-  const step = steps.value[hovered.value.t];
-  if (!step) return null;
-  const text = `${fmtTime(step.target_at)} · ${hovered.value.label} ${fmt(hovered.value.value)}`;
-  return { left: GUTTER + hovered.value.t * cellW.value, text };
-});
 
 /* ── 解码 × 对照 ── */
 const DECODE_H = 150;
@@ -348,7 +361,6 @@ const metaLine = computed(() => {
   return `H=${props.run.hidden} · 参数 ${meta.params.toLocaleString()} · 训练至 ${trained} · 评估=${meta.eval_basis === "cams_analysis" ? "CAMS 分析场" : meta.eval_basis} · N=${maeModels.value[0]?.samples ?? 0}`;
 });
 
-/* entrance: the lanes wipe in once */
 let revealed = false;
 watch(
   () => props.run.location_id,
@@ -366,8 +378,8 @@ watch(
       if (lanes?.length) {
         gsap.fromTo(
           lanes,
-          { autoAlpha: 0, y: 10 },
-          { autoAlpha: 1, y: 0, duration: 0.6, stagger: 0.04, ease: "power2.out", clearProps: "transform" },
+          { autoAlpha: 0, y: 8 },
+          { autoAlpha: 1, y: 0, duration: 0.5, stagger: 0.035, ease: "power2.out", clearProps: "transform" },
         );
       }
     });
@@ -380,162 +392,171 @@ watch(
   <div ref="root" class="lstm-engine">
     <p class="group-label">单元计算</p>
 
-    <div class="compute-row">
-      <!-- the instrument: tape + gates on one axis, one cursor -->
-      <div class="instrument">
-        <header class="tape-head">
-          <button
-            type="button"
-            class="play"
-            :aria-label="playing ? '暂停回放' : '回放计算'"
-            @click="togglePlay"
-          >
-            <svg v-if="playing" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2.5" width="3.4" height="11" rx="1" /><rect x="9.6" y="2.5" width="3.4" height="11" rx="1" /></svg>
-            <svg v-else viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.6 L13.2 8 L4 13.4 Z" /></svg>
-          </button>
-          <span class="cursor-time data-mono">{{ diagram?.time }}</span>
-          <span class="tape-hint">{{ T }} 步 × {{ H }} 单元 · 真实前向 · 拖拽游标</span>
-        </header>
+    <!-- the hero cell -->
+    <div class="hero-wrap">
+      <header class="hero-head">
+        <button
+          type="button"
+          class="play"
+          :aria-label="playing ? '暂停回放' : '回放计算'"
+          @click="togglePlay"
+        >
+          <svg v-if="playing" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2.5" width="3.4" height="11" rx="1" /><rect x="9.6" y="2.5" width="3.4" height="11" rx="1" /></svg>
+          <svg v-else viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.6 L13.2 8 L4 13.4 Z" /></svg>
+        </button>
+        <span class="cursor-time data-mono">{{ diagram?.time }}</span>
+        <span class="hero-hint">{{ T }} 步 × {{ H }} 单元 · 真实前向</span>
+      </header>
 
-        <div class="tape-block" @pointerdown="onScrubDown" @pointermove="onScrubMove" @pointerleave="onScrubLeave">
-          <span
-            v-for="(tick, i) in axisTicks"
-            :key="`tick-${i}`"
-            class="tape-tick data-mono"
-            :style="{
-              left: `${GUTTER + tick.frac * plotW}px`,
-              transform: tick.anchor === 'start' ? 'none' : tick.anchor === 'end' ? 'translateX(-100%)' : 'translateX(-50%)',
-            }"
-          >{{ tick.label }}</span>
+      <svg class="cell-svg" viewBox="0 0 900 446">
+        <rect x="8" y="8" width="884" height="414" rx="18" class="cell-boundary" />
 
-          <!-- input tape -->
-          <div
-            v-for="lane in INPUT_LANES"
-            :key="`in-${lane.label}`"
-            data-lane
-            class="input-lane"
-            :style="{ height: `${INPUT_H}px` }"
-          >
-            <span class="lane-label">{{ lane.label }}</span>
-            <svg class="lane-svg" :viewBox="`0 0 ${T} 30`" preserveAspectRatio="none">
-              <polyline
-                :points="laneSeries(lane)
-                  .map((v, i, arr) => {
-                    const min = Math.min(...arr);
-                    const max = Math.max(...arr);
-                    const y = 28 - ((v - min) / Math.max(0.5, max - min)) * 26;
-                    return `${i},${y.toFixed(1)}`;
-                  })
-                  .join(' ')"
-                :fill="lane.color"
-                fill-opacity="0.08"
-                :stroke="lane.color"
-                stroke-width="0.5"
-                vector-effect="non-scaling-stroke"
-              />
-            </svg>
-          </div>
+        <!-- memory lane -->
+        <text x="46" y="152" class="d-label">c₋₁</text>
+        <text x="46" y="174" class="d-value data-mono">{{ fmt(diagram?.cellPrev ?? 0) }}</text>
+        <line x1="88" y1="180" x2="154" y2="180" class="flow memory" :stroke-width="flowW(cellNorm(diagram?.cellPrev ?? 0))" :stroke-opacity="flowO(cellNorm(diagram?.cellPrev ?? 0))" />
 
-          <div class="tape-divider" aria-hidden="true"></div>
+        <circle cx="170" cy="180" r="15" class="node" />
+        <text x="170" y="186" text-anchor="middle" class="d-op">×</text>
+        <rect x="108" y="238" width="124" height="54" rx="10" class="chip" :class="{ hot: (diagram?.f ?? 0) > 0.5 }" />
+        <text x="118" y="258" class="chip-name">遗忘门</text>
+        <text x="222" y="260" text-anchor="end" class="chip-value data-mono">{{ fmt(diagram?.f ?? 0) }}</text>
+        <path :d="sparkPath('f', 118, 266, 104, 18)" class="chip-spark" :stroke="ACCENT" fill="none" />
+        <line x1="170" y1="237" x2="170" y2="196" class="flow accent" :stroke-width="flowW(diagram?.f ?? 0)" :stroke-opacity="flowO(diagram?.f ?? 0)" />
 
-          <!-- activation lanes -->
-          <div
-            v-for="lane in LANES"
-            :key="lane.key"
-            data-lane
-            class="heat-lane"
-            :style="{ height: `${LANE_H}px` }"
-          >
-            <span class="lane-label">{{ lane.label }}<small>{{ lane.hint }}</small></span>
-            <svg
-              class="lane-svg heat-svg"
-              :height="LANE_H"
-              :viewBox="`0 0 ${T * 10} ${LANE_H}`"
-              preserveAspectRatio="none"
-            >
-              <template v-for="(row, t) in laneValues(lane.key)" :key="`${lane.key}-c${t}`">
-                <rect
-                  v-for="(v, u) in row"
-                  :key="u"
-                  :x="t * 10"
-                  :y="u * (LANE_H / H)"
-                  :width="10.7"
-                  :height="LANE_H / H + 0.6"
-                  :fill="cellFill(lane, v).color"
-                  :fill-opacity="cellFill(lane, v).opacity"
-                />
-              </template>
-            </svg>
-          </div>
+        <line x1="185" y1="180" x2="374" y2="180" class="flow memory" :stroke-width="flowW(cellNorm(diagram?.retained ?? 0))" :stroke-opacity="flowO(cellNorm(diagram?.retained ?? 0))" />
 
-          <!-- the one cursor -->
-          <div
-            class="tape-cursor"
-            :style="{ left: `${GUTTER + cursor * cellW}px` }"
-            aria-hidden="true"
-          ></div>
+        <circle cx="390" cy="180" r="15" class="node" />
+        <text x="390" y="186" text-anchor="middle" class="d-op">+</text>
 
-          <div v-if="hoverTip" class="tape-tip data-mono" :style="{ left: `${Math.min(hoverTip.left + 10, GUTTER + plotW - 170)}px` }">
-            {{ hoverTip.text }}
-          </div>
-        </div>
+        <text x="428" y="146" class="d-label">c</text>
+        <text x="428" y="168" class="d-value data-mono">{{ fmt(diagram?.cell ?? 0) }}</text>
+        <line x1="405" y1="180" x2="452" y2="180" class="flow memory" :stroke-width="flowW(cellNorm(diagram?.cell ?? 0))" :stroke-opacity="flowO(cellNorm(diagram?.cell ?? 0))" />
+
+        <rect x="456" y="162" width="64" height="36" rx="9" class="tanh-box" />
+        <text x="488" y="185" text-anchor="middle" class="d-op">tanh</text>
+        <line x1="488" y1="161" x2="488" y2="102" class="flow" stroke-width="2" stroke-opacity="0.7" />
+
+        <circle cx="488" cy="86" r="15" class="node" />
+        <text x="488" y="92" text-anchor="middle" class="d-op">×</text>
+        <rect x="560" y="20" width="124" height="54" rx="10" class="chip" :class="{ hot: (diagram?.o ?? 0) > 0.5 }" />
+        <text x="570" y="40" class="chip-name">输出门</text>
+        <text x="674" y="42" text-anchor="end" class="chip-value data-mono">{{ fmt(diagram?.o ?? 0) }}</text>
+        <path :d="sparkPath('o', 570, 48, 104, 18)" class="chip-spark" :stroke="ACCENT" fill="none" />
+        <line x1="574" y1="74" x2="499" y2="92" class="flow accent" :stroke-width="flowW(diagram?.o ?? 0)" :stroke-opacity="flowO(diagram?.o ?? 0)" />
+        <line x1="503" y1="86" x2="672" y2="86" class="flow accent" :stroke-width="flowW(hiddenNorm(diagram?.hidden ?? 0) + 0.3)" :stroke-opacity="flowO(hiddenNorm(diagram?.hidden ?? 0))" />
+        <text x="680" y="80" class="d-label">h</text>
+        <text x="680" y="100" class="d-value data-mono">{{ fmt(diagram?.hidden ?? 0) }}</text>
+        <text x="726" y="90" class="decode-tag">→ 24h 解码</text>
+        <text x="580" y="296" class="cell-note">c = f·c₋₁ + i·g</text>
+        <text x="580" y="322" class="cell-note">h = o·tanh(c)</text>
+        <text x="580" y="348" class="cell-note faint">芯片曲线 = 16 单元均值 × 48 步</text>
+
+        <!-- bottom branch -->
+        <text x="46" y="336" class="d-label">xₜ</text>
+        <line x1="66" y1="331" x2="86" y2="331" class="flow" stroke-width="2" stroke-opacity="0.55" />
+        <path d="M86 331 L86 317 L112 317" class="flow thin" fill="none" />
+        <path d="M86 331 L86 383 L112 383" class="flow thin" fill="none" />
+        <rect x="116" y="290" width="124" height="54" rx="10" class="chip" :class="{ hot: (diagram?.i ?? 0) > 0.5 }" />
+        <text x="126" y="310" class="chip-name">输入门</text>
+        <text x="230" y="312" text-anchor="end" class="chip-value data-mono">{{ fmt(diagram?.i ?? 0) }}</text>
+        <path :d="sparkPath('i', 126, 318, 104, 18)" class="chip-spark" :stroke="ACCENT" fill="none" />
+        <rect x="116" y="356" width="124" height="54" rx="10" class="chip" />
+        <text x="126" y="376" class="chip-name">候选</text>
+        <text x="230" y="378" text-anchor="end" class="chip-value data-mono">{{ fmt(diagram?.g ?? 0) }}</text>
+        <path :d="sparkPath('g', 126, 384, 104, 18)" class="chip-spark" :stroke="ACCENT" fill="none" />
+        <line x1="240" y1="317" x2="322" y2="352" class="flow accent" :stroke-width="flowW(diagram?.i ?? 0)" :stroke-opacity="flowO(diagram?.i ?? 0)" />
+        <line x1="240" y1="383" x2="322" y2="370" class="flow accent" :stroke-width="flowW(Math.abs(diagram?.g ?? 0))" :stroke-opacity="flowO(Math.abs(diagram?.g ?? 0))" />
+        <circle cx="336" cy="362" r="13" class="node" />
+        <text x="336" y="367" text-anchor="middle" class="d-op">×</text>
+        <path d="M336 349 L336 240 L390 240 L390 196" class="flow accent" fill="none" :stroke-width="flowW(diagram?.written ?? 0)" :stroke-opacity="flowO(diagram?.written ?? 0)" />
+      </svg>
+    </div>
+
+    <!-- the evidence ribbon -->
+    <div class="ribbon-block" @pointerdown="onScrubDown" @pointermove="onScrubMove" @pointerleave="onScrubLeave">
+      <div class="ribbon-caption">
+        <span>输入 xₜ</span>
+        <span class="ribbon-caption-right">单元级激活 · 拖拽游标</span>
       </div>
 
-      <!-- the schematic cell -->
-      <aside class="cell-side">
-        <svg class="cell-svg" viewBox="0 0 460 310">
-          <rect x="14" y="18" width="432" height="272" rx="14" class="cell-boundary" />
-
-          <!-- memory lane -->
-          <text x="34" y="102" class="d-label">c₋₁</text>
-          <text x="34" y="120" class="d-value data-mono">{{ fmt(diagram?.cellPrev ?? 0) }}</text>
-          <line x1="62" y1="115" x2="112" y2="115" class="flow memory" :stroke-width="flowW(cellNorm(diagram?.cellPrev ?? 0))" :stroke-opacity="flowO(cellNorm(diagram?.cellPrev ?? 0))" />
-
-          <circle cx="126" cy="115" r="12" class="node" />
-          <text x="126" y="120" text-anchor="middle" class="d-op">×</text>
-          <rect x="95" y="158" width="62" height="26" rx="8" class="pill" :class="{ hot: (diagram?.f ?? 0) > 0.5 }" />
-          <text x="126" y="175" text-anchor="middle" class="pill-text">遗忘 <tspan class="d-value data-mono">{{ fmt(diagram?.f ?? 0) }}</tspan></text>
-          <line x1="126" y1="157" x2="126" y2="128" class="flow accent" :stroke-width="flowW(diagram?.f ?? 0)" :stroke-opacity="flowO(diagram?.f ?? 0)" />
-
-          <line x1="138" y1="115" x2="233" y2="115" class="flow memory" :stroke-width="flowW(Math.abs(diagram?.retained ?? 0))" :stroke-opacity="flowO(Math.abs(diagram?.retained ?? 0))" />
-
-          <circle cx="246" cy="115" r="12" class="node" />
-          <text x="246" y="121" text-anchor="middle" class="d-op">+</text>
-
-          <text x="272" y="132" class="d-label">c</text>
-          <text x="272" y="148" class="d-value data-mono">{{ fmt(diagram?.cell ?? 0) }}</text>
-          <line x1="258" y1="115" x2="304" y2="115" class="flow memory" :stroke-width="flowW(cellNorm(diagram?.cell ?? 0))" :stroke-opacity="flowO(cellNorm(diagram?.cell ?? 0))" />
-
-          <rect x="304" y="100" width="54" height="30" rx="8" class="tanh-box" />
-          <text x="331" y="120" text-anchor="middle" class="d-op">tanh</text>
-          <line x1="331" y1="99" x2="331" y2="82" class="flow" stroke-width="1.6" stroke-opacity="0.7" />
-
-          <circle cx="331" cy="70" r="12" class="node" />
-          <text x="331" y="75" text-anchor="middle" class="d-op">×</text>
-          <rect x="365" y="40" width="62" height="26" rx="8" class="pill" :class="{ hot: (diagram?.o ?? 0) > 0.5 }" />
-          <text x="396" y="57" text-anchor="middle" class="pill-text">输出 <tspan class="d-value data-mono">{{ fmt(diagram?.o ?? 0) }}</tspan></text>
-          <line x1="365" y1="53" x2="343" y2="62" class="flow accent" :stroke-width="flowW(diagram?.o ?? 0)" :stroke-opacity="flowO(diagram?.o ?? 0)" />
-          <line x1="343" y1="70" x2="414" y2="70" class="flow accent" :stroke-width="flowW(hiddenNorm(diagram?.hidden ?? 0) + 0.25)" :stroke-opacity="flowO(hiddenNorm(diagram?.hidden ?? 0))" />
-          <text x="420" y="74" class="d-label">h</text>
-          <text x="420" y="90" class="d-value data-mono">{{ fmt(diagram?.hidden ?? 0) }}</text>
-
-          <!-- bottom branch: input gate ⊗ candidate, then up into the merge -->
-          <text x="34" y="249" class="d-label">xₜ</text>
-          <line x1="52" y1="244" x2="70" y2="244" class="flow" stroke-width="1.6" stroke-opacity="0.6" />
-          <path d="M70 244 L70 229 L91 229" class="flow thin" fill="none" />
-          <path d="M70 244 L70 265 L91 265" class="flow thin" fill="none" />
-          <rect x="92" y="216" width="62" height="26" rx="8" class="pill" :class="{ hot: (diagram?.i ?? 0) > 0.5 }" />
-          <text x="123" y="233" text-anchor="middle" class="pill-text">输入 <tspan class="d-value data-mono">{{ fmt(diagram?.i ?? 0) }}</tspan></text>
-          <rect x="92" y="252" width="62" height="26" rx="8" class="pill" />
-          <text x="123" y="269" text-anchor="middle" class="pill-text">候选 <tspan class="d-value data-mono">{{ fmt(diagram?.g ?? 0) }}</tspan></text>
-          <line x1="154" y1="229" x2="238" y2="238" class="flow accent" :stroke-width="flowW(diagram?.i ?? 0)" :stroke-opacity="flowO(diagram?.i ?? 0)" />
-          <line x1="154" y1="265" x2="238" y2="250" class="flow accent" :stroke-width="flowW(Math.abs(diagram?.g ?? 0))" :stroke-opacity="flowO(Math.abs(diagram?.g ?? 0))" />
-          <circle cx="246" cy="244" r="11" class="node" />
-          <text x="246" y="249" text-anchor="middle" class="d-op">×</text>
-          <path d="M246 232 L246 128" class="flow accent" fill="none" :stroke-width="flowW(diagram?.written ?? 0)" :stroke-opacity="flowO(diagram?.written ?? 0)" />
+      <div
+        v-for="lane in INPUT_LANES"
+        :key="`in-${lane.label}`"
+        data-lane
+        class="ribbon-input"
+        :style="{ height: `${INPUT_H}px` }"
+      >
+        <span class="lane-label">{{ lane.label }}</span>
+        <svg class="lane-svg" :height="INPUT_H" :viewBox="`0 0 ${T} ${INPUT_H}`" preserveAspectRatio="none">
+          <polyline
+            :points="laneSeries(lane)
+              .map((v, i, arr) => {
+                const min = Math.min(...arr);
+                const max = Math.max(...arr);
+                const y = INPUT_H - 2 - ((v - min) / Math.max(0.5, max - min)) * (INPUT_H - 4);
+                return `${i},${y.toFixed(1)}`;
+              })
+              .join(' ')"
+            :fill="lane.color"
+            fill-opacity="0.07"
+            :stroke="lane.color"
+            stroke-width="0.5"
+            vector-effect="non-scaling-stroke"
+          />
         </svg>
-        <p class="equation data-mono">c = f·c₋₁ + i·g &nbsp;·&nbsp; h = o·tanh(c) &nbsp;·&nbsp; 16 单元均值</p>
-      </aside>
+      </div>
+
+      <div class="ribbon-divider" aria-hidden="true"></div>
+
+      <div
+        v-for="lane in LANES"
+        :key="lane.key"
+        data-lane
+        class="ribbon-lane"
+        :style="{ height: `${LANE_H}px` }"
+      >
+        <span class="lane-label">{{ lane.label }}<small>{{ lane.hint }}</small></span>
+        <svg
+          class="lane-svg"
+          :height="LANE_H"
+          :viewBox="`0 0 ${T * 10} ${LANE_H}`"
+          preserveAspectRatio="none"
+        >
+          <template v-for="(row, t) in laneValues(lane.key)" :key="`${lane.key}-c${t}`">
+            <rect
+              v-for="(v, u) in row"
+              :key="u"
+              :x="t * 10"
+              :y="u * (LANE_H / H)"
+              :width="10.7"
+              :height="LANE_H / H + 0.6"
+              :fill="cellFill(lane, v).color"
+              :fill-opacity="cellFill(lane, v).opacity"
+            />
+          </template>
+        </svg>
+      </div>
+
+      <span
+        v-for="(tick, i) in axisTicks"
+        :key="`tick-${i}`"
+        class="ribbon-tick data-mono"
+        :style="{
+          left: `${GUTTER + tick.frac * ribbonW}px`,
+          transform: tick.anchor === 'start' ? 'none' : tick.anchor === 'end' ? 'translateX(-100%)' : 'translateX(-50%)',
+        }"
+      >{{ tick.label }}</span>
+
+      <div
+        class="ribbon-cursor"
+        :style="{ left: `${GUTTER + cursor * cellW}px` }"
+        aria-hidden="true"
+      ></div>
+
+      <div v-if="hovered" class="ribbon-tip data-mono" :style="{ left: `${Math.min(hovered.left + 12, GUTTER + ribbonW - 190)}px` }">
+        {{ hovered.text }}
+      </div>
     </div>
 
     <!-- 解码 × 对照 -->
@@ -609,7 +630,7 @@ watch(
 <style scoped>
 .lstm-engine {
   display: grid;
-  gap: 26px;
+  gap: 24px;
   min-width: 0;
 }
 
@@ -622,28 +643,22 @@ watch(
   letter-spacing: 0.2em;
 }
 
-/* ── the instrument ── */
-.compute-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 470px);
-  gap: 34px;
-  align-items: center;
-}
-
-.instrument {
+/* ── hero cell ── */
+.hero-wrap {
   min-width: 0;
+  display: grid;
+  gap: 10px;
 }
 
-.tape-head {
+.hero-head {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 8px;
 }
 
 .play {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   flex: none;
   display: grid;
   place-items: center;
@@ -662,135 +677,33 @@ watch(
 }
 
 .play svg {
-  width: 12px;
-  height: 12px;
+  width: 13px;
+  height: 13px;
   fill: currentColor;
 }
 
 .cursor-time {
   color: var(--ink);
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 700;
 }
 
-.tape-hint {
+.hero-hint {
   margin-left: auto;
   color: var(--faint);
   font-size: 10.5px;
 }
 
-.tape-block {
-  position: relative;
-  cursor: ew-resize;
-  touch-action: none;
-  user-select: none;
-}
-
-.tape-tick {
-  position: absolute;
-  bottom: -16px;
-  color: var(--faint);
-  font-size: 10px;
-}
-
-.input-lane,
-.heat-lane {
-  display: grid;
-  grid-template-columns: var(--gutter, 78px) 1fr;
-  gap: 0;
-  align-items: center;
-  min-width: 0;
-}
-
-.input-lane {
-  margin-bottom: 5px;
-}
-
-.lane-label {
-  padding-right: 10px;
-  color: var(--ink-soft);
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.lane-label small {
-  margin-left: 4px;
-  color: var(--faint);
-  font-size: 10px;
-  font-weight: 400;
-}
-
-.lane-svg {
-  display: block;
-  width: 100%;
-}
-
-.input-lane .lane-svg {
-  height: 30px;
-}
-
-.tape-divider {
-  height: 1px;
-  margin: 12px 0 14px;
-  background: var(--hairline-soft);
-}
-
-.heat-lane {
-  margin-bottom: 8px;
-}
-
-.tape-cursor {
-  position: absolute;
-  top: 6px;
-  bottom: 2px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--ink);
-  pointer-events: none;
-  transition: left 90ms linear;
-}
-
-.tape-cursor::after {
-  content: "";
-  position: absolute;
-  bottom: -5px;
-  left: 50%;
-  width: 8px;
-  height: 8px;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background: var(--ink);
-}
-
-.tape-tip {
-  position: absolute;
-  top: -14px;
-  z-index: 3;
-  padding: 4px 9px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: var(--shadow-sm);
-  color: var(--ink);
-  font-size: 11px;
-  pointer-events: none;
-  white-space: nowrap;
-}
-
-/* ── the schematic cell ── */
-.cell-side {
-  min-width: 0;
-}
-
 .cell-svg {
   display: block;
   width: 100%;
+  max-width: 1060px;
+  margin: 0 auto;
   height: auto;
 }
 
 .cell-boundary {
-  fill: rgba(255, 255, 255, 0.72);
+  fill: rgba(255, 255, 255, 0.8);
   stroke: var(--hairline);
 }
 
@@ -809,65 +722,200 @@ watch(
 
 .flow.thin {
   stroke: #94a3b8;
-  stroke-width: 1.2;
+  stroke-width: 1.4;
   stroke-opacity: 0.6;
 }
 
 .node {
   fill: #ffffff;
-  stroke: var(--hairline-strong);
-  stroke-width: 1;
+  stroke: #cbd5e1;
+  stroke-width: 1.4;
 }
 
 .tanh-box {
   fill: #ffffff;
-  stroke: var(--hairline-strong);
+  stroke: #cbd5e1;
+  stroke-width: 1.4;
 }
 
-.pill {
-  fill: #f1f5f9;
-  stroke: var(--hairline);
+.chip {
+  fill: #ffffff;
+  stroke: var(--hairline-strong, #cbd5e1);
+  stroke-width: 1.2;
   transition: stroke var(--duration-fast) ease;
 }
 
-.pill.hot {
+.chip.hot {
   stroke: #0284c7;
 }
 
-.pill-text {
+.chip-name {
   fill: var(--muted);
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.pill-text .d-value {
+.chip-value {
   fill: var(--ink);
+  font-size: 15px;
   font-weight: 700;
+}
+
+.chip-spark {
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
 }
 
 .d-label {
   fill: var(--muted);
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
 }
 
 .d-value {
   fill: var(--ink);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
 }
 
 .d-op {
-  fill: var(--ink-soft, #475569);
-  font-size: 11px;
+  fill: #475569;
+  font-size: 13px;
   font-weight: 700;
 }
 
-.equation {
-  margin: 6px 0 0;
-  text-align: center;
-  color: var(--faint);
+.decode-tag {
+  fill: var(--faint);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.cell-note {
+  fill: var(--ink-soft, #475569);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cell-note.faint {
+  fill: var(--faint);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* ── evidence ribbon ── */
+.ribbon-block {
+  position: relative;
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
+  padding-top: 22px;
+}
+
+.ribbon-caption {
+  position: absolute;
+  top: 0;
+  left: 92px;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
   font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.ribbon-caption-right {
+  color: var(--faint);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.ribbon-input,
+.ribbon-lane {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  align-items: center;
+  min-width: 0;
+}
+
+.ribbon-input {
+  margin-bottom: 4px;
+}
+
+.lane-label {
+  padding-right: 12px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.lane-label small {
+  margin-left: 4px;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.lane-svg {
+  display: block;
+  width: 100%;
+}
+
+.ribbon-divider {
+  height: 1px;
+  margin: 12px 0 14px;
+  background: var(--hairline-soft);
+}
+
+.ribbon-lane {
+  margin-bottom: 6px;
+}
+
+.ribbon-tick {
+  position: absolute;
+  bottom: -16px;
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.ribbon-cursor {
+  position: absolute;
+  top: 18px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--ink);
+  pointer-events: none;
+  transition: left 90ms linear;
+}
+
+.ribbon-cursor::after {
+  content: "";
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.ribbon-tip {
+  position: absolute;
+  top: 0;
+  z-index: 3;
+  padding: 4px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink);
+  font-size: 11px;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* ── 解码 × 对照 ── */
@@ -914,10 +962,6 @@ watch(
 }
 
 @media (max-width: 1100px) {
-  .compute-row {
-    grid-template-columns: 1fr;
-  }
-
   .decode-row {
     grid-template-columns: 1fr;
     gap: 24px;

@@ -7,6 +7,7 @@ import { useLocationCatalog } from "../composables/useLocationCatalog";
 import ForecastTrajectory from "../components/ForecastTrajectory.vue";
 import BacktestAnatomy from "../components/BacktestAnatomy.vue";
 import { useContextStore } from "../stores/context";
+import { FORECAST_COLOR, MODEL_COLOR, MUTED_DATA_COLOR, OBSERVATION_COLOR } from "../lib/palette";
 
 const context = useContextStore();
 const { locations } = useLocationCatalog();
@@ -52,6 +53,12 @@ const validation = useQuery({
   retry: false,
 });
 const chosenModels = ref<string[]>(["CAMS", "LSTM", "Persistence", "Rolling Mean"]);
+const modelTones: Record<string, string> = {
+  CAMS: MODEL_COLOR,
+  LSTM: FORECAST_COLOR,
+  Persistence: MUTED_DATA_COLOR,
+  "Rolling Mean": OBSERVATION_COLOR,
+};
 const latestForecast = computed(() => {
   const data = forecast.data.value;
   if (!data) return undefined;
@@ -92,7 +99,7 @@ function toggleModel(name: string) {
     <header class="research-head">
       <div>
         <h1>短期预测与模型评估</h1>
-        <p>{{ city }} · PM2.5 · 历史分析、未来 24h 预测与回测验证</p>
+        <p>{{ city }} · PM2.5 · 未来 24 小时</p>
       </div>
       <div class="research-side">
         <span>预测模型 <b>{{ availableModels.length }}</b></span>
@@ -103,44 +110,47 @@ function toggleModel(name: string) {
     <section class="research-section">
       <div class="research-section-head">
         <h2>历史演变与多模型预测</h2>
-        <span>模型起报时刻与目标时间以原始记录为准</span>
+        <span>历史分析与地面观测独立显示</span>
       </div>
       <div class="research-panel">
         <div class="forecast-model-controls" role="group" aria-label="显示预测模型">
           <button v-for="name in availableModels" :key="name" type="button"
             :class="{ active: chosenModels.includes(name) }"
+            :style="{ '--model-color': modelTones[name] ?? FORECAST_COLOR }"
             :aria-pressed="chosenModels.includes(name)" @click="toggleModel(name)">
             <span class="model-dot" aria-hidden="true"></span>{{ name }}
           </button>
         </div>
         <ForecastTrajectory :history="history.data.value" :observation="observation.data.value"
           :forecast="latestForecast" :active-models="chosenModels" />
-        <div v-if="modelRows.length" class="forecast-issues">
-          <span v-for="row in modelRows" :key="row.model_name" class="data-mono">
-            <strong>{{ row.model_name }}</strong>
-            {{ fmtTime(row.snapshot_at) }} 起报 · {{ row.points.length }}h · {{ row.model_revision }}
-          </span>
+      </div>
+      <details class="research-methods">
+        <summary>预测批次与数据来源</summary>
+        <div class="research-methods-body">
+          <p>历史分析为 CAMS，地面观测来自 OpenAQ；观测缺失不连线。LSTM 的监督目标是 CAMS 分析场，不能将其验证误差理解为相对地面实测的误差。</p>
+          <div v-if="modelRows.length" class="forecast-issues">
+            <div v-for="row in modelRows" :key="row.model_name">
+              <strong>{{ row.model_name }}</strong>
+              <span class="data-mono">{{ fmtTime(row.snapshot_at) }}</span>
+              <span>{{ row.points.length }}h</span>
+              <code>{{ row.model_revision }}</code>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="research-evidence">
-        <span>历史分析：CAMS 模式分析场</span>
-        <span>地面观测：OpenAQ（缺失处不连接曲线）</span>
-        <span>LSTM 监督目标：CAMS 分析场，不能等同于地面实测预测精度</span>
-      </div>
+      </details>
     </section>
 
     <section class="research-section">
       <div class="research-section-head">
-        <h2>CAMS 验证集上的预测误差</h2>
+        <h2>模型预测误差 · CAMS 验证集</h2>
         <div class="research-tabs" role="group" aria-label="误差指标">
           <button :class="{ active: selectedMetric === 'mae' }" :aria-pressed="selectedMetric === 'mae'" @click="selectedMetric = 'mae'">MAE</button>
           <button :class="{ active: selectedMetric === 'rmse' }" :aria-pressed="selectedMetric === 'rmse'" @click="selectedMetric = 'rmse'">RMSE</button>
         </div>
       </div>
-      <div v-if="validation.data.value" class="research-evidence">
-        <span>同一验证集 <strong>{{ validation.data.value.models[0]?.samples ?? 0 }}</strong> 个窗口</span>
-        <span>验证时段 <strong>{{ fmtTime(validation.data.value.validation_start) }} — {{ fmtTime(validation.data.value.validation_end) }}</strong></span>
-        <span>模型版本 <strong>{{ validation.data.value.model_version }}</strong></span>
+      <div v-if="validation.data.value" class="validation-context">
+        <span><strong>{{ validation.data.value.models[0]?.samples ?? 0 }}</strong> 个验证窗口</span>
+        <span>{{ fmtTime(validation.data.value.validation_start) }} — {{ fmtTime(validation.data.value.validation_end) }}</span>
       </div>
       <div v-if="errorRows.length" class="research-panel research-panel-pad">
         <div class="error-grid" role="table" :aria-label="selectedMetric.toUpperCase() + ' 预测时效误差矩阵'">
@@ -155,7 +165,7 @@ function toggleModel(name: string) {
             ></div>
           </template>
         </div>
-        <div class="error-scale"><span>低误差</span><i></i><span>高误差</span><span>空白：无核验样本</span></div>
+        <div class="error-scale"><span>低误差</span><i></i><span>高误差</span><span>空白为缺测</span></div>
         <div class="research-table-scroll">
           <table class="research-data-table">
             <thead><tr><th>模型</th><th class="num">+24h MAE</th><th class="num">+24h RMSE</th><th class="num">有效样本</th></tr></thead>
@@ -179,19 +189,23 @@ function toggleModel(name: string) {
     <section class="research-section">
       <div class="research-section-head">
         <h2>上线预测的后验回测</h2>
-        <span>当前 {{ backtest.data.value?.samples.length ?? 0 }} 条核验样本 · 与上方 CAMS 验证集不同</span>
+        <span>{{ backtest.data.value?.samples.length ?? 0 }} 条核验样本</span>
       </div>
       <div v-if="(backtest.data.value?.samples.length ?? 0) >= 30" class="research-panel research-panel-pad">
         <BacktestAnatomy :backtest="backtest.data.value" />
       </div>
-      <div v-else class="research-evidence">
-        <span>运行中的预测需要等待目标时刻到达，且完成有效数据核验；样本不足时不绘制误差趋势。</span>
+      <div v-else class="backtest-pending" role="status">
+        <strong>尚不足以绘制后验误差走势</strong>
+        <span>已积累 {{ backtest.data.value?.samples.length ?? 0 }} 条核验样本，至少需要 30 条。预测必须在目标时刻到达后与有效数据配对。</span>
       </div>
-      <div class="research-evidence">
-        <span>地面观测训练条件：<strong>{{ readiness.data.value?.ready ? "满足" : "未满足或待核验" }}</strong></span>
-        <span v-if="readiness.data.value">有效观测行数 <strong>{{ readiness.data.value.observation_rows }}</strong></span>
-        <span>只有相同验证目标、时间窗和样本集合上的指标才适合直接排名。</span>
-      </div>
+      <details class="research-methods">
+        <summary>模型验证与训练条件</summary>
+        <div class="research-methods-body">
+          <p>上方误差矩阵来自固定的 CAMS 验证集；后验回测来自之后逐步积累的预测与核验记录。不同目标、时间窗及样本集合的误差不能直接排名。</p>
+          <p v-if="validation.data.value">验证模型版本：<code>{{ validation.data.value.model_version }}</code></p>
+          <p>地面观测训练条件：{{ readiness.data.value?.ready ? "满足" : "未满足或待核验" }}<template v-if="readiness.data.value">；有效观测行数 {{ readiness.data.value.observation_rows }}</template>。</p>
+        </div>
+      </details>
     </section>
   </section>
 </template>
@@ -202,25 +216,32 @@ function toggleModel(name: string) {
   display: inline-flex; gap: 9px; align-items: center;
   border: 1px solid var(--hairline); border-radius: var(--radius-sm);
   background: var(--sheet); color: var(--ink-secondary); padding: 8px 12px;
-  font-size: 12px; font-weight: 600; cursor: pointer;
+  font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .forecast-model-controls button.active { background: var(--canvas-subtle); border-color: var(--hairline-strong); color: var(--ink); }
-.model-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
-.forecast-model-controls button.active .model-dot { background: var(--accent); }
-.forecast-issues { display: flex; flex-wrap: wrap; gap: 10px 26px; padding: 13px 24px 18px; border-top: 1px solid var(--hairline-soft); color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
-.forecast-issues strong { color: var(--ink-soft); margin-right: 5px; }
+.model-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--model-color); opacity: .35; }
+.forecast-model-controls button.active .model-dot { opacity: 1; }
+.forecast-issues { display: grid; gap: 5px; margin-top: 12px; color: var(--ink-secondary); font-size: 13px; }
+.forecast-issues > div { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 15px; row-gap: 2px; }
+.forecast-issues strong { color: var(--ink); min-width: 110px; font-weight: 650; }
+.forecast-issues code { overflow-wrap: anywhere; color: var(--muted); font-size: 12px; }
+.validation-context { display: flex; flex-wrap: wrap; gap: 6px 26px; padding: 0 0 16px; color: var(--ink-secondary); font-size: 13px; }
+.validation-context strong { color: var(--ink); font-weight: 650; }
+.backtest-pending { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px 18px; padding: 24px; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--sheet); }
+.backtest-pending strong { color: var(--ink); font-size: 14px; }
+.backtest-pending span { color: var(--ink-secondary); font-size: 13px; line-height: 1.6; }
 .error-grid { display: grid; grid-template-columns: 114px repeat(24,minmax(0,1fr)); gap: 4px; align-items: center; min-width: 630px; }
 .error-label { white-space: nowrap; font-size: 12px; font-weight: 650; color: var(--ink-secondary); padding-right: 7px; }
-.error-hour { color: var(--muted); font-size: 10px; text-align: center; }
+.error-hour { color: var(--muted); font-size: 12px; text-align: center; }
 .error-cell { height: 29px; background: color-mix(in srgb, var(--accent) var(--heat, 0%), var(--sheet)); border-radius: 3px; }
 .error-cell.missing { background: var(--canvas-subtle); }
-.error-scale { display: flex; gap: 12px; align-items: center; color: var(--muted); font-size: 11px; padding: 16px 0 22px; }
+.error-scale { display: flex; gap: 12px; align-items: center; color: var(--ink-secondary); font-size: 12px; padding: 16px 0 22px; }
 .error-scale i { width: 112px; height: 7px; border-radius: 3px; background: linear-gradient(to right,var(--sheet),var(--accent)); border: 1px solid var(--hairline); }
 .error-scale span:last-child { margin-left: auto; }
 .research-panel-pad { overflow-x: auto; }
 @media(max-width: 850px) {
   .error-grid { min-width: 630px; }
   .forecast-model-controls { padding: 14px 12px 0; }
-  .forecast-issues { padding: 12px; }
+  .backtest-pending { padding: 18px; }
 }
 </style>

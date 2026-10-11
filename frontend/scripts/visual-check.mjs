@@ -26,6 +26,15 @@ async function visit(route, title, selector, width, height) {
     await page.locator(".context-title strong").filter({ hasText: title }).waitFor({ state: "visible" });
     await page.screenshot({ path: `.review/${route.replaceAll("/", "-")}-${width}.png` });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    if (route === "/overview") {
+      const overlap = await page.evaluate(() => {
+        const map = document.querySelector(".map-area").getBoundingClientRect();
+        const legend = document.querySelector(".map-legend").getBoundingClientRect();
+        const ribbon = document.querySelector(".ribbon-dock").getBoundingClientRect();
+        return legend.bottom > map.bottom + 1 || legend.bottom > ribbon.top - 8 || map.bottom > ribbon.top + 1;
+      });
+      if (overlap) throw new Error(`Map legend and time ribbon overlap at ${width}px`);
+    }
     report.push({ route, width, http: response?.status(), errors, overflow, navItems: await page.locator(".app-rail nav a").count() });
   } finally {
     await page.close();
@@ -34,10 +43,26 @@ async function visit(route, title, selector, width, height) {
 
 try {
   for (const [route, title, selector] of routes) await visit(route, title, selector, 1440, 900);
+  await visit("/overview", "全国时空", ".china-map-shell", 1720, 1000);
+  await visit("/forecast", "预测评估", ".forecast-trajectory", 1720, 1000);
   for (const [route, title, selector] of routes.slice(0, 4)) await visit(route, title, selector, 390, 844);
 
   const map = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await map.goto("http://127.0.0.1:5173/overview", { waitUntil: "networkidle" });
+  const stageBounds = await map.evaluate(() => {
+    const bounds = (query) => {
+      const rect = document.querySelector(query).getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    };
+    return { stage: bounds(".stage"), map: bounds(".map-area"), legend: bounds(".map-legend"), ribbon: bounds(".ribbon-dock") };
+  });
+  if (
+    stageBounds.legend.bottom > stageBounds.map.bottom + 1 ||
+    stageBounds.legend.bottom > stageBounds.ribbon.top - 10 ||
+    stageBounds.map.bottom > stageBounds.ribbon.top + 1 ||
+    stageBounds.ribbon.bottom > stageBounds.stage.bottom + 1
+  ) throw new Error("National map legend overlaps time ribbon or escapes its stage");
+  report.push({ interaction: "national map, legend and time ribbon occupy independent rows", ok: true });
   const beforeMapZoom = await map.evaluate(() => {
     const singles = document.querySelectorAll(".china-map-shell .marks circle.mark").length;
     const clusters = [...document.querySelectorAll(".china-map-shell .map-cluster text")]
@@ -70,6 +95,10 @@ try {
 
   const analysis = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await analysis.goto("http://127.0.0.1:5173/analysis", { waitUntil: "networkidle" });
+  const analysisMethods = analysis.locator(".research-methods").first();
+  if (await analysisMethods.evaluate((el) => el.open)) throw new Error("Analysis methods expanded by default");
+  await analysisMethods.locator("summary").click();
+  if (!(await analysisMethods.locator(".research-methods-body").isVisible())) throw new Error("Analysis methods inaccessible");
   await analysis.getByRole("button", { name: "单城市关联" }).click();
   await analysis.locator(".structure-panel").waitFor({ state: "visible", timeout: 18000 });
   report.push({ interaction: "national PCA→city PCA", ok: true });
@@ -105,6 +134,18 @@ try {
   }
   report.push({ interaction: "PCA loadings, correlation choice and score hover", ok: true });
   await analysis.close();
+
+  const forecast = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await forecast.goto("http://127.0.0.1:5173/forecast", { waitUntil: "networkidle" });
+  if (await forecast.locator(".forecast-issues").isVisible()) throw new Error("Dense forecast metadata visible by default");
+  await forecast.getByText("预测批次与数据来源").click();
+  if (!(await forecast.locator(".forecast-issues").isVisible())) throw new Error("Forecast batches cannot be expanded");
+  await forecast.getByRole("button", { name: "RMSE" }).click();
+  if ((await forecast.locator(".research-tabs button.active").last().textContent()) !== "RMSE") {
+    throw new Error("Forecast error metric selection failed");
+  }
+  report.push({ interaction: "forecast metadata disclosure, metric selection", ok: true });
+  await forecast.close();
 
   const mobileAnalysis = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await mobileAnalysis.goto("http://127.0.0.1:5173/analysis", { waitUntil: "networkidle" });

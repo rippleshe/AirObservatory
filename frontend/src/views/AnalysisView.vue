@@ -111,14 +111,14 @@ function focusCity(id: number, name: string) {
           <small>统计图只使用已经完成计算的特征矩阵，不补造数据。</small>
         </div>
       </section>
-      <div v-if="fingerprintMeta" class="analysis-method-note">
-        <strong>分析口径</strong> {{ fingerprintMeta.representative_rule.startsWith("All city") ? "纳入共同历史窗口中拥有至少 168 个完整污染—气象配对小时的全部城市；相邻城市的 CAMS 网格并非独立地面观测。" : "当前仍在展示旧的省级代表分析产物，待分析任务重算后将覆盖全部合格城市。" }}
-        <span v-if="fingerprint.data.value?.cluster_profiles.some((cluster) => cluster.city_count === 1)">当前分群存在单城市组，且轮廓系数仅 {{ fingerprintMeta.silhouette?.toFixed(2) ?? "—" }}，应视为离群探索线索。</span>
-      </div>
-      <footer class="research-evidence">
-        <span>聚类用于发现特征相似的城市，不代表环境质量类型或因果分类。</span>
-        <span>来源：CAMS 模式分析场与 Open-Meteo 气象再分析</span>
-      </footer>
+      <details v-if="fingerprintMeta" class="research-methods">
+        <summary>数据口径与解释边界</summary>
+        <div class="research-methods-body">
+          <p>{{ fingerprintMeta.representative_rule.startsWith("All city") ? "纳入共同历史窗口中具有至少 168 个完整污染—气象配对小时的全部城市。" : "本次仍为旧版省级代表样本，等待分析重算。" }} 数据来自 CAMS 模式分析场和 Open-Meteo 气象再分析；相邻城市的模式网格不应视为独立地面观测。</p>
+          <p v-if="fingerprint.data.value?.cluster_profiles.some((cluster) => cluster.city_count === 1)">分群存在单城市组，轮廓系数为 {{ fingerprintMeta.silhouette?.toFixed(2) ?? "—" }}；聚类用于探索相似性，不构成环境质量分类或因果判断。</p>
+          <p v-else>聚类用于探索城市特征相似性，不构成环境质量分类或因果判断。</p>
+        </div>
+      </details>
     </template>
 
     <template v-else>
@@ -177,7 +177,4 @@ function focusCity(id: number, name: string) {
 .relationship-plot :deep(.wind-clearance),
 .relationship-plot :deep(.wind-rose) { height: 360px; min-height: 0; }
 .plot-method { color: var(--ink-secondary); font-size: var(--fs-label); line-height: 1.55; margin: 10px 0 0; }
-.analysis-method-note { margin-top: 18px; padding: 16px 0; border-top: 1px solid var(--hairline); color: var(--ink-secondary); font-size: 12px; line-height: 1.75; }
-.analysis-method-note strong { color: var(--ink); padding-right: 12px; }
-.analysis-method-note span { display: block; margin-top: 3px; }
 </style>

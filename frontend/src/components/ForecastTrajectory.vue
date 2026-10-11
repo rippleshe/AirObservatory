@@ -22,9 +22,28 @@ const tones: Record<string, string> = {
 
 const latestHistorical = computed(() => props.history?.points.at(-1)?.time ?? null);
 const latestStamp = computed(() => latestHistorical.value ? +new Date(latestHistorical.value) : 0);
-const historyPoints = computed(() => (props.history?.points ?? [])
-  .filter((point) => +new Date(point.time) >= latestStamp.value - 7 * 24 * 3_600_000)
-  .map((point) => [point.time, point.value] as [string, number | null]));
+const historyPoints = computed(() => {
+  const values: [string, number | null][] = [];
+  let previous: number | null = null;
+  for (const point of props.history?.points ?? []) {
+    const at = +new Date(point.time);
+    if (at < latestStamp.value - 7 * 24 * 3_600_000) continue;
+    if (previous !== null && at - previous > 1.5 * 3_600_000) {
+      values.push([new Date((at + previous) / 2).toISOString(), null]);
+    }
+    values.push([point.time, point.value]);
+    previous = at;
+  }
+  return values;
+});
+
+const historyGapHours = computed(() => {
+  const stamps = (props.history?.points ?? [])
+    .map((point) => +new Date(point.time))
+    .filter((time) => time >= latestStamp.value - 7 * 24 * 3_600_000);
+  return stamps.reduce((max, time, index) =>
+    index ? Math.max(max, Math.round((time - stamps[index - 1]!) / 3_600_000) - 1) : max, 0);
+});
 
 /* A gap in sparse observations is never connected into a fabricated trend. */
 const observationPoints = computed(() => {
@@ -113,9 +132,10 @@ onBeforeUnmount(() => { observer?.disconnect(); chart?.dispose(); });
     <div class="trajectory-legend" aria-label="预测图例">
       <span class="legend-model"><i></i>CAMS 分析</span>
       <span class="legend-observation"><i></i>地面观测</span>
-      <span class="legend-lstm"><i></i>LSTM 预测</span>
-      <span class="legend-other"><i></i>其他模型预测</span>
     </div>
+    <p v-if="historyGapHours > 0" class="trajectory-gap" role="status">
+      模式历史最长缺测 {{ historyGapHours }} 小时 · 缺口已断开
+    </p>
     <div ref="el" class="trajectory-chart" role="img" aria-label="CAMS 历史分析、地面观测与各模型 PM2.5 预测曲线"></div>
     <div v-if="!history?.points.length && !forecast?.series.length" class="research-empty">
       <strong>当前城市尚无有效预测记录</strong>
@@ -126,12 +146,11 @@ onBeforeUnmount(() => { observer?.disconnect(); chart?.dispose(); });
 <style scoped>
 .forecast-trajectory { min-width: 0; padding: 22px 24px 12px; }
 .trajectory-chart { width: 100%; height: 405px; }
-.trajectory-legend { display: flex; flex-wrap: wrap; gap: 9px 20px; align-items: center; color: var(--ink-secondary); font-size: 12px; }
+.trajectory-legend { display: flex; flex-wrap: wrap; gap: 9px 20px; align-items: center; color: var(--ink-secondary); font-size: 13px; }
 .trajectory-legend span { display: inline-flex; gap: 7px; align-items: center; }
 .trajectory-legend i { display: inline-block; width: 20px; height: 0; border-top: 2px solid var(--model); }
 .legend-observation i { border-top-color: var(--observation); }
-.legend-lstm i { border-top-color: var(--forecast); }
-.legend-other i { border-top-style: dashed; border-top-color: var(--muted-data); }
+.trajectory-gap { margin: 12px 0 0; color: var(--ink-secondary); font-size: 13px; }
 @media(max-width: 760px) {
   .forecast-trajectory { padding: 18px 12px 8px; }
   .trajectory-chart { height: 340px; }

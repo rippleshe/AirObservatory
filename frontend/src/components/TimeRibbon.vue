@@ -19,7 +19,7 @@ const props = withDefaults(
     caption?: string;
     autoplay?: boolean;
   }>(),
-  { caption: "31 省中位 PM2.5 · 近 30 天", autoplay: false },
+  { caption: "省级代表 PM2.5 中位数 · 近 30 天", autoplay: false },
 );
 
 const emit = defineEmits<{ "update:index": [index: number | null] }>();
@@ -354,7 +354,7 @@ onBeforeUnmount(() => {
           opacity=".06"
         />
         <line
-          v-if="zone.upTo !== Infinity && zone.label"
+          v-if="zone.upTo <= domainMax && zone.label"
           :x1="0"
           :x2="plotW"
           :y1="zone.y"
@@ -364,7 +364,7 @@ onBeforeUnmount(() => {
           stroke-width="1"
         />
         <text
-          v-if="zone.label"
+          v-if="zone.label && zone.upTo <= domainMax"
           :x="5"
           :y="zone.y - 3"
           :fill="stageColor(zone.color)"

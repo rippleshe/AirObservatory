@@ -349,6 +349,7 @@ defineExpose({ headline, peakStats });
 
 .weave-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
   margin-bottom: 12px;
@@ -356,6 +357,8 @@ defineExpose({ headline, peakStats });
 
 .var-switch {
   flex: none;
+  max-width: 100%;
+  overflow-x: auto;
   display: inline-flex;
   padding: 2px;
   gap: 2px;

@@ -30,10 +30,6 @@ MODEL_NAME = "LSTM"
 TRAIN_EPOCHS = 90
 WINDOW_STRIDE = 2
 SNAPSHOTS_TO_KEEP = 3
-# The engine page replays this many hours through the cell; the forecast
-# itself stays at the training口径 (last SEQ hours -> dense HORIZON).
-REPLAY_HOURS = lstm.REPLAY_HOURS
-
 
 def collect_feature_frames(
     min_hours: int = 240,
@@ -288,105 +284,6 @@ def load_active_artifact() -> dict | None:
 
 
 _artifact_cache: dict = {}
-
-
-def city_lstm_run(location_id: int) -> dict | None:
-    """Everything the engine page needs for one city: the 48h replay tape of
-    genuine gate activations plus the 24h forecast and the run's metrics."""
-    artifact = load_active_artifact()
-    if artifact is None:
-        return None
-    ids: list[int] = artifact.get("city_ids", [])
-    if location_id not in ids:
-        return None
-    city_index = ids.index(location_id)
-
-    frame = load_city_feature_frame(location_id, hours=24 * 6).dropna()
-    if frame.shape[0] < REPLAY_HOURS:
-        return None
-    times = [str(v) for v in frame["time"].tolist()]
-    matrix = frame[list(lstm.FEATURES)].to_numpy(dtype=np.float32)
-
-    f_mean = np.asarray(artifact["city_feature_mean"][city_index], dtype=np.float32)
-    f_std = np.asarray(artifact["city_feature_std"][city_index], dtype=np.float32)
-    params = lstm.Params.from_dict(artifact["params"])
-
-    replay_series = (matrix[-REPLAY_HOURS:] - f_mean) / f_std
-    tape = lstm.replay(params, replay_series)
-
-    window = (matrix[-lstm.SEQ :] - f_mean) / f_std
-    values = lstm.forecast_next(
-        params,
-        window,
-        artifact["city_target_mean"][city_index],
-        artifact["city_target_std"][city_index],
-    )
-    last_time = datetime.fromisoformat(times[-1].replace("Z", "+00:00"))
-
-    steps = []
-    for t in range(REPLAY_HOURS):
-        steps.append(
-            {
-                "target_at": times[t],
-                # The real feature vector this timestep fed the cell, kept in
-                # physical units so the input band and the gates share one
-                # honest time axis.
-                "x": [round(float(v), 2) for v in matrix[t]],
-                "f": [round(float(v), 3) for v in tape.f[t]],
-                "i": [round(float(v), 3) for v in tape.i[t]],
-                "o": [round(float(v), 3) for v in tape.o[t]],
-                "g": [round(float(v), 3) for v in tape.g[t]],
-                "cell": [round(float(v), 3) for v in tape.cell[t]],
-                "hidden": [round(float(v), 3) for v in tape.hidden[t]],
-            }
-        )
-    forecast = []
-    for horizon, value in enumerate(values, start=1):
-        forecast.append(
-            {
-                "target_at": (last_time + timedelta(hours=horizon)).isoformat(),
-                "horizon_hours": horizon,
-                "value": round(float(value), 3),
-            }
-        )
-
-    metrics = artifact.get("metrics", {})
-    metric_rows = []
-    for model_name in ("LSTM", "Persistence", "Rolling Mean"):
-        payload = metrics.get(model_name)
-        if not payload:
-            continue
-        for horizon in range(lstm.HORIZON):
-            metric_rows.append(
-                {
-                    "model_name": model_name,
-                    "model_revision": artifact.get("version", "lstm"),
-                    "horizon_hours": horizon + 1,
-                    "samples": payload.get("samples", 0),
-                    "mae": payload["mae"][horizon],
-                    "rmse": payload["rmse"][horizon],
-                }
-            )
-
-    return {
-        "location_id": location_id,
-        "city": _city_name(location_id),
-        "unit": "µg/m³",
-        "hidden": lstm.HIDDEN,
-        "window_hours": lstm.SEQ,
-        "replay_hours": REPLAY_HOURS,
-        "feature_names": list(lstm.FEATURES),
-        "steps": steps,
-        "forecast": forecast,
-        "metrics": metric_rows,
-        "meta": {
-            "version": artifact.get("version"),
-            "trained_at": artifact.get("trained_at"),
-            "eval_basis": artifact.get("eval_basis", "cams_analysis"),
-            "params": lstm.count_params(params),
-            "epochs": artifact.get("epochs"),
-        },
-    }
 
 
 def artifact_ready(max_age_hours: float = 20.0) -> bool:

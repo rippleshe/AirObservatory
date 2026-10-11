@@ -418,6 +418,17 @@ function tickStyle(mark: { start: number }) {
 }
 
 @media (max-width: 860px) {
+  .severity-band,
+  .band-plot { min-width: 0; }
+  .severity-band { overflow-x: clip; }
+  .band-plot { overflow: hidden; }
+  .units {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 6px;
+  }
+  .unit-col { flex: 0 0 22px; }
   .unit { height: 54px; }
   .ruler { display: none; }
   .band-facts { gap: 12px 0; }

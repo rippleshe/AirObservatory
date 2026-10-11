@@ -242,15 +242,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/models/{location_id}/lstm": {
+    "/api/models/validation": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Model Lstm */
-        get: operations["model_lstm_api_models__location_id__lstm_get"];
+        /** Model Validation */
+        get: operations["model_validation_api_models_validation_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -734,80 +734,6 @@ export interface components {
             /** Timezone */
             timezone: string;
         };
-        /** LstmForecastPoint */
-        LstmForecastPoint: {
-            /**
-             * Target At
-             * Format: date-time
-             */
-            target_at: string;
-            /** Horizon Hours */
-            horizon_hours: number;
-            /** Value */
-            value: number;
-        };
-        /** LstmMeta */
-        LstmMeta: {
-            /** Version */
-            version?: string | null;
-            /** Trained At */
-            trained_at?: string | null;
-            /**
-             * Eval Basis
-             * @default cams_analysis
-             */
-            eval_basis: string;
-            /** Params */
-            params: number;
-            /** Epochs */
-            epochs?: number | null;
-        };
-        /** LstmRunResponse */
-        LstmRunResponse: {
-            /** Location Id */
-            location_id: number;
-            /** City */
-            city: string;
-            /** Unit */
-            unit: string;
-            /** Hidden */
-            hidden: number;
-            /** Window Hours */
-            window_hours: number;
-            /** Replay Hours */
-            replay_hours: number;
-            /** Feature Names */
-            feature_names: string[];
-            /** Steps */
-            steps: components["schemas"]["LstmStep"][];
-            /** Forecast */
-            forecast: components["schemas"]["LstmForecastPoint"][];
-            /** Metrics */
-            metrics: components["schemas"]["ModelMetric"][];
-            meta: components["schemas"]["LstmMeta"];
-        };
-        /** LstmStep */
-        LstmStep: {
-            /**
-             * Target At
-             * Format: date-time
-             */
-            target_at: string;
-            /** X */
-            x: number[];
-            /** F */
-            f: number[];
-            /** I */
-            i: number[];
-            /** O */
-            o: number[];
-            /** G */
-            g: number[];
-            /** Cell */
-            cell: number[];
-            /** Hidden */
-            hidden: number[];
-        };
         /** Meta */
         Meta: {
             /**
@@ -857,6 +783,48 @@ export interface components {
             target: string;
             /** Metrics */
             metrics: components["schemas"]["ModelMetric"][];
+        };
+        /** ModelValidationResponse */
+        ModelValidationResponse: {
+            /** Model Version */
+            model_version: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Train Start
+             * Format: date-time
+             */
+            train_start: string;
+            /**
+             * Train End
+             * Format: date-time
+             */
+            train_end: string;
+            /**
+             * Validation Start
+             * Format: date-time
+             */
+            validation_start: string;
+            /**
+             * Validation End
+             * Format: date-time
+             */
+            validation_end: string;
+            /**
+             * Target
+             * @default pm25
+             */
+            target: string;
+            /**
+             * Evaluation Basis
+             * @default CAMS model analysis
+             */
+            evaluation_basis: string;
+            /** Models */
+            models: components["schemas"]["ValidationModel"][];
         };
         /** NationalCity */
         NationalCity: {
@@ -1274,6 +1242,21 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** ValidationModel */
+        ValidationModel: {
+            /** Model Name */
+            model_name: string;
+            /** Samples */
+            samples: number;
+            /** Mae */
+            mae: number[];
+            /** Rmse */
+            rmse: number[];
+            /** Mae Overall */
+            mae_overall: number;
+            /** Rmse Overall */
+            rmse_overall: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -1684,13 +1667,11 @@ export interface operations {
             };
         };
     };
-    model_lstm_api_models__location_id__lstm_get: {
+    model_validation_api_models_validation_get: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                location_id: number;
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -1701,16 +1682,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LstmRunResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ModelValidationResponse"];
                 };
             };
         };

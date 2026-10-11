@@ -172,6 +172,19 @@ def backtest_rows(location_id: int) -> list[sqlite3.Row]:
         ).fetchall()
 
 
+def latest_validation_run() -> sqlite3.Row | None:
+    with connect() as con:
+        return con.execute(
+            """
+            SELECT model_version, created_at, train_start, train_end,
+                   validation_start, validation_end, metrics_json
+            FROM model_runs
+            WHERE model_name='LSTM' AND target_variable='pm25' AND is_active=1
+            ORDER BY created_at DESC LIMIT 1
+            """
+        ).fetchone()
+
+
 def recent_ingestion_rows(limit: int = 20) -> list[sqlite3.Row]:
     with connect() as con:
         return con.execute(

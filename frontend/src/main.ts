@@ -6,6 +6,7 @@ import { vReveal } from "./app/directives/reveal";
 import router from "./app/router";
 import "@fontsource-variable/inter-tight";
 import "./styles/base.css";
+import "./styles/research.css";
 
 const app = createApp(App);
 app.directive("reveal", vReveal);

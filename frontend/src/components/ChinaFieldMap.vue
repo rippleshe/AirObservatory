@@ -767,6 +767,10 @@ function onMarkClick(city: NationalCity) {
   pinned.value = pinned.value?.location_id === city.location_id ? null : city;
   emit("pin", pinned.value?.location_id ?? null);
 }
+function closePinned() {
+  pinned.value = null;
+  emit("pin", null);
+}
 
 const pinnedStyle = computed(() => {
   const mark = render.value.marks.find((m) => m.city === pinned.value);
@@ -1057,7 +1061,7 @@ onBeforeUnmount(() => {
       <header>
         <strong>{{ pinned.name }}</strong>
         <span>{{ pinned.province }}</span>
-        <button type="button" class="card-close" aria-label="关闭" @click.stop="pinned = null">✕</button>
+        <button type="button" class="card-close" aria-label="关闭" @click.stop="closePinned">✕</button>
       </header>
       <div class="card-stats">
         <div class="card-stat main">

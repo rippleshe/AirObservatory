@@ -7,7 +7,7 @@
  * persisted history the analysis pages cite becomes a thing you can move
  * through. Values stay missing where they are missing: the trace breaks, it
  * never interpolates. */
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { PM25_BANDS, stageColor } from "../lib/palette";
 
 const props = withDefaults(
@@ -25,7 +25,8 @@ const props = withDefaults(
 const emit = defineEmits<{ "update:index": [index: number | null] }>();
 
 const root = ref<HTMLElement | null>(null);
-const width = ref(980);
+const width = ref(320);
+let widthObserver: ResizeObserver | null = null;
 const playing = ref(false);
 const hovered = ref<number | null>(null);
 
@@ -263,7 +264,19 @@ if (
   }, 900);
 }
 
-onBeforeUnmount(stop);
+onMounted(() => {
+  const parent = root.value?.parentElement;
+  if (!parent) return;
+  widthObserver = new ResizeObserver(() => {
+    width.value = Math.max(240, parent.clientWidth);
+  });
+  widthObserver.observe(parent);
+  width.value = Math.max(240, parent.clientWidth);
+});
+onBeforeUnmount(() => {
+  stop();
+  widthObserver?.disconnect();
+});
 </script>
 
 <template>
@@ -439,6 +452,7 @@ onBeforeUnmount(stop);
 <style scoped>
 .time-ribbon {
   display: grid;
+  min-width: 0;
   gap: 6px;
   user-select: none;
   touch-action: none;
@@ -561,6 +575,11 @@ onBeforeUnmount(stop);
 
 .ribbon-plot {
   display: block;
+  max-width: 100%;
+}
+@media (max-width: 700px) {
+  .ribbon-head { flex-wrap: wrap; }
+  .head-right { width: 100%; margin-left: 50px; }
 }
 
 /* SVG colours ride tokens through scoped classes — no hex in the markup. */

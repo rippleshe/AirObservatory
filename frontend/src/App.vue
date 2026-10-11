@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useQuery } from "@tanstack/vue-query";
-import { Cpu, Database, MapPinned, Radar } from "lucide-vue-next";
+import { Activity, ChartScatter, Database, MapPinned, Radar, TrendingUp } from "lucide-vue-next";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "./api/client";
 import { expectData } from "./api/request";
@@ -38,7 +38,7 @@ function selectGlobalLocation(event: Event) {
   context.selectLocation(location.location_id, location.city);
   /* Switching must actually move the page: the city view derives everything
      from the route param, not the store. */
-  if (route.name !== "city" || Number(route.params.locationId) !== location.location_id) {
+  if (route.name === "city" || route.name === "overview") {
     void router.push({ name: "city", params: { locationId: location.location_id } });
   }
 }
@@ -58,12 +58,16 @@ function selectGlobalLocation(event: Event) {
           <span>全国</span>
         </RouterLink>
         <RouterLink :to="cityTo" class="rail-link">
-          <Radar :size="20" stroke-width="1.9" />
-          <span>城市</span>
+          <Activity :size="20" stroke-width="1.9" />
+          <span>过程</span>
         </RouterLink>
-        <RouterLink to="/model" class="rail-link">
-          <Cpu :size="20" stroke-width="1.9" />
-          <span>引擎</span>
+        <RouterLink to="/analysis" class="rail-link">
+          <ChartScatter :size="20" stroke-width="1.9" />
+          <span>关联</span>
+        </RouterLink>
+        <RouterLink to="/forecast" class="rail-link">
+          <TrendingUp :size="20" stroke-width="1.9" />
+          <span>预测</span>
         </RouterLink>
       </nav>
 
@@ -88,7 +92,7 @@ function selectGlobalLocation(event: Event) {
             <label class="city-context">
               <span class="sr-only">选择城市</span>
               <select
-                :value="route.name === 'city' ? Number(route.params.locationId) : context.selectedLocationId ?? ''"
+                :value="route.name === 'city' ? Number(route.params.locationId) : context.selectedLocationId ?? locations.data.value?.[0]?.location_id ?? ''"
                 @change="selectGlobalLocation"
               >
                 <option

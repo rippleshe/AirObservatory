@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -37,8 +38,6 @@ SEQ = 24
 HORIZON = 24
 HIDDEN = 16
 
-REPLAY_HOURS = 48
-
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-x))
@@ -56,7 +55,7 @@ class Params:
     by: np.ndarray  # (horizon,)
 
     @classmethod
-    def init(cls, n_features: int, hidden: int, horizon: int, rng: np.random.Generator) -> "Params":
+    def init(cls, n_features: int, hidden: int, horizon: int, rng: np.random.Generator) -> Params:
         std_x = 1.0 / math.sqrt(n_features)
         std_h = 1.0 / math.sqrt(hidden)
         # Forget-gate bias starts at 1: the cell remembers by default and has
@@ -81,7 +80,7 @@ class Params:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Params":
+    def from_dict(cls, data: dict) -> Params:
         return cls(
             Wx=np.asarray(data["Wx"], dtype=np.float32),
             Wh=np.asarray(data["Wh"], dtype=np.float32),
@@ -105,7 +104,9 @@ class Tape:
     hidden: np.ndarray = field(default_factory=lambda: np.zeros((0, 0), dtype=np.float32))
 
 
-def forward(x: np.ndarray, p: Params, tape: Tape | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def forward(
+    x: np.ndarray, p: Params, tape: Tape | None = None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Batched forward over a sequence.
 
     x: (B, T, F). Returns (pred (B, horizon), h_last (B, H), c_last (B, H)).
@@ -157,9 +158,7 @@ def forward(x: np.ndarray, p: Params, tape: Tape | None = None) -> tuple[np.ndar
     return pred, h, c
 
 
-def loss_and_grads(
-    x: np.ndarray, y: np.ndarray, p: Params
-) -> tuple[float, dict[str, np.ndarray]]:
+def loss_and_grads(x: np.ndarray, y: np.ndarray, p: Params) -> tuple[float, dict[str, np.ndarray]]:
     """MSE loss and BPTT gradients. y is (B, horizon) in the same normalized
     space as the targets."""
     B, T, _ = x.shape
@@ -183,7 +182,9 @@ def loss_and_grads(
     # forward — a full cache doubles memory for BPTT; a re-run is cheap.
     h = np.zeros((B, H), dtype=np.float32)
     c = np.zeros((B, H), dtype=np.float32)
-    steps: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
+    steps: list[
+        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+    ] = []
     for t in range(T):
         xt = x[:, t, :]
         h_prev = h
@@ -233,7 +234,9 @@ class Adam:
         self.m = {
             name: np.zeros_like(getattr(params, name)) for name in ("Wx", "Wh", "b", "Wy", "by")
         }
-        self.v = {name: np.zeros_like(getattr(params, name)) for name in ("Wx", "Wh", "b", "Wy", "by")}
+        self.v = {
+            name: np.zeros_like(getattr(params, name)) for name in ("Wx", "Wh", "b", "Wy", "by")
+        }
 
     def step(self, params: Params, grads: dict[str, np.ndarray], clip_norm: float = 1.0) -> None:
         total = math.sqrt(sum(float(np.sum(g * g)) for g in grads.values()))
@@ -245,7 +248,9 @@ class Adam:
             self.v[name] = self.beta2 * self.v[name] + (1 - self.beta2) * (g * g)
             m_hat = self.m[name] / (1 - self.beta1**self.t)
             v_hat = self.v[name] / (1 - self.beta2**self.t)
-            setattr(params, name, getattr(params, name) - self.lr * m_hat / (np.sqrt(v_hat) + self.eps))
+            setattr(
+                params, name, getattr(params, name) - self.lr * m_hat / (np.sqrt(v_hat) + self.eps)
+            )
 
 
 @dataclass
@@ -283,7 +288,7 @@ def build_windows(
     means: list[float] = []
     stds: list[float] = []
 
-    for city_id, (location_id, frame) in enumerate(sorted(frames.items())):
+    for city_id, (_, frame) in enumerate(sorted(frames.items())):
         total = frame.shape[0]
         if total < seq + horizon + 24:
             continue
@@ -308,7 +313,9 @@ def build_windows(
                 va_city.append(city_id)
 
     to_array = lambda parts: (  # noqa: E731
-        np.stack(parts).astype(np.float32) if parts else np.zeros((0, seq, len(FEATURES)), np.float32)
+        np.stack(parts).astype(np.float32)
+        if parts
+        else np.zeros((0, seq, len(FEATURES)), np.float32)
     )
     return Dataset(
         x_train=to_array(xs_tr),
@@ -329,7 +336,7 @@ def train(
     batch_size: int = 256,
     lr: float = 2e-3,
     seed: int = 7,
-    progress: "callable | None" = None,
+    progress: Callable[[int, float], None] | None = None,
 ) -> tuple[Params, list[float]]:
     rng = np.random.default_rng(seed)
     params = Params.init(data.x_train.shape[2], HIDDEN, HORIZON, rng)
@@ -378,7 +385,11 @@ def evaluate(params: Params, data: Dataset, batch_size: int = 512) -> dict:
         return [round(float(v), 3) for v in mae], [round(float(v), 3) for v in rmse]
 
     out: dict = {}
-    for name, level in (("LSTM", pred), ("Persistence", np.repeat(last_pm, HORIZON, axis=1)), ("Rolling Mean", np.repeat(roll, HORIZON, axis=1))):
+    for name, level in (
+        ("LSTM", pred),
+        ("Persistence", np.repeat(last_pm, HORIZON, axis=1)),
+        ("Rolling Mean", np.repeat(roll, HORIZON, axis=1)),
+    ):
         mae, rmse = per_horizon(level - truth)
         out[name] = {
             "mae": mae,
@@ -400,17 +411,6 @@ def forecast_next(
     window -> dense horizon)."""
     pred, _, _ = forward(window_norm[None, :, :].astype(np.float32), params)
     return (pred[0] * pm_std + pm_mean).astype(float)
-
-
-def replay(
-    params: Params,
-    series_norm: np.ndarray,  # (REPLAY_HOURS, F)
-) -> Tape:
-    """One genuine recurrent pass over the replay window; every gate value the
-    engine page draws comes from here."""
-    tape = Tape()
-    forward(series_norm[None, :, :].astype(np.float32), params, tape)
-    return tape
 
 
 def count_params(p: Params) -> int:

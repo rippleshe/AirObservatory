@@ -2,17 +2,14 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useQuery } from "@tanstack/vue-query";
 import { useRoute } from "vue-router";
-import { Activity, BarChart3, Clock3, Layers3, ShieldCheck } from "lucide-vue-next";
+import { Activity, BarChart3, Clock3, ShieldCheck } from "lucide-vue-next";
 import { api } from "../api/client";
 import { expectData } from "../api/request";
-import BacktestAnatomy from "../components/BacktestAnatomy.vue";
 import HorizonChart from "../components/HorizonChart.vue";
 import HourRing from "../components/HourRing.vue";
-import PCAStructurePanel from "../components/PCAStructurePanel.vue";
 import WindClearance from "../components/WindClearance.vue";
 import TraceDeck from "../components/TraceDeck.vue";
 import TrustPanel from "../components/TrustPanel.vue";
-import WaterfallChart from "../components/WaterfallChart.vue";
 import { useLocationCatalog } from "../composables/useLocationCatalog";
 import { useCountUp } from "../composables/useCountUp";
 import { aqiColor, POLLUTANT_COLORS } from "../lib/palette";
@@ -27,7 +24,7 @@ const activeSection = ref("trend");
 let spy: IntersectionObserver | null = null;
 
 /* The editorial rail fills its hairline down to the section you're reading. */
-const RAIL_SECTIONS = ["trend", "pollutants", "rhythm", "structure", "trust"] as const;
+const RAIL_SECTIONS = ["trend", "pollutants", "rhythm", "trust"] as const;
 const railIndex = computed(() =>
   Math.max(0, RAIL_SECTIONS.indexOf(activeSection.value as (typeof RAIL_SECTIONS)[number])),
 );
@@ -41,7 +38,7 @@ onMounted(() => {
     },
     { rootMargin: "-38% 0px -52% 0px" },
   );
-  for (const id of ["trend", "pollutants", "rhythm", "structure", "trust"]) {
+  for (const id of RAIL_SECTIONS) {
     const el = document.getElementById(id);
     if (el) spy.observe(el);
   }
@@ -146,29 +143,6 @@ const cityWeather = useQuery({
       }),
     ),
   staleTime: 15 * 60_000,
-});
-
-const structure = useQuery({
-  queryKey: computed(() => ["city-detail-structure", locationId.value]),
-  enabled: computed(() => Number.isInteger(locationId.value) && locationId.value > 0),
-  retry: false,
-  queryFn: () =>
-    expectData(
-      api.GET("/api/locations/{location_id}/structure", {
-        params: { path: { location_id: locationId.value } },
-      }),
-    ),
-});
-
-const backtest = useQuery({
-  queryKey: computed(() => ["city-detail-backtest", locationId.value]),
-  enabled: computed(() => Number.isInteger(locationId.value) && locationId.value > 0),
-  queryFn: () =>
-    expectData(
-      api.GET("/api/locations/{location_id}/backtest", {
-        params: { path: { location_id: locationId.value } },
-      }),
-    ),
 });
 
 const coverage = useQuery({
@@ -356,28 +330,6 @@ const horizonSeries = computed(() =>
   })),
 );
 
-/* ── waterfall: how the month was built ───────────────────── */
-const dailyPm = computed(() => {
-  const points = (pm25Series.value?.points ?? []).filter(
-    (point): point is typeof point & { value: number } => point.value != null,
-  );
-  const buckets = new Map<string, number[]>();
-  for (const point of points) {
-    const key = point.time.slice(0, 10);
-    const arr = buckets.get(key) ?? [];
-    arr.push(Number(point.value));
-    buckets.set(key, arr);
-  }
-  const days = [...buckets.keys()].sort();
-  const values = days.map((day) => {
-    const arr = buckets.get(day)!;
-    return arr.length >= 12
-      ? arr.reduce((sum, value) => sum + value, 0) / arr.length
-      : null;
-  });
-  return { days, values };
-});
-
 
 
 
@@ -459,8 +411,7 @@ const sourceGap = computed(() => {
       <a href="#trend"><Activity :size="15" />趋势</a>
       <a href="#pollutants"><BarChart3 :size="15" />构成</a>
       <a href="#rhythm"><Clock3 :size="15" />节律</a>
-      <a href="#structure"><Layers3 :size="15" />结构</a>
-      <a href="#trust"><ShieldCheck :size="15" />回测</a>
+      <a href="#trust"><ShieldCheck :size="15" />数据覆盖</a>
     </nav>
 
     <div class="city-body">
@@ -474,8 +425,7 @@ const sourceGap = computed(() => {
       <a href="#trend" :class="{ active: activeSection === 'trend' }"><span class="rail-no">01</span><span class="rail-word">趋势</span></a>
       <a href="#pollutants" :class="{ active: activeSection === 'pollutants' }"><span class="rail-no">02</span><span class="rail-word">构成</span></a>
       <a href="#rhythm" :class="{ active: activeSection === 'rhythm' }"><span class="rail-no">03</span><span class="rail-word">节律</span></a>
-      <a href="#structure" :class="{ active: activeSection === 'structure' }"><span class="rail-no">04</span><span class="rail-word">结构</span></a>
-      <a href="#trust" :class="{ active: activeSection === 'trust' }"><span class="rail-no">05</span><span class="rail-word">回测</span></a>
+      <a href="#trust" :class="{ active: activeSection === 'trust' }"><span class="rail-no">04</span><span class="rail-word">数据覆盖</span></a>
     </nav>
 
     <div class="city-sections">
@@ -524,31 +474,10 @@ const sourceGap = computed(() => {
       </div>
     </section>
 
-    <section id="structure" v-reveal class="detail-section">
-      <div class="section-heading">
-        <h2 class="sec-label">结构</h2>
-      </div>
-      <PCAStructurePanel
-        v-if="structure.data.value"
-        :structure="structure.data.value"
-      />
-      <div v-else class="section-state">样本不足</div>
-    </section>
-
     <section id="trust" v-reveal class="detail-section trust-section">
       <div class="section-heading">
-        <h2 class="sec-label">回测</h2>
+        <h2 class="sec-label">观测与模式数据覆盖</h2>
       </div>
-
-      <div class="trust-waterfall">
-        <WaterfallChart
-          v-if="dailyPm.values.length"
-          class="waterfall-body"
-          :days="dailyPm.days"
-          :values="dailyPm.values"
-        />
-      </div>
-      <BacktestAnatomy :backtest="backtest.data.value" />
       <TrustPanel :coverage="coverage.data.value" />
     </section>
     </div>

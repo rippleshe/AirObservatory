@@ -41,19 +41,6 @@ export function smoothPath(points: Array<[number, number]>, tension = 0.5): stri
   return d;
 }
 
-/* Forward-fill short holes in an hourly series so stream layers stay
-   continuous; long leading holes stay 0 and long trailing holes stay null
-   (the pattern is not invented where the field genuinely ends). */
-export function filled(values: Array<number | null>): number[] {
-  const out: number[] = [];
-  let last = 0;
-  for (const value of values) {
-    if (value != null && Number.isFinite(value)) last = value;
-    out.push(last);
-  }
-  return out;
-}
-
 export function mean(values: number[]): number {
   if (!values.length) return 0;
   let sum = 0;

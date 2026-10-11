@@ -3,11 +3,10 @@ import { createRouter, createWebHistory } from "vue-router";
 const NationalOverviewView = () => import("../views/NationalOverviewView.vue");
 const CityDetailView = () => import("../views/CityDetailView.vue");
 const SystemView = () => import("../views/SystemView.vue");
-const ModelView = () => import("../views/ModelView.vue");
+const AnalysisView = () => import("../views/AnalysisView.vue");
+const ForecastView = () => import("../views/ForecastView.vue");
 
-/* One narrative: national picture → city explanation → data provenance.
-   Forecast, structure and trust live inside the city page, so there is no
-   parallel navigation for them. */
+/* Four research workspaces; provenance stays an auxiliary tool route. */
 export default createRouter({
   history: createWebHistory(),
   routes: [
@@ -16,20 +15,27 @@ export default createRouter({
       path: "/overview",
       name: "overview",
       component: NationalOverviewView,
-      meta: { title: "全国总览" },
+      meta: { title: "全国时空" },
     },
     {
       path: "/city/:locationId",
       name: "city",
       component: CityDetailView,
-      meta: { title: "城市详情" },
+      meta: { title: "污染过程" },
     },
     {
-      path: "/model",
-      name: "model",
-      component: ModelView,
-      meta: { title: "预测引擎" },
+      path: "/analysis",
+      name: "analysis",
+      component: AnalysisView,
+      meta: { title: "多变量关联" },
     },
+    {
+      path: "/forecast",
+      name: "forecast",
+      component: ForecastView,
+      meta: { title: "预测评估" },
+    },
+    { path: "/model", redirect: "/forecast" },
     {
       path: "/system",
       name: "system",

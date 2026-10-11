@@ -7,7 +7,6 @@ from .analytics.aqi import STANDARD as AQI_STANDARD
 from .analytics.aqi import realtime_aqi
 from .city_catalog import region_for
 from .config import get_settings
-from .ml.lstm_pipeline import city_lstm_run
 from .repository import (
     active_location_rows,
     backtest_rows,
@@ -18,6 +17,7 @@ from .repository import (
     latest_forecast_rows,
     latest_ingestion,
     latest_model_row,
+    latest_validation_run,
     location_analysis_rows,
     location_binding_rows,
     location_row,
@@ -53,13 +53,10 @@ from .schemas import (
     ForecastSeries,
     IngestionRun,
     LocationSummary,
-    LstmForecastPoint,
-    LstmMeta,
-    LstmRunResponse,
-    LstmStep,
     Meta,
     ModelMetric,
     ModelMetricsResponse,
+    ModelValidationResponse,
     NationalCity,
     NationalOverviewResponse,
     NationalRegion,
@@ -84,6 +81,7 @@ from .schemas import (
     SystemResponse,
     TrainingReadinessResponse,
     TrustBinding,
+    ValidationModel,
 )
 
 UNITS = {
@@ -461,6 +459,25 @@ def get_model_metrics(location_id: int) -> ModelMetricsResponse:
         city=location["city"],
         target="pm25",
         metrics=metrics,
+    )
+
+
+def get_model_validation() -> ModelValidationResponse:
+    row = latest_validation_run()
+    if row is None:
+        raise LookupError("No completed LSTM validation run")
+    models = json.loads(row["metrics_json"])
+    return ModelValidationResponse(
+        model_version=row["model_version"],
+        created_at=_dt(row["created_at"]),
+        train_start=_dt(row["train_start"]),
+        train_end=_dt(row["train_end"]),
+        validation_start=_dt(row["validation_start"]),
+        validation_end=_dt(row["validation_end"]),
+        models=[
+            ValidationModel(model_name=name, **data)
+            for name, data in models.items()
+        ],
     )
 
 
@@ -939,27 +956,6 @@ def get_city_fingerprint() -> CityFingerprintResponse:
             )
             for item in payload["cluster_profiles"]
         ],
-    )
-
-
-def get_city_lstm(location_id: int) -> LstmRunResponse:
-    """The trained cell's genuine forward pass for one city — gates, cell and
-    hidden states for the 48h replay, the 24h decode, and the run's metrics."""
-    payload = city_lstm_run(location_id)
-    if payload is None:
-        raise LookupError(f"LSTM not ready for location {location_id}")
-    return LstmRunResponse(
-        location_id=payload["location_id"],
-        city=payload["city"],
-        unit=payload["unit"],
-        hidden=payload["hidden"],
-        window_hours=payload["window_hours"],
-        replay_hours=payload["replay_hours"],
-        feature_names=payload["feature_names"],
-        steps=[LstmStep(**step) for step in payload["steps"]],
-        forecast=[LstmForecastPoint(**point) for point in payload["forecast"]],
-        metrics=[ModelMetric(**row) for row in payload["metrics"]],
-        meta=LstmMeta(**payload["meta"]),
     )
 
 

@@ -408,6 +408,7 @@ watch(dots, (next) => {
 <style scoped>
 .fingerprint-panel {
   width: 100%;
+  min-width: 0;
 }
 
 .fingerprint-layout {
@@ -420,6 +421,7 @@ watch(dots, (next) => {
 .scatter-cell {
   position: relative;
   width: 100%;
+  min-width: 0;
   aspect-ratio: 16 / 10;
   min-height: 480px;
 }
@@ -644,7 +646,7 @@ watch(dots, (next) => {
 
 @container (max-width: 680px) {
   .fingerprint-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

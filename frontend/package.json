@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vue-tsc -b && vite build",
+    "check:visual": "node scripts/visual-check.mjs",
     "api:types": "openapi-typescript http://127.0.0.1:8110/openapi.json -o src/api/schema.d.ts"
   },
   "dependencies": {

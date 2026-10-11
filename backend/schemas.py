@@ -143,6 +143,27 @@ class ModelMetricsResponse(BaseModel):
     metrics: list[ModelMetric]
 
 
+class ValidationModel(BaseModel):
+    model_name: str
+    samples: int
+    mae: list[float]
+    rmse: list[float]
+    mae_overall: float
+    rmse_overall: float
+
+
+class ModelValidationResponse(BaseModel):
+    model_version: str
+    created_at: datetime
+    train_start: datetime
+    train_end: datetime
+    validation_start: datetime
+    validation_end: datetime
+    target: str = "pm25"
+    evaluation_basis: str = "CAMS model analysis"
+    models: list[ValidationModel]
+
+
 class TrainingReadinessResponse(BaseModel):
     ready: bool
     location_id: int
@@ -421,45 +442,6 @@ class CityFingerprintResponse(BaseModel):
     loadings: list[PCALoading]
     points: list[CityFingerprintPoint]
     cluster_profiles: list[FingerprintClusterProfile]
-
-
-class LstmStep(BaseModel):
-    target_at: datetime
-    x: list[float]
-    f: list[float]
-    i: list[float]
-    o: list[float]
-    g: list[float]
-    cell: list[float]
-    hidden: list[float]
-
-
-class LstmForecastPoint(BaseModel):
-    target_at: datetime
-    horizon_hours: int
-    value: float
-
-
-class LstmMeta(BaseModel):
-    version: str | None = None
-    trained_at: str | None = None
-    eval_basis: str = "cams_analysis"
-    params: int
-    epochs: int | None = None
-
-
-class LstmRunResponse(BaseModel):
-    location_id: int
-    city: str
-    unit: str
-    hidden: int
-    window_hours: int
-    replay_hours: int
-    feature_names: list[str]
-    steps: list[LstmStep]
-    forecast: list[LstmForecastPoint]
-    metrics: list[ModelMetric]
-    meta: LstmMeta
 
 
 class SignalPeak(BaseModel):

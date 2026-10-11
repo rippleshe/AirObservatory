@@ -5,7 +5,6 @@ differences, and a tiny training run must actually drive the loss down."""
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from backend.ml import lstm
 

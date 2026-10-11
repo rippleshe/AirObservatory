@@ -12,9 +12,9 @@ from .schemas import (
     DataKind,
     ForecastResponse,
     LocationSummary,
-    LstmRunResponse,
     Metric,
     ModelMetricsResponse,
+    ModelValidationResponse,
     NationalOverviewResponse,
     NationalSeriesResponse,
     NationalWeatherResponse,
@@ -29,12 +29,12 @@ from .schemas import (
 from .services import (
     get_backtest,
     get_city_fingerprint,
-    get_city_lstm,
     get_city_structure,
     get_coverage,
     get_forecast,
     get_locations,
     get_model_metrics,
+    get_model_validation,
     get_national_overview,
     get_national_series,
     get_national_weather,
@@ -200,10 +200,10 @@ def model_metrics(location_id: int) -> ModelMetricsResponse:
         raise _not_found(exc) from exc
 
 
-@router.get("/models/{location_id}/lstm", response_model=LstmRunResponse)
-def model_lstm(location_id: int) -> LstmRunResponse:
+@router.get("/models/validation", response_model=ModelValidationResponse)
+def model_validation() -> ModelValidationResponse:
     try:
-        return get_city_lstm(location_id)
+        return get_model_validation()
     except LookupError as exc:
         raise _not_found(exc) from exc
 

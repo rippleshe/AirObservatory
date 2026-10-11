@@ -28,6 +28,49 @@ def _city_id(city: str) -> int:
     return int(row["location_id"])
 
 
+def test_model_validation_preserves_common_split_and_baselines(isolated_db):
+    now = datetime.now(UTC).isoformat()
+    metrics = {
+        "LSTM": {
+            "samples": 24,
+            "mae": [2.5, 3.0],
+            "rmse": [3.5, 4.0],
+            "mae_overall": 2.75,
+            "rmse_overall": 3.76,
+        },
+        "Persistence": {
+            "samples": 24,
+            "mae": [4.0, 5.0],
+            "rmse": [5.0, 6.0],
+            "mae_overall": 4.5,
+            "rmse_overall": 5.52,
+        },
+    }
+    with transaction() as con:
+        con.execute(
+            """
+            INSERT INTO model_runs(
+                run_id, model_name, model_version, location_scope, target_variable,
+                horizons_json, train_start, train_end, validation_start, validation_end,
+                features_json, metrics_json, created_at, is_active
+            ) VALUES (?, 'LSTM', ?, 'global', 'pm25', ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            """,
+            (
+                "validation-test", "test-v1", "[1,2]",
+                "2026-01-01T00:00:00+00:00", "2026-01-31T00:00:00+00:00",
+                "2026-02-01T00:00:00+00:00", "2026-02-07T00:00:00+00:00",
+                '["pm25"]', json.dumps(metrics), now,
+            ),
+        )
+    response = TestClient(app).get("/api/models/validation")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["model_version"] == "test-v1"
+    assert data["evaluation_basis"] == "CAMS model analysis"
+    assert [model["model_name"] for model in data["models"]] == ["LSTM", "Persistence"]
+    assert data["models"][0]["samples"] == data["models"][1]["samples"] == 24
+
+
 def test_provider_status_uses_latest_live_run_not_weather_backfill(isolated_db):
     now = datetime.now(UTC).replace(microsecond=0)
     earlier = (now - timedelta(minutes=30)).isoformat()

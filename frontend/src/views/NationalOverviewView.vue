@@ -1,21 +1,16 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, toRaw } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useQuery } from "@tanstack/vue-query";
 import { useRouter } from "vue-router";
 import { api } from "../api/client";
 import { expectData } from "../api/request";
-import BarChartRace from "../components/BarChartRace.vue";
-import ChordDiagram from "../components/ChordDiagram.vue";
-import CityFingerprintPanel from "../components/CityFingerprintPanel.vue";
 import ChinaFieldMap from "../components/ChinaFieldMap.vue";
 import LiveStrip from "../components/LiveStrip.vue";
 import PollutionWeave from "../components/PollutionWeave.vue";
 import SeverityBand from "../components/SeverityBand.vue";
 import SignalStrip from "../components/SignalStrip.vue";
-import StreamGraph from "../components/StreamGraph.vue";
 import TimeRibbon from "../components/TimeRibbon.vue";
 import VizHead from "../components/VizHead.vue";
-import WindRose from "../components/WindRose.vue";
 import {
   AQI_LEVELS,
   CHANGE_COLORS,
@@ -23,7 +18,6 @@ import {
   aqiColor,
   levelOfAqi,
   PM25_BANDS,
-  POLLUTANT_COLORS,
   stageColor,
 } from "../lib/palette";
 import {
@@ -54,13 +48,6 @@ const national = useQuery({
   queryFn: () => expectData(api.GET("/api/overview/national")),
   refetchInterval: 5 * 60_000,
   staleTime: 60_000,
-});
-
-const fingerprint = useQuery({
-  queryKey: ["city-fingerprint"],
-  retry: false,
-  queryFn: () => expectData(api.GET("/api/analysis/city-fingerprint")),
-  staleTime: 30 * 60_000,
 });
 
 /* One aligned hourly field replaces N single-city calls. */
@@ -155,142 +142,26 @@ const displayCities = computed<NationalCity[]>(() => {
   });
 });
 
-/* Wind at the scrubbed hour: weather archives lag, so each city falls back
-   to its most recent non-null hour within 72h — persistence, not invention. */
+/* Weather archive may lag or contain holes. Never label an earlier wind
+   reading as the selected CAMS hour. */
 const windField = computed(() => {
   const data = weather.data.value;
   if (!data) return null;
-  const at =
-    scrubIndex.value == null
-      ? data.times.length - 1
-      : Math.min(Math.max(0, scrubIndex.value), data.times.length - 1);
+  const times = pmSeries.data.value?.times ?? [];
+  const target = scrubIndex.value == null
+    ? times.at(-1)
+    : times[Math.min(Math.max(0, scrubIndex.value), times.length - 1)];
+  if (!target) return null;
+  const at = data.times.findIndex((time) => +new Date(time) === +new Date(target));
+  if (at < 0) return null;
   return data.cities.flatMap((city) => {
-    for (let back = 0; back <= 72 && at - back >= 0; back++) {
-      const speed = city.wind_speed[at - back];
-      const dir = city.wind_direction[at - back];
-      if (speed != null && dir != null) {
-        return [{ location_id: city.location_id, lat: city.lat, lon: city.lon, speed, dir }];
-      }
-    }
-    return [];
+    const speed = city.wind_speed[at];
+    const dir = city.wind_direction[at];
+    return speed != null && dir != null
+      ? [{ location_id: city.location_id, lat: city.lat, lon: city.lon, speed, dir }]
+      : [];
   });
 });
-
-const focusCity = computed(() =>
-  [...provinces.value]
-    .filter((city) => city.china_aqi != null)
-    .sort((a, b) => (b.china_aqi ?? -1) - (a.china_aqi ?? -1))[0] ?? null,
-);
-
-const fingerprintMeta = computed(() => {
-  const meta = fingerprint.data.value?.meta;
-  if (!meta) return "";
-  return `${meta.window_start.slice(0, 10)} → ${meta.window_end.slice(0, 10)} · ${meta.city_count} 城`;
-});
-
-/* ── stream: composition pulse ────────────────────────────── */
-const streamTimes = computed(() => pollutantSuite.data.value?.[0]?.times ?? []);
-
-const streamLayers = computed(() => {
-  const suite = pollutantSuite.data.value;
-  if (!suite) return [];
-  const ids = provinceIds.value;
-  return POLLUTANTS.map((pollutant, i) => {
-    const series = suite[i]!;
-    const rows = series.cities.filter((city) => ids.has(city.location_id));
-    const values = series.times.map((_, t) => {
-      let sum = 0;
-      let n = 0;
-      for (const row of rows) {
-        const value = row.values[t];
-        if (value != null) {
-          sum += value;
-          n += 1;
-        }
-      }
-      return n ? sum / n : null;
-    });
-    const valid = values.filter((v): v is number => v != null).sort((a, b) => a - b);
-    const p90 = valid[Math.floor(valid.length * 0.9)] ?? 1;
-    return {
-      key: pollutant.key,
-      label: pollutant.label,
-      color: POLLUTANT_COLORS[pollutant.key],
-      values: values.map((v) => (v == null ? null : Math.min(1.6, v / Math.max(1, p90)))),
-    };
-  });
-});
-
-/* ── bump: rank race ──────────────────────────────────────── */
-const bumpEntries = computed(() => {
-  const series = pmSeries.data.value;
-  if (!series) return [];
-  const ids = provinceIds.value;
-  return series.cities
-    .filter((city) => ids.has(city.location_id))
-    .map((city) => {
-      const daily: Array<number | null> = [];
-      for (let start = 0; start < city.values.length; start += 24) {
-        const slice = city.values
-          .slice(start, start + 24)
-          .filter((v): v is number => v != null);
-        daily.push(slice.length >= 12 ? slice.reduce((a, b) => a + b, 0) / slice.length : null);
-      }
-      return { location_id: city.location_id, name: city.name, daily };
-    });
-});
-
-const bumpDays = computed(() => {
-  const series = pmSeries.data.value;
-  if (!series) return [];
-  return series.times
-    .filter((_, i) => i % 24 === 0)
-    .map((t) => t.slice(5, 10).replace("-", "/"));
-});
-
-/* ── wind rose samples: wind × PM2.5 over every province hour ── */
-const roseSamples = computed(() => {
-  const data = weather.data.value;
-  const series = pmSeries.data.value;
-  if (!data || !series) return [];
-  const ids = provinceIds.value;
-  const pmIndex = new Map(series.times.map((t, i) => [t, i]));
-  const out: Array<{ speed: number; dir: number; pm25: number }> = [];
-  for (const city of data.cities) {
-    if (!ids.has(city.location_id)) continue;
-    const pmRow = series.cities.find((c) => c.location_id === city.location_id);
-    if (!pmRow) continue;
-    data.times.forEach((time, i) => {
-      const pi = pmIndex.get(time);
-      if (pi == null) return;
-      const speed = city.wind_speed[i];
-      const dir = city.wind_direction[i];
-      const pm25 = pmRow.values[pi];
-      if (speed != null && dir != null && pm25 != null) {
-        out.push({ speed, dir, pm25 });
-      }
-    });
-  }
-  return out;
-});
-
-
-/* ── chord: synchrony network ─────────────────────────────── */
-const chordCities = computed(() => {
-  const series = pmSeries.data.value;
-  if (!series) return [];
-  const ids = provinceIds.value;
-  return series.cities
-    .filter((city) => ids.has(city.location_id))
-    .map((city) => ({
-      location_id: city.location_id,
-      name: city.name,
-      /* toRaw: the chord's Pearson pass reads 66k values per recompute —
-         through reactive proxies that alone costs half a second in dev. */
-      values: toRaw(city).values,
-    }));
-});
-
 
 /* The legend is a ramp ruler with boundary ticks. */
 const ramp = computed(() => {
@@ -454,6 +325,7 @@ onBeforeUnmount(() => {
           :wind-field="windField"
           :sparks="sparks"
           @select="openCity"
+          @pin="onMapPin"
         />
         <div v-else class="map-skeleton skeleton" role="status"></div>
 
@@ -519,58 +391,15 @@ onBeforeUnmount(() => {
       />
     </section>
 
-    <section v-if="streamLayers.length" v-reveal class="viz-section">
-      <VizHead label="构成" />
-      <div class="viz-body stream-body">
-        <StreamGraph :times="streamTimes" :layers="streamLayers" />
-      </div>
-    </section>
 
-    <section v-if="bumpEntries.length" v-reveal class="viz-section">
-      <VizHead label="排名 × 风场" />
-      <div class="duel-grid">
-        <div class="viz-body duel-cell">
-          <BarChartRace :days="bumpDays" :entries="bumpEntries" :top-n="10" :focus-id="context.focusId" />
-        </div>
-        <div class="viz-body duel-cell">
-          <WindRose :samples="roseSamples" />
-        </div>
-      </div>
-    </section>
-
-    <section
-      v-if="chordCities.length || fingerprint.data.value"
-      v-reveal
-      class="viz-section"
-    >
-      <VizHead label="联动 × 指纹" :meta="fingerprintMeta" />
-      <div class="duo-grid">
-        <div class="viz-body duo-cell duo-chord">
-          <ChordDiagram
-            v-if="chordCities.length"
-            :cities="chordCities"
-            :focus-id="context.focusId"
-            @select="pinCity"
-          />
-        </div>
-        <div class="viz-body duo-cell duo-finger">
-          <CityFingerprintPanel
-            v-if="fingerprint.data.value"
-            :fingerprint="fingerprint.data.value"
-            :focus-id="context.focusId"
-            @select="pinCity"
-          />
-          <div v-else class="fingerprint-state">
-            <div v-if="fingerprint.isPending.value" class="skeleton fingerprint-skeleton" role="status"></div>
-          </div>
-        </div>
-      </div>
-    </section>
   </section>
 </template>
 
 <style scoped>
 .national-workspace {
+  min-width: 0;
+  overflow-x: clip;
+  grid-template-columns: minmax(0, 1fr);
   min-height: calc(100vh - 64px);
   padding: 28px var(--page-pad) 72px;
   display: grid;
@@ -581,6 +410,8 @@ onBeforeUnmount(() => {
 
 /* ── The Stage ───────────────────────────────────────────── */
 .stage {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(580px, 64vh) auto;
@@ -768,6 +599,7 @@ onBeforeUnmount(() => {
 }
 
 .ribbon-dock {
+  min-width: 0;
   padding: 10px 28px 20px;
   border-top: 1px solid var(--hairline);
   background: rgba(255, 255, 255, 0.5);
@@ -800,6 +632,8 @@ onBeforeUnmount(() => {
 
 /* ── Full-bleed viz sections: hairline-topped, no card boxes ── */
 .viz-section {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   padding-top: 26px;
   border-top: 1px solid var(--hairline);
   display: grid;

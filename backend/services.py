@@ -135,6 +135,7 @@ def _dominant(row) -> str | None:
 
 def _provider_status(
     provider: str,
+    dataset: str,
     configured: bool,
     stale_after: timedelta,
 ) -> ProviderStatus:
@@ -144,7 +145,7 @@ def _provider_status(
             state="disabled",
             message="Provider is not configured",
         )
-    row = latest_ingestion(provider)
+    row = latest_ingestion(provider, dataset)
     if row is None:
         return ProviderStatus(
             configured=True,
@@ -176,9 +177,12 @@ def get_status() -> StatusResponse:
         storage="SQLite WAL",
         counts=table_counts(),
         providers={
-            "cams": _provider_status("Open-Meteo", True, timedelta(hours=15)),
+            "cams": _provider_status(
+                "Open-Meteo", "cams_live_and_forecast", True, timedelta(hours=15)
+            ),
             "openaq": _provider_status(
                 "OpenAQ",
+                "ground_latest",
                 settings.openaq_api_key is not None,
                 timedelta(hours=3),
             ),

@@ -775,8 +775,8 @@ const pinnedStyle = computed(() => {
   const x = mark.x * t.k + t.x;
   const y = mark.y * t.k + t.y;
   return {
-    left: `${Math.min(Math.max(x + 14, 12), size.value.w - 264)}px`,
-    top: `${Math.min(Math.max(y - 40, 12), size.value.w - 240)}px`,
+    left: `${Math.min(Math.max(x + 14, 12), Math.max(12, size.value.w - 264))}px`,
+    top: `${Math.min(Math.max(y - 40, 12), Math.max(12, size.value.h - 240))}px`,
   };
 });
 

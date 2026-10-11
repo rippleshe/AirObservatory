@@ -16,25 +16,6 @@ export function prefersReducedMotion(): boolean {
     : false;
 }
 
-/* Shared entrance vocabulary. `rise` is the section-level settle, `pop` the
-   small-element accent; both accept a delay in seconds so callers can
-   orchestrate beats without building timelines for one-shots. */
-export function rise(el: gsap.TweenTarget, delay = 0) {
-  if (prefersReducedMotion()) return gsap.set(el, { autoAlpha: 1 });
-  return gsap.fromTo(
-    el,
-    { autoAlpha: 0, y: 18 },
-    {
-      autoAlpha: 1,
-      y: 0,
-      duration: 0.7,
-      delay,
-      ease: "power2.out",
-      overwrite: "auto",
-    },
-  );
-}
-
 /* Scroll-gated variant: element stays hidden until it crosses the viewport,
    then plays once. Replaces the old IntersectionObserver+CSS reveal while
    keeping the same visual contract. */

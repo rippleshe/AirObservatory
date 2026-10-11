@@ -24,18 +24,18 @@ def table_counts() -> dict[str, int]:
         }
 
 
-def latest_ingestion(provider: str) -> sqlite3.Row | None:
+def latest_ingestion(provider: str, dataset: str) -> sqlite3.Row | None:
     with connect() as con:
         return con.execute(
             """
             SELECT provider, dataset, started_at, finished_at, latest_source_time,
                    status, message, error_count, latency_seconds
             FROM ingestion_runs
-            WHERE provider=?
+            WHERE provider=? AND dataset=?
             ORDER BY started_at DESC
             LIMIT 1
             """,
-            (provider,),
+            (provider, dataset),
         ).fetchone()
 
 

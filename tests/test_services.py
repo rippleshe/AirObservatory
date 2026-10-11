@@ -14,6 +14,7 @@ from backend.services import (
     get_national_series,
     get_series,
     get_snapshot,
+    get_status,
 )
 
 
@@ -25,6 +26,28 @@ def _city_id(city: str) -> int:
         ).fetchone()
     assert row is not None
     return int(row["location_id"])
+
+
+def test_provider_status_uses_latest_live_run_not_weather_backfill(isolated_db):
+    now = datetime.now(UTC).replace(microsecond=0)
+    earlier = (now - timedelta(minutes=30)).isoformat()
+    later = (now - timedelta(minutes=5)).isoformat()
+    with transaction() as con:
+        con.executemany(
+            """
+            INSERT INTO ingestion_runs(
+                run_id, provider, dataset, started_at, finished_at,
+                latest_source_time, status
+            ) VALUES (?, 'Open-Meteo', ?, ?, ?, ?, ?)
+            """,
+            [
+                ("cams-live", "cams_live_and_forecast", earlier, earlier, earlier, "ok"),
+                ("weather-new", "weather_reanalysis", later, later, later, "error"),
+            ],
+        )
+    cams = get_status().providers["cams"]
+    assert cams.state == "healthy"
+    assert cams.last_run_at == datetime.fromisoformat(earlier)
 
 
 def test_series_hours_is_a_real_time_window(isolated_db):

@@ -35,6 +35,10 @@ const run = useQuery({
   retry: 0,
 });
 
+const notReady = computed(() =>
+  run.error.value instanceof Error && run.error.value.message.startsWith("API 404:"),
+);
+
 /* CAMS + baselines ride the decode act alongside the LSTM line. */
 const forecast = useQuery({
   queryKey: computed(() => ["model-forecast", locationId.value]),
@@ -80,9 +84,9 @@ const cams = computed(() =>
       <div class="skeleton engine-skeleton" role="status"></div>
     </div>
 
-    <div v-else class="engine-state">
-      <span class="state-word">训练中</span>
-      <span class="state-hint data-mono">worker 每晚重训 · 就绪后自动点亮</span>
+    <div v-else class="engine-state" role="status">
+      <span class="state-word">{{ notReady ? "当前城市暂无模型" : "模型请求失败" }}</span>
+      <span class="state-hint data-mono">{{ notReady ? "暂无可用训练结果" : "请检查 API 服务和网络连接" }}</span>
     </div>
   </section>
 </template>

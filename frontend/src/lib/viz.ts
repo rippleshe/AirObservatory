@@ -61,11 +61,6 @@ export function mean(values: number[]): number {
   return sum / values.length;
 }
 
-/* day-key helper for daily bucketing (local calendar days). */
-export function dayKey(iso: string): string {
-  return new Date(iso).toISOString().slice(0, 10);
-}
-
 /* Sparse x-axis ticks: ~1 tick every `span` days, formatted M/D. */
 export function dayTicks(times: string[], spanDays = 7): Array<{ index: number; label: string }> {
   const ticks: Array<{ index: number; label: string }> = [];

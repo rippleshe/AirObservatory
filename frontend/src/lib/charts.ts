@@ -1,23 +1,10 @@
 import {
-  BarChart,
-  ChordChart,
-  CustomChart,
-  EffectScatterChart,
-  GraphChart,
   HeatmapChart,
   LineChart,
-  LinesChart,
-  ScatterChart,
-  ThemeRiverChart,
 } from "echarts/charts";
 import {
-  AriaComponent,
   GridComponent,
-  LegendComponent,
-  MarkAreaComponent,
   MarkLineComponent,
-  PolarComponent,
-  SingleAxisComponent,
   TooltipComponent,
   VisualMapComponent,
 } from "echarts/components";
@@ -29,25 +16,12 @@ import {
 import { CanvasRenderer, SVGRenderer } from "echarts/renderers";
 
 use([
-  AriaComponent,
-  BarChart,
   CanvasRenderer,
-  ChordChart,
-  CustomChart,
-  EffectScatterChart,
-  GraphChart,
   HeatmapChart,
   GridComponent,
-  LegendComponent,
   LineChart,
-  LinesChart,
-  MarkAreaComponent,
   MarkLineComponent,
-  PolarComponent,
-  ScatterChart,
-  SingleAxisComponent,
   SVGRenderer,
-  ThemeRiverChart,
   TooltipComponent,
   VisualMapComponent,
 ]);
@@ -93,8 +67,6 @@ export function chartTheme() {
     tooltipBorder: token("--hairline-strong", "#cbd5e1"),
   };
 }
-
-export type ChartTheme = ReturnType<typeof chartTheme>;
 
 /* Every chart is SVG: DESIGN.md asks for vector-crisp geography and for core
    charts that hold up at projector distance and in print. Call sites pass the

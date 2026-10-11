@@ -902,6 +902,8 @@ def get_city_fingerprint() -> CityFingerprintResponse:
             window_start=_dt(payload["window_start"]),
             window_end=_dt(payload["window_end"]),
             city_count=int(payload["city_count"]),
+            eligible_city_count=int(payload.get("eligible_city_count", payload["city_count"])),
+            representative_rule=str(payload.get("representative_rule", "one city per province")),
             sample_hours_min=int(payload["sample_hours_min"]),
             sample_hours_max=int(payload["sample_hours_max"]),
             features=list(payload["features"]),

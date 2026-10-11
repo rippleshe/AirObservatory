@@ -426,6 +426,8 @@ class CityFingerprintMeta(BaseModel):
     window_start: datetime
     window_end: datetime
     city_count: int
+    eligible_city_count: int
+    representative_rule: str
     sample_hours_min: int
     sample_hours_max: int
     features: list[str]

@@ -56,9 +56,13 @@ const matched = computed(() => {
     const dir = row.wind_direction[i];
     const pm25 = pm.get(+new Date(time));
     return speed != null && dir != null && pm25 != null
-      ? [{ wind: speed, speed, dir, pm25 }]
+      ? [{ time, wind: speed, speed, dir, pm25 }]
       : [];
   });
+});
+const matchedWindow = computed(() => {
+  const rows = matched.value;
+  return rows.length ? `${fmt(rows[0]?.time)} — ${fmt(rows[rows.length - 1]?.time)}` : "—";
 });
 const fingerprintMeta = computed(() => fingerprint.data.value?.meta);
 const structureMeta = computed(() => structure.data.value?.meta);
@@ -76,7 +80,7 @@ function focusCity(id: number, name: string) {
     <header class="research-head">
       <div>
         <h1>多变量关联分析</h1>
-        <p>城市特征结构与污染—气象统计关系</p>
+        <p>城市特征、污染物与气象条件的统计关系</p>
       </div>
       <div class="research-tabs" role="group" aria-label="分析尺度">
         <button type="button" :class="{ active: scope === 'national' }" :aria-pressed="scope === 'national'" @click="scope = 'national'">全国城市结构</button>
@@ -86,14 +90,14 @@ function focusCity(id: number, name: string) {
 
     <template v-if="scope === 'national'">
       <div v-if="fingerprintMeta" class="research-evidence">
-        <span><strong>{{ fingerprintMeta.city_count }}</strong> 城市</span>
+        <span><strong>{{ fingerprintMeta.city_count }}</strong> 省级代表城市 / <strong>{{ fingerprintMeta.eligible_city_count }}</strong> 合格城市</span>
         <span><strong>{{ fingerprintMeta.sample_hours_min }}–{{ fingerprintMeta.sample_hours_max }}</strong> 小时/城市</span>
-        <span>分析窗口 <strong>{{ fmt(fingerprintMeta.window_start) }} — {{ fmt(fingerprintMeta.window_end) }}</strong></span>
+        <span>历史分析窗口 <strong>{{ fmt(fingerprintMeta.window_start) }} — {{ fmt(fingerprintMeta.window_end) }}</strong></span>
         <span>聚类轮廓系数 <strong>{{ fingerprintMeta.silhouette?.toFixed(2) ?? "—" }}</strong></span>
       </div>
       <section class="research-section">
         <div class="research-section-head">
-          <h2>全国城市多变量结构</h2>
+          <h2>城市特征空间与分群</h2>
           <span>主成分分析 · 特征标准化 · 聚类探索</span>
         </div>
         <CityFingerprintPanel
@@ -103,10 +107,14 @@ function focusCity(id: number, name: string) {
           @select="focusCity"
         />
         <div v-else class="research-panel research-empty" role="status">
-          <strong>{{ fingerprint.isPending.value ? "正在读取分析结果" : "当前缺少有效的全国统计结果" }}</strong>
+          <strong>{{ fingerprint.isPending.value ? "正在读取分析结果" : fingerprint.isError.value ? "全国统计结果加载失败" : "当前缺少有效的全国统计结果" }}</strong>
           <small>统计图只使用已经完成计算的特征矩阵，不补造数据。</small>
         </div>
       </section>
+      <div v-if="fingerprintMeta" class="analysis-method-note">
+        <strong>抽样口径</strong> 31 个省级代表是在同一历史分析窗口内，从合格城市中按 PM2.5 均值最高者选取；不等同于全国地图的实时 AQI 代表规则。
+        <span v-if="fingerprint.data.value?.cluster_profiles.some((cluster) => cluster.city_count === 1)">当前分群存在单城市组，且轮廓系数仅 {{ fingerprintMeta.silhouette?.toFixed(2) ?? "—" }}，应视为离群探索线索。</span>
+      </div>
       <footer class="research-evidence">
         <span>聚类用于发现特征相似的城市，不代表环境质量类型或因果分类。</span>
         <span>来源：CAMS 模式分析场与 Open-Meteo 气象再分析</span>
@@ -116,32 +124,36 @@ function focusCity(id: number, name: string) {
     <template v-else>
       <div class="research-evidence">
         <span>分析城市 <strong>{{ cityName }}</strong></span>
-        <span v-if="structureMeta">配对有效样本 <strong>{{ structureMeta.sample_count }}</strong></span>
+        <span v-if="structureMeta">PCA 完整样本 <strong>{{ structureMeta.sample_count }}</strong></span>
         <span v-if="structureMeta">缺失比例 <strong>{{ (structureMeta.missing_fraction * 100).toFixed(1) }}%</strong></span>
         <span v-if="structureMeta">窗口 <strong>{{ fmt(structureMeta.window_start) }} — {{ fmt(structureMeta.window_end) }}</strong></span>
       </div>
       <section class="research-section">
         <div class="research-section-head">
           <h2>{{ cityName }} · 主成分与相关结构</h2>
-          <span>PCA 解释方差、载荷、得分及相关矩阵</span>
+          <span>PCA 解释方差、主成分权重、得分及相关矩阵</span>
         </div>
         <PCAStructurePanel v-if="structure.data.value" :structure="structure.data.value" />
         <div v-else class="research-panel research-empty" role="status">
-          <strong>{{ structure.isPending.value ? "正在读取城市结构" : "该城市尚无可用的统计分析产物" }}</strong>
+          <strong>{{ structure.isPending.value ? "正在读取城市结构" : structure.isError.value ? "城市结构分析加载失败" : "该城市尚无可用的统计分析产物" }}</strong>
           <small>请在右上角切换城市；未完成分析的城市不显示推测结果。</small>
         </div>
       </section>
       <section class="research-section">
         <div class="research-section-head">
           <h2>PM2.5 与风速的配对关系</h2>
-          <span>相同时间戳配对 · {{ matched.length }} 个有效小时</span>
+          <span>相同时间戳配对 · {{ matched.length }} 个有效小时 · {{ matchedWindow }}</span>
         </div>
         <div v-if="matched.length >= 16" class="research-split">
           <div class="research-panel research-panel-pad relationship-plot">
+            <h3>风速与 PM2.5 浓度</h3>
             <WindClearance :points="matched" />
+            <p class="plot-method">风速分箱中位数与四分位带；每箱至少 8 个有效样本。</p>
           </div>
           <div class="research-panel research-panel-pad relationship-plot">
+            <h3>风向分布与条件浓度</h3>
             <WindRose :samples="matched" />
+            <p class="plot-method">扇瓣面积表示频数，颜色表示条件 PM2.5 均值；低于 0.5 m/s 的风不计入方向扇区。</p>
           </div>
         </div>
         <div v-else class="research-panel research-empty" role="status">
@@ -151,6 +163,7 @@ function focusCity(id: number, name: string) {
       </section>
       <footer class="research-evidence">
         <span>关联结构仅反映样本内的统计关系，不作为污染成因的因果证明。</span>
+        <span>气象配对窗口与历史 PCA 产物独立，不混合样本量。</span>
         <span v-if="structureMeta">标准化：{{ structureMeta.standardization }}</span>
       </footer>
     </template>
@@ -160,6 +173,11 @@ function focusCity(id: number, name: string) {
 <style scoped>
 .analysis-workspace { padding-bottom: 88px; }
 .relationship-plot { min-height: 350px; }
+.relationship-plot h3 { color: var(--ink); font-size: 14px; font-weight: 650; margin: 0 0 12px; }
 .relationship-plot :deep(.wind-clearance),
-.relationship-plot :deep(.wind-rose) { min-height: 300px; }
+.relationship-plot :deep(.wind-rose) { height: 360px; min-height: 0; }
+.plot-method { color: var(--ink-secondary); font-size: var(--fs-label); line-height: 1.55; margin: 10px 0 0; }
+.analysis-method-note { margin-top: 18px; padding: 16px 0; border-top: 1px solid var(--hairline); color: var(--ink-secondary); font-size: 12px; line-height: 1.75; }
+.analysis-method-note strong { color: var(--ink); padding-right: 12px; }
+.analysis-method-note span { display: block; margin-top: 3px; }
 </style>

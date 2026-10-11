@@ -414,11 +414,14 @@ watch(dots, (next) => {
 .fingerprint-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
-  gap: 32px;
+  grid-template-areas: "plot ledger" "chips ledger";
+  column-gap: 36px;
+  row-gap: 10px;
   align-items: start;
 }
 
 .scatter-cell {
+  grid-area: plot;
   position: relative;
   width: 100%;
   min-width: 0;
@@ -482,6 +485,7 @@ watch(dots, (next) => {
 }
 
 .cluster-chips {
+  grid-area: chips;
   display: flex;
   flex-wrap: wrap;
   gap: 6px 14px;
@@ -542,6 +546,7 @@ watch(dots, (next) => {
 
 
 .fingerprint-ledger {
+  grid-area: ledger;
   min-width: 0;
 }
 
@@ -647,6 +652,7 @@ watch(dots, (next) => {
 @container (max-width: 680px) {
   .fingerprint-layout {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "plot" "chips" "ledger";
   }
 }
 </style>

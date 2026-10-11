@@ -50,7 +50,46 @@ try {
   await analysis.getByRole("button", { name: "单城市关联" }).click();
   await analysis.locator(".structure-panel").waitFor({ state: "visible", timeout: 18000 });
   report.push({ interaction: "national PCA→city PCA", ok: true });
+  const loadings = analysis.locator(".structure-grid article:nth-child(2) svg");
+  const loadHeight = Number((await loadings.getAttribute("viewBox")).split(" ")[3]);
+  const lastLabel = Number(await analysis.locator(".structure-grid article:nth-child(2) .row-label").last().getAttribute("y"));
+  if (!(lastLabel < loadHeight - 12)) throw new Error("PCA loadings rows are clipped");
+  const correlation = analysis.locator(".correlation-svg rect[role=button]");
+  if ((await correlation.count()) < 190) throw new Error("Correlation matrix is incomplete");
+  await correlation.first().click();
+  if (!(await analysis.locator(".corr-reading .reading-value").textContent()).includes("1.000")) {
+    throw new Error("Selecting a correlation cell did not update its reading");
+  }
+  const scoreSvg = analysis.locator(".structure-grid article:nth-child(3) svg").first();
+  await scoreSvg.scrollIntoViewIfNeeded();
+  const position = await scoreSvg.evaluate((svg) => {
+    const dot = svg.querySelector("circle");
+    const bounds = svg.getBoundingClientRect();
+    const frame = svg.viewBox.baseVal;
+    return {
+      x: bounds.left + ((dot.cx.baseVal.value - frame.x) / frame.width) * bounds.width,
+      y: bounds.top + ((dot.cy.baseVal.value - frame.y) / frame.height) * bounds.height,
+    };
+  });
+  await analysis.mouse.move(position.x, position.y);
+  if (!(await analysis.locator(".quad-tip").isVisible())) throw new Error("PCA score hover failed");
+  await analysis.locator(".wind-rose").waitFor({ state: "visible", timeout: 18000 });
+  for (const chart of [".wind-clearance", ".wind-rose"]) {
+    const bounds = await analysis.locator(chart).boundingBox();
+    if (!bounds || bounds.height < 320 || bounds.height > 400) {
+      throw new Error(`${chart} did not keep its bounded research-panel height`);
+    }
+  }
+  report.push({ interaction: "PCA loadings, correlation choice and score hover", ok: true });
   await analysis.close();
+
+  const mobileAnalysis = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await mobileAnalysis.goto("http://127.0.0.1:5173/analysis", { waitUntil: "networkidle" });
+  await mobileAnalysis.getByRole("button", { name: "单城市关联" }).click();
+  await mobileAnalysis.locator(".structure-panel").waitFor({ state: "visible", timeout: 18000 });
+  const mobileOverflow = await mobileAnalysis.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+  report.push({ route: "/analysis/city", width: 390, overflow: mobileOverflow });
+  await mobileAnalysis.close();
 
   console.log(JSON.stringify(report, null, 2));
   const failed = report.some((row) => row.errors?.length || row.overflow || (row.http && row.http !== 200) || (row.navItems && row.navItems !== 4));

@@ -464,6 +464,10 @@ export interface components {
             window_end: string;
             /** City Count */
             city_count: number;
+            /** Eligible City Count */
+            eligible_city_count: number;
+            /** Representative Rule */
+            representative_rule: string;
             /** Sample Hours Min */
             sample_hours_min: number;
             /** Sample Hours Max */

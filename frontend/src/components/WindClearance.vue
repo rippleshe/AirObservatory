@@ -3,8 +3,7 @@
      band and a dot sized by sample count. The descending sweep (or its
      absence) is the whole story — no trajectory hairball. -->
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { drawIn } from "../lib/motion";
+import { computed, ref } from "vue";
 import { pm25Color } from "../lib/palette";
 import { mean, smoothPath, useElementSize } from "../lib/viz";
 
@@ -119,14 +118,6 @@ const hoverPoint = computed(() => {
   return { bin, x: geo.x(bin.center), y: geo.y(bin.median) };
 });
 
-let played = false;
-watch(medianPath, (next) => {
-  if (!next || played) return;
-  played = true;
-  requestAnimationFrame(() => {
-    drawIn(shell.value?.querySelectorAll(".clearance-curve") ?? [], { duration: 1.6 });
-  });
-});
 </script>
 
 <template>
@@ -145,7 +136,7 @@ watch(medianPath, (next) => {
 
       <path class="band" :d="bandPath" />
 
-      <path
+      <rect
         v-for="(bin, i) in bins"
         :key="`hit-${i}`"
         class="hit-zone"
@@ -154,6 +145,7 @@ watch(medianPath, (next) => {
         :width="geometry.x(bin.to ?? bin.center + 2) - geometry.x(bin.from ?? bin.center - 1)"
         :height="geometry.innerH"
         @mouseenter="hoverBin = i"
+        @mousemove="hoverBin = i"
       />
 
       <path class="clearance-curve" :d="medianPath" />

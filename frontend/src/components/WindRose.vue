@@ -7,6 +7,7 @@ import { computed, ref, watch } from "vue";
 import { gsap, prefersReducedMotion } from "../lib/motion";
 import { pm25Color } from "../lib/palette";
 import { useElementSize } from "../lib/viz";
+import { WIND_SPEED_EDGES, windSpeedBin, stackedWindRadii } from "../lib/windRose";
 
 export type RoseSample = {
   speed: number;
@@ -22,20 +23,18 @@ const hoveredDir = ref<number | null>(null);
 const hoveredBin = ref<{ dir: number; speed: number } | null>(null);
 
 const DIRS = 24;
-const SPEED_STOPS = [0.5, 2, 4, 7, Infinity];
-const SPEED_LABELS = ["<2", "2–4", "4–7", "≥7"];
+const SPEED_LABELS = ["0.5–2", "2–4", "4–7", "≥7"];
 const PAD = 30;
 
 const bins = computed(() => {
   const grid: Array<Array<{ count: number; pm25Sum: number } | null>> = Array.from(
     { length: DIRS },
-    () => new Array(SPEED_STOPS.length - 1).fill(null),
+    () => new Array(WIND_SPEED_EDGES.length - 1).fill(null),
   );
   let total = 0;
   for (const sample of props.samples) {
-    if (!(sample.speed >= 0.5)) continue;
-    const speedIdx = SPEED_STOPS.findIndex((stop, i) => i > 0 && sample.speed < stop);
-    if (speedIdx === -1) continue;
+    const speedIdx = windSpeedBin(sample.speed);
+    if (speedIdx < 0) continue;
     const dirIdx = Math.min(
       DIRS - 1,
       Math.max(0, Math.floor((((sample.dir % 360) + 360) % 360) / (360 / DIRS))),
@@ -81,12 +80,15 @@ const petals = computed(() => {
   const geo = geometry.value;
   const { grid, total } = bins.value;
   if (!geo || !total) return [];
-  let maxShare = 0.001;
+  // Radial AREA represents frequency: each new band's area adds to its
+  // direction's cumulative share, never beyond the outer reference ring.
+  const maxDirectionCount = Math.max(
+    1, ...grid.map((row) => row.reduce((sum, cell) => sum + (cell?.count ?? 0), 0)),
+  );
   const shares = grid.map((row) =>
     row.map((cell) => {
       if (!cell || !cell.count) return null;
       const share = cell.count / total;
-      maxShare = Math.max(maxShare, share);
       return share;
     }),
   );
@@ -101,12 +103,13 @@ const petals = computed(() => {
   }> = [];
   const span = (360 / DIRS) * (Math.PI / 180);
   for (let dir = 0; dir < DIRS; dir++) {
-    let r0 = geo.radius * 0.08;
-    for (let speed = 0; speed < SPEED_STOPS.length - 1; speed++) {
+    let cumulative = 0;
+    for (let speed = 0; speed < WIND_SPEED_EDGES.length - 1; speed++) {
       const cell = grid[dir]![speed];
       const share = shares[dir]![speed];
       if (!cell || !cell.count || share == null) continue;
-      const r1 = r0 + Math.sqrt(share / maxShare) * geo.radius * 0.92;
+      const { inner: r0, outer: r1 } = stackedWindRadii(cumulative, cell.count, maxDirectionCount, geo.radius);
+      cumulative += cell.count;
       const a0 = (dir * 2 * Math.PI) / DIRS - Math.PI / 2 + span * 0.08;
       const a1 = ((dir + 1) * 2 * Math.PI) / DIRS - Math.PI / 2 - span * 0.08;
       const meanPm25 = cell.pm25Sum / cell.count;
@@ -115,11 +118,10 @@ const petals = computed(() => {
         speed,
         d: annularSector(geo.cx, geo.cy, r0, r1, a0, a1),
         color: pm25Color(meanPm25),
-        opacity: 0.4 + (speed / (SPEED_STOPS.length - 2)) * 0.5,
+        opacity: 0.4 + (speed / (WIND_SPEED_EDGES.length - 2)) * 0.5,
         share,
         meanPm25,
       });
-      r0 = r1;
     }
   }
   return out;

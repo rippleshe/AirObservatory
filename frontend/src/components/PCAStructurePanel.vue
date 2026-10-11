@@ -132,7 +132,8 @@ const loadCells = computed(() => {
     })),
   );
 });
-const loadRowH = computed(() => (loadCells.value[0]?.length ?? 5) * 18 + 26);
+// Each feature occupies one row; component count is the column count.
+const loadRowH = computed(() => loadings.value.length * 18 + 26);
 
 const loadRowLabels = computed(() =>
   loadings.value.map((row, y) => ({
@@ -162,7 +163,7 @@ const scorePoints = computed(() => {
   const sx = (v: number) => 52 + ((v - xMin) / spanX) * plotW;
   const sy = (v: number) => 10 + plotH - ((v - yMin) / spanY) * plotH;
   return pts.map((point, i) => {
-    const hour = new Date(point.time).getHours();
+    const hour = (new Date(point.time).getUTCHours() + 8) % 24;
     return {
       id: i,
       x: sx(point.values.PC1 ?? 0),
@@ -184,8 +185,8 @@ const scoreMarginals = computed(() => {
   const xHist = new Array(binCount).fill(0);
   const yHist = new Array(binCount).fill(0);
   for (const p of pts) {
-    xHist[Math.min(binCount - 1, Math.floor((p.x / SCORE_W) * binCount))]! += 1;
-    yHist[Math.min(binCount - 1, Math.floor((p.y / SCORE_H) * binCount))]! += 1;
+    xHist[Math.max(0, Math.min(binCount - 1, Math.floor(((p.x - 52) / (SCORE_W - 52 - MARG)) * binCount)))]! += 1;
+    yHist[Math.max(0, Math.min(binCount - 1, Math.floor(((p.y - 10) / (SCORE_H - 50)) * binCount)))]! += 1;
   }
   const xMax = Math.max(...xHist);
   const yMax = Math.max(...yHist);
@@ -208,10 +209,10 @@ const hourRamp = computed(() =>
 );
 
 function onScoreMove(event: MouseEvent) {
-  const bounds = shell.value?.getBoundingClientRect();
-  if (!bounds) return;
-  const mx = ((event.clientX - bounds.left) / (bounds.width || 1)) * SCORE_W;
-  const my = ((event.clientY - bounds.top) / (bounds.height || 1)) * SCORE_H;
+  const bounds = (event.currentTarget as SVGSVGElement).getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return;
+  const mx = ((event.clientX - bounds.left) / bounds.width) * SCORE_W;
+  const my = ((event.clientY - bounds.top) / bounds.height) * SCORE_H;
   let best = -1;
   let bestDist = Infinity;
   scorePoints.value.forEach((p, i) => {
@@ -224,7 +225,7 @@ function onScoreMove(event: MouseEvent) {
   if (best >= 0 && bestDist < 24 * 24) {
     const p = scorePoints.value[best]!;
     showTip(event, [
-      new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", hour12: false }).format(new Date(p.time)),
+      new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", hour: "2-digit", hour12: false }).format(new Date(p.time)),
       `主成分1 ${p.pc1.toFixed(2)} · 主成分2 ${p.pc2.toFixed(2)}`,
       `${p.hour}:00`,
     ]);
@@ -236,8 +237,21 @@ function onScoreMove(event: MouseEvent) {
 /* ── correlation matrix + strength filters ── */
 const CORR_W = 620;
 const CORR_LBL = 96;
+const CORR_SHORT: Record<string, string> = {
+  temperature_2m: "气温", relative_humidity_2m: "湿度",
+  pressure_msl: "气压", precipitation: "降水",
+  wind_speed_10m: "风速", wind_direction_sin: "sinθ",
+  wind_direction_cos: "cosθ", boundary_layer_height: "边界层",
+};
 type CorrFilter = "strong-pos" | "strong-neg" | "weak" | null;
 const corrFilter = ref<CorrFilter>(null);
+const chosenPair = ref({ row: "pm25", col: "wind_speed_10m" });
+const chosenCorrelation = computed(() => correlation.value.find(
+  (row) => row.feature === chosenPair.value.row,
+)?.values[chosenPair.value.col] ?? null);
+const chosenName = computed(() =>
+  `${featureLabel(chosenPair.value.row)} × ${featureLabel(chosenPair.value.col)}`,
+);
 
 const FILTERS: Array<{ id: Exclude<CorrFilter, null>; label: string }> = [
   { id: "strong-pos", label: "强正相关" },
@@ -263,7 +277,6 @@ const corrCells = computed(() => {
   const n = features.length;
   const cw = (CORR_W - CORR_LBL - 12) / n;
   const ch = cw;
-  const index = new Map(features.map((f, i) => [f, i]));
   const cells: Array<{
     x: number;
     y: number;
@@ -284,7 +297,6 @@ const corrCells = computed(() => {
         dim: !inFilter(r),
       });
     });
-    void index;
   });
   return cells;
 });
@@ -299,7 +311,7 @@ const corrLabels = computed(() => {
   const cell = corrSize.value.cell;
   return {
     rows: features.map((f, y) => ({ label: featureLabel(f), y: 6 + y * cell + cell / 2 })),
-    cols: features.map((f, x) => ({ label: featureLabel(f), x: CORR_LBL + x * cell + cell / 2 })),
+    cols: features.map((f, x) => ({ label: CORR_SHORT[f] ?? featureLabel(f), x: CORR_LBL + x * cell + cell / 2 })),
   };
 });
 
@@ -308,6 +320,9 @@ function onCorrCell(event: MouseEvent, cell: { rowFeature: string; colFeature: s
     `${featureLabel(cell.rowFeature)} × ${featureLabel(cell.colFeature)}`,
     `r = ${cell.r.toFixed(2)}`,
   ]);
+}
+function chooseCell(cell: { rowFeature: string; colFeature: string }) {
+  chosenPair.value = { row: cell.rowFeature, col: cell.colFeature };
 }
 
 /* ── entrance ── */
@@ -321,8 +336,8 @@ watch(inView, (visible) => {
     groups.forEach((group, i) => {
       gsap.fromTo(
         group,
-        { autoAlpha: 0, y: 12 },
-        { autoAlpha: 1, y: 0, duration: 0.7, delay: i * 0.12, ease: "power2.out" },
+        { opacity: 0.75, y: 6 },
+        { opacity: 1, y: 0, duration: 0.5, delay: i * 0.06, ease: "power2.out" },
       );
     });
   });
@@ -368,7 +383,7 @@ onBeforeUnmount(() => {
       </article>
 
       <article>
-        <span class="mini-label">因子载荷</span>
+        <span class="mini-label">主成分权重</span>
         <svg :viewBox="`0 0 ${LOAD_W} ${loadRowH}`" class="quad-svg">
           <g class="quad-entrance">
             <g v-for="(cellRow, y) in loadCells" :key="`lr-${y}`">
@@ -401,7 +416,7 @@ onBeforeUnmount(() => {
       </article>
 
       <article>
-        <span class="mini-label">分时投影</span>
+        <span class="mini-label">分时投影 · 北京时间</span>
         <svg :viewBox="`0 0 ${SCORE_W} ${SCORE_H}`" class="quad-svg" @mousemove="onScoreMove" @mouseleave="hideTip">
           <g class="quad-entrance">
             <g v-if="scoreMarginals">
@@ -448,7 +463,7 @@ onBeforeUnmount(() => {
             @click="toggleFilter(filter.id)"
           >{{ filter.label }}</button>
         </div>
-        <svg :viewBox="`0 0 ${CORR_W} ${corrSize.total + 14}`" class="quad-svg">
+        <svg :viewBox="`0 0 ${CORR_W} ${corrSize.total + 30}`" class="quad-svg correlation-svg" role="group" aria-label="污染物与气象变量皮尔逊相关矩阵">
           <g class="quad-entrance">
             <rect
               v-for="(cell, i) in corrCells"
@@ -456,10 +471,17 @@ onBeforeUnmount(() => {
               :x="cell.x" :y="cell.y" :width="corrSize.cell - 1.5" :height="corrSize.cell - 1.5" rx="1.5"
               :fill="diverging(cell.r)"
               :opacity="cell.dim ? 0.08 : 1"
-              :stroke="cell.dim ? 'none' : 'none'"
+              :stroke="chosenPair.row === cell.rowFeature && chosenPair.col === cell.colFeature ? 'var(--ink)' : 'none'"
+              :stroke-width="2"
+              role="button"
+              tabindex="0"
+              :aria-label="`${featureLabel(cell.rowFeature)}与${featureLabel(cell.colFeature)}，r=${cell.r.toFixed(2)}`"
               @mouseenter="onCorrCell($event, cell)"
               @mousemove="onCorrCell($event, cell)"
               @mouseleave="hideTip"
+              @click="chooseCell(cell)"
+              @keydown.enter="chooseCell(cell)"
+              @keydown.space.prevent="chooseCell(cell)"
             />
             <text
               v-for="(label, i) in corrLabels.rows"
@@ -473,10 +495,18 @@ onBeforeUnmount(() => {
               :key="`cc-${i}`"
               class="col-label rot"
               :x="label.x"
-              :y="corrSize.total + 10"
+              :y="corrSize.total + 22"
             >{{ label.label }}</text>
           </g>
         </svg>
+        <div class="corr-reading" aria-live="polite">
+          <span class="reading-kicker">选中变量对</span>
+          <strong>{{ chosenName }}</strong>
+          <span class="reading-value data-mono">{{ chosenCorrelation == null ? "—" : `r = ${chosenCorrelation.toFixed(3)}` }}</span>
+          <span>Pearson 相关系数 · {{ structure.meta.sample_count }} 个完整时刻</span>
+          <span>选择矩阵中的一个方格，查看具体变量关系。</span>
+          <span class="reading-caveat">相关不等于因果。同一矩阵统一使用完整样本。</span>
+        </div>
       </article>
     </div>
 
@@ -497,9 +527,28 @@ onBeforeUnmount(() => {
 
 .structure-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 36px 44px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 34px 36px;
 }
+.structure-grid article:nth-child(4) {
+  order: -1;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1.75fr) minmax(220px, .7fr);
+  grid-template-rows: auto min-content 1fr;
+  column-gap: 36px;
+  align-items: start;
+}
+.structure-grid article:nth-child(4) > .mini-label { grid-column: 1 / -1; }
+.structure-grid article:nth-child(4) > .correlation-svg { grid-column: 1; grid-row: 2 / 4; }
+.structure-grid article:nth-child(4) > .filter-chips {
+  grid-column: 2;
+  grid-row: 2;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.structure-grid article:nth-child(4) > .corr-reading { grid-column: 2; grid-row: 3; }
+.structure-grid article:nth-child(3) { grid-column: 1 / -1; }
+.structure-grid article:nth-child(3) > .quad-svg { max-width: 930px; }
 
 .structure-grid article {
   min-width: 0;
@@ -510,11 +559,16 @@ onBeforeUnmount(() => {
 
 .mini-label {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--fs-label);
   font-weight: var(--fw-strong);
-  letter-spacing: 0.18em;
-  text-align: center;
+  letter-spacing: 0.015em;
+  text-align: left;
 }
+.corr-reading { display: grid; gap: 12px; align-content: start; color: var(--ink-secondary); font-size: var(--fs-label); line-height: 1.6; padding-top: 16px; }
+.corr-reading strong { color: var(--ink); font-size: 16px; font-weight: 650; }
+.corr-reading .reading-value { font-size: 30px; font-weight: 650; color: var(--ink); letter-spacing: -0.03em; }
+.corr-reading .reading-kicker { color: var(--muted); }
+.corr-reading .reading-caveat { border-top: 1px solid var(--hairline); padding-top: 15px; margin-top: 8px; }
 
 .quad-svg {
   width: 100%;
@@ -619,7 +673,7 @@ onBeforeUnmount(() => {
 
 .filter-chips {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
 }
 
@@ -669,7 +723,14 @@ onBeforeUnmount(() => {
 
 @media (max-width: 1180px) {
   .structure-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
+  .structure-grid article:nth-child(4),
+  .structure-grid article:nth-child(3) { grid-column: 1; }
+  .structure-grid article:nth-child(4) { grid-template-columns: minmax(0, 1fr); }
+  .structure-grid article:nth-child(4) > .mini-label,
+  .structure-grid article:nth-child(4) > .filter-chips,
+  .structure-grid article:nth-child(4) > .correlation-svg,
+  .structure-grid article:nth-child(4) > .corr-reading { grid-column: 1; grid-row: auto; }
 }
 </style>

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from time import perf_counter
 from uuid import uuid4
 
@@ -66,10 +66,17 @@ def _stale_binding_ids(locations, source_id: int) -> list[int]:
     with connect() as con:
         rows = con.execute(
             """
-            SELECT location_id, last_checked_at FROM provider_bindings
-            WHERE source_id=? AND active=1
+            SELECT location_id, MAX(last_checked_at) AS last_checked_at
+            FROM (
+                SELECT location_id, last_checked_at FROM provider_bindings
+                WHERE source_id=?
+                UNION ALL
+                SELECT location_id, checked_at AS last_checked_at
+                FROM provider_discovery_checks WHERE source_id=?
+            )
+            GROUP BY location_id
             """,
-            (source_id,),
+            (source_id, source_id),
         ).fetchall()
     now = datetime.now(UTC)
     ages: dict[int, float] = {}
@@ -87,7 +94,9 @@ def _stale_binding_ids(locations, source_id: int) -> list[int]:
     return stale
 
 
-def _save_binding(location_id: int, source_id: int, site: GroundSite) -> None:
+def _save_binding(
+    location_id: int, source_id: int, site: GroundSite, *, discovered: bool = True
+) -> None:
     now = datetime.now(UTC).isoformat()
     with transaction() as con:
         con.execute(
@@ -106,7 +115,8 @@ def _save_binding(location_id: int, source_id: int, site: GroundSite) -> None:
                 sensors_json=excluded.sensors_json,
                 first_at=excluded.first_at,
                 last_at=excluded.last_at,
-                last_checked_at=excluded.last_checked_at,
+                last_checked_at=CASE WHEN ? THEN excluded.last_checked_at
+                                     ELSE provider_bindings.last_checked_at END,
                 active=1
             """,
             (
@@ -121,7 +131,21 @@ def _save_binding(location_id: int, source_id: int, site: GroundSite) -> None:
                 _iso(site.first_at),
                 _iso(site.last_at),
                 now,
+                int(discovered),
             ),
+        )
+
+
+def _record_missing_site(location_id: int, source_id: int) -> None:
+    with transaction() as con:
+        con.execute(
+            """
+            INSERT INTO provider_discovery_checks(location_id, source_id, checked_at, outcome)
+            VALUES (?, ?, ?, 'not_found')
+            ON CONFLICT(location_id, source_id) DO UPDATE SET
+                checked_at=excluded.checked_at, outcome=excluded.outcome
+            """,
+            (location_id, source_id, datetime.now(UTC).isoformat()),
         )
 
 
@@ -138,6 +162,7 @@ async def _site_for_location(
     if discovered is not None:
         _save_binding(location["location_id"], source_id, discovered)
         return discovered
+    _record_missing_site(location["location_id"], source_id)
     return site
 
 
@@ -169,7 +194,7 @@ def _upsert_measurements(
             if column is None:
                 continue
             quality = "flagged" if point.has_flags else "reported"
-            con.execute(
+            cursor = con.execute(
                 f"""
                 INSERT INTO air_observations(
                     location_id, source_id, observed_at, fetched_at,
@@ -185,6 +210,9 @@ def _upsert_measurements(
                         ELSE 'reported'
                     END,
                     raw_ref=excluded.raw_ref
+                WHERE air_observations.{column} IS NOT excluded.{column}
+                   OR air_observations.raw_ref IS NOT excluded.raw_ref
+                   OR (excluded.quality_flag='flagged' AND air_observations.quality_flag!='flagged')
                 """,
                 (
                     location_id,
@@ -196,7 +224,7 @@ def _upsert_measurements(
                     raw_ref,
                 ),
             )
-            accepted += 1
+            accepted += cursor.rowcount
     return accepted
 
 
@@ -239,14 +267,26 @@ async def refresh_openaq() -> dict:
         async def fetch(location):
             async with semaphore:
                 try:
+                    location_id = location["location_id"]
+                    if (
+                        location_id not in to_discover
+                        and _bound_site(location_id, source["source_id"]) is None
+                    ):
+                        return location, None, [], None
                     site = await _site_for_location(
                         provider,
                         location,
                         source["source_id"],
-                        force_discovery=location["location_id"] in to_discover,
+                        force_discovery=location_id in to_discover,
                     )
                     if site is None:
                         return location, None, [], "no PM2.5 site within search radius"
+                    if (
+                        location_id not in to_discover
+                        and site.last_at is not None
+                        and (datetime.now(UTC) - site.last_at) > timedelta(days=7)
+                    ):
+                        return location, site, [], None
                     points = await provider.fetch_latest(site)
                     return location, site, points, None
                 except Exception as exc:
@@ -283,7 +323,10 @@ async def refresh_openaq() -> dict:
                 sensors=site.sensors,
                 distance_m=site.distance_m,
             )
-            _save_binding(location["location_id"], source["source_id"], refreshed_site)
+            _save_binding(
+                location["location_id"], source["source_id"],
+                refreshed_site, discovered=False,
+            )
 
     status = "success" if not errors else ("partial" if accepted else "error")
     message = f"{accepted} latest measurements accepted"

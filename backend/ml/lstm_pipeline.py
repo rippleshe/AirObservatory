@@ -29,7 +29,6 @@ logger = logging.getLogger("air_observatory.lstm")
 MODEL_NAME = "LSTM"
 TRAIN_EPOCHS = 90
 WINDOW_STRIDE = 2
-SNAPSHOTS_TO_KEEP = 3
 
 def collect_feature_frames(
     min_hours: int = 240,
@@ -154,7 +153,6 @@ def train_and_register(epochs: int = TRAIN_EPOCHS) -> dict:
         )
 
     published = publish_lstm_forecasts(params, data, frames, times, created_at, version)
-    pruned = _prune_lstm_snapshots()
     summary = {
         "status": "ok",
         "version": version,
@@ -167,7 +165,6 @@ def train_and_register(epochs: int = TRAIN_EPOCHS) -> dict:
             for name, value in metrics.items()
         },
         "forecasts_written": published,
-        "snapshots_pruned": pruned,
         "artifact": str(artifact_path),
     }
     logger.info("LSTM training registered: %s", json.dumps(summary, ensure_ascii=False))
@@ -236,23 +233,6 @@ def publish_lstm_forecasts(
                 )
                 written += 1
     return written
-
-
-def _prune_lstm_snapshots(keep: int = SNAPSHOTS_TO_KEEP) -> int:
-    with transaction() as con:
-        cursor = con.execute(
-            """
-            DELETE FROM forecasts
-            WHERE model_name=? AND variable='pm25'
-              AND issued_at NOT IN (
-                SELECT DISTINCT issued_at FROM forecasts
-                WHERE model_name=? AND variable='pm25'
-                ORDER BY issued_at DESC LIMIT ?
-              )
-            """,
-            (MODEL_NAME, MODEL_NAME, keep),
-        )
-        return cursor.rowcount
 
 
 # --- serving -----------------------------------------------------------------

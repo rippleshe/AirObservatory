@@ -26,3 +26,4 @@ data/*.log
 data/*.db-wal
 data/*.db-shm
 data/models/lstm_pm25_*.json
+data/backups/

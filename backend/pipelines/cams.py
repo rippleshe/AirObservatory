@@ -26,42 +26,6 @@ def _analysis_only(points: list) -> list:
     return [point for point in points if point.valid_at <= now]
 
 
-def _prune_forecast_snapshots(keep_snapshots: int = 3) -> int:
-    """Cap per-model ``issued_at`` snapshots in ``forecasts``.
-
-    Every refresh inserts a full forecast matrix under a fresh ``issued_at``
-    and nothing removed old ones, so the table grew without bound (~7,200
-    rows per CAMS cycle). Keep only the latest snapshots per model.
-    """
-    with transaction() as con:
-        cursor = con.execute(
-            """
-            DELETE FROM forecasts
-            WHERE rowid IN (
-                SELECT f.rowid
-                FROM forecasts f
-                JOIN (
-                    SELECT model_name, model_version, issued_at,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY model_name, model_version
-                               ORDER BY issued_at DESC
-                           ) AS recency
-                    FROM (
-                        SELECT DISTINCT model_name, model_version, issued_at
-                        FROM forecasts
-                    )
-                ) snapshots
-                  ON snapshots.model_name = f.model_name
-                 AND snapshots.model_version = f.model_version
-                 AND snapshots.issued_at = f.issued_at
-                WHERE snapshots.recency > ?
-            )
-            """,
-            (keep_snapshots,),
-        )
-        return cursor.rowcount
-
-
 async def refresh_cams(forecast_hours: int | None = None) -> dict:
     settings = get_settings()
     horizon = forecast_hours or settings.forecast_hours
@@ -224,8 +188,6 @@ async def refresh_cams(forecast_hours: int | None = None) -> dict:
             # starved by back-to-back transactions.
             await asyncio.sleep(0.25)
 
-    pruned = _prune_forecast_snapshots()
-
     finished = datetime.now(UTC)
     status = "success" if not errors else ("partial" if accepted_current else "error")
     with transaction() as con:
@@ -244,7 +206,6 @@ async def refresh_cams(forecast_hours: int | None = None) -> dict:
                 perf_counter() - t0,
                 status,
                 f"{accepted_current} current locations; {forecast_rows} forecast values"
-                + (f"; pruned {pruned} stale forecast rows" if pruned else "")
                 + (f"; errors: {' | '.join(errors)}" if errors else ""),
                 run_id,
             ),
@@ -254,7 +215,6 @@ async def refresh_cams(forecast_hours: int | None = None) -> dict:
         "run_id": run_id,
         "locations": accepted_current,
         "forecast_values": forecast_rows,
-        "pruned_forecast_rows": pruned,
         "errors": errors,
         "latest_source_time": latest_source_time,
     }
@@ -389,6 +349,7 @@ async def backfill_cams_catalog(
     start_date: str,
     end_date: str,
     batch_size: int = 10,
+    min_location_id: int | None = None,
 ) -> dict:
     source = get_source("openmeteo_cams_analysis")
     if source is None:
@@ -399,8 +360,10 @@ async def backfill_cams_catalog(
             """
             SELECT * FROM locations
             WHERE active=1 AND station_type='city_reference'
+              AND (? IS NULL OR location_id>=?)
             ORDER BY location_id
-            """
+            """,
+            (min_location_id, min_location_id),
         ).fetchall()
 
     run_id = str(uuid4())

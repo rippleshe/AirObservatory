@@ -38,6 +38,29 @@ try {
 
   const map = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await map.goto("http://127.0.0.1:5173/overview", { waitUntil: "networkidle" });
+  const beforeMapZoom = await map.evaluate(() => {
+    const singles = document.querySelectorAll(".china-map-shell .marks circle.mark").length;
+    const clusters = [...document.querySelectorAll(".china-map-shell .map-cluster text")]
+      .reduce((total, text) => total + Number(text.textContent), 0);
+    const label = document.querySelector(".china-map-shell .label-name");
+    return { represented: singles + clusters, font: label ? getComputedStyle(label).fontSize : null };
+  });
+  if (beforeMapZoom.represented < 120) throw new Error("The expanded city atlas is missing visible or clustered cities");
+  await map.getByRole("button", { name: "放大地图" }).click();
+  await map.waitForTimeout(450);
+  const afterMapZoom = await map.evaluate(() => {
+    const singles = document.querySelectorAll(".china-map-shell .marks circle.mark").length;
+    const clusters = [...document.querySelectorAll(".china-map-shell .map-cluster text")]
+      .reduce((total, text) => total + Number(text.textContent), 0);
+    const label = document.querySelector(".china-map-shell .label-name");
+    return { represented: singles + clusters, font: label ? getComputedStyle(label).fontSize : null };
+  });
+  if (afterMapZoom.represented !== beforeMapZoom.represented || afterMapZoom.font !== beforeMapZoom.font) {
+    throw new Error("Map zoom lost city marks or scaled labels");
+  }
+  await map.getByRole("button", { name: "复位地图" }).click();
+  await map.waitForTimeout(450);
+  report.push({ interaction: "expanded atlas zoom preserves city count and font size", cities: beforeMapZoom.represented });
   await map.locator(".marks circle.mark").first().click({ force: true });
   await map.locator(".city-card .card-open").waitFor({ state: "visible" });
   await map.locator(".city-card .card-open").click();

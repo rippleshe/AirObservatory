@@ -129,7 +129,7 @@ def materialize_city_fingerprint(
                 run_id, analysis_type, version, window_start, window_end,
                 created_at, config_json, metrics_json, artifact_path, status
             ) VALUES (
-                ?, 'city_fingerprint', 'province-representative-summary-pca-kmeans',
+                ?, 'city_fingerprint', 'all-eligible-cities-summary-pca-kmeans',
                 ?, ?, ?, ?, ?, NULL, 'success'
             )
             """,
@@ -145,11 +145,7 @@ def materialize_city_fingerprint(
                         "max_clusters": max_clusters,
                         "standardization": "z-score across cities",
                         "missing_strategy": "complete_case_no_interpolation",
-                        "city_selection": (
-                            "one city per province by highest window-mean PM2.5 "
-                            "(pm25_mean), ties to the lower location_id; applied after "
-                            "the summary features and before PCA/KMeans"
-                        ),
+                        "city_selection": artifact.representative_rule,
                         "cluster_selection": (
                             f"max silhouette for k=2..{max_clusters}"
                         ),

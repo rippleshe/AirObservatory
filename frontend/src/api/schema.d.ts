@@ -1185,6 +1185,11 @@ export interface components {
             providers: {
                 [key: string]: components["schemas"]["ProviderStatus"];
             };
+            /**
+             * Ground Pm25 Recent Cities
+             * @default 0
+             */
+            ground_pm25_recent_cities: number;
         };
         /** SystemResponse */
         SystemResponse: {

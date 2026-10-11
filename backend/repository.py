@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from .db import connect
 
@@ -22,6 +22,20 @@ def table_counts() -> dict[str, int]:
             name: int(con.execute(f"SELECT COUNT(*) AS n FROM {name}").fetchone()["n"])
             for name in TABLES_FOR_STATUS
         }
+
+
+def ground_pm25_recent_cities(hours: int = 24) -> int:
+    cutoff = (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
+    with connect() as con:
+        return int(con.execute(
+            """
+            SELECT COUNT(DISTINCT location_id)
+            FROM air_observations
+            WHERE observed_at >= ? AND pm25 IS NOT NULL
+              AND quality_flag != 'flagged'
+            """,
+            (cutoff,),
+        ).fetchone()[0])
 
 
 def latest_ingestion(provider: str, dataset: str) -> sqlite3.Row | None:

@@ -15,11 +15,9 @@ from backend.repository import active_location_rows
 from .features import PCA_FEATURES, load_city_feature_frame
 
 REPRESENTATIVE_RULE = (
-    "One city per province: among the cities that clear the >=168 complete-hour guard "
-    "in the common window, the province's highest window-mean PM2.5 (pm25_mean) is the "
-    "province representative; ties fall to the lower location_id. Selection happens "
-    "after the summary features and before PCA/KMeans, so every statistic below "
-    "describes the provincial representatives only."
+    "All city references with at least 168 complete pollution-weather paired hours "
+    "in the same common analysis window are included. Spatially correlated CAMS "
+    "grid cells are not independent ground observations."
 )
 
 FINGERPRINT_FEATURES = (
@@ -178,11 +176,7 @@ def fit_city_fingerprint(
         raise ValueError("Fewer than three cities have enough complete rows in the common window")
 
     eligible_city_count = len(rows)
-    representatives = _province_representatives(rows)
-    if len(representatives) < 3:
-        raise ValueError("Fewer than three provinces have an eligible representative city")
-
-    city_frame = pd.DataFrame(representatives)
+    city_frame = pd.DataFrame(rows)
     matrix = city_frame[list(FINGERPRINT_FEATURES)].astype(float)
     scaler = StandardScaler()
     standardized = scaler.fit_transform(matrix)

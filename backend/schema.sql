@@ -52,6 +52,14 @@ CREATE TABLE IF NOT EXISTS provider_bindings (
 CREATE INDEX IF NOT EXISTS idx_provider_bindings_source
 ON provider_bindings(source_id, active);
 
+CREATE TABLE IF NOT EXISTS provider_discovery_checks (
+    location_id INTEGER NOT NULL REFERENCES locations(location_id),
+    source_id INTEGER NOT NULL REFERENCES sources(source_id),
+    checked_at TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    PRIMARY KEY(location_id, source_id)
+);
+
 CREATE TABLE IF NOT EXISTS air_observations (
     observation_id INTEGER PRIMARY KEY AUTOINCREMENT,
     location_id INTEGER NOT NULL REFERENCES locations(location_id),

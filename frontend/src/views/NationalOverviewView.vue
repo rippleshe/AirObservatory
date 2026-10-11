@@ -117,10 +117,10 @@ const aqiCities = computed(() => {
 
 const displayCities = computed<NationalCity[]>(() => {
   const index = scrubIndex.value;
-  if (index == null) return provinces.value;
+  if (index == null) return cities.value;
   const times = pmSeries.data.value?.times ?? [];
   const at = Math.min(Math.max(0, index), Math.max(0, times.length - 1));
-  return provinces.value.flatMap((city) => {
+  return cities.value.map((city) => {
     const pm = pmCities.value.get(city.location_id);
     const aq = aqiCities.value.get(city.location_id);
     const pm25 = pm?.values[at] ?? null;
@@ -310,7 +310,7 @@ onBeforeUnmount(() => {
 
     <section ref="stageEl" v-reveal class="stage">
       <header class="stage-head">
-        <h1 class="stage-title">全国空气场</h1>
+        <h1 class="stage-title">全国空气场 <small class="stage-city-count data-mono">{{ displayCities.length }} 城</small></h1>
         <div class="update-note">
           <strong class="data-mono">{{ formatTime(national.data.value?.latest_source_time) }}</strong>
           <span>{{ national.data.value?.aqi_standard ?? "HJ 633-2026" }}</span>
@@ -451,8 +451,9 @@ onBeforeUnmount(() => {
 
 .map-area {
   position: relative;
-  min-height: 580px;
+  min-height: clamp(640px, 73vh, 850px);
 }
+.stage-city-count { color: var(--muted); font-size: 12px; font-weight: 500; margin-left: 12px; letter-spacing: 0; }
 
 .map-area::before {
   content: "";

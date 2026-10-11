@@ -139,7 +139,7 @@ function metricLabel(city: NationalCity) {
    and the charts — the map's only job is "where to look". Equal size keeps
    the field calm and dense clusters legible; severity is carried by colour
    plus crisp geometric emphasis rings, never by bubble volume. */
-const MARK_R = 5.5;
+const MARK_R = 4.6;
 const MARK_GAP = 2.5;
 
 /* The reading row appears only where there is something to read — a province
@@ -249,37 +249,11 @@ const view = computed(() => {
     mark.ping = severe[0] === mark.city.location_id;
   }
 
-  // Dot-collision relaxation: severity-ordered, a dot that would fuse with a
-  // more severe one slides away (max ~10px) so dense clusters never merge.
+  // Keep georeferenced dots at their actual coordinates. Screen-space
+  // clustering handles dense cities without moving their locations.
   const ordered = [...marks].sort(
     (a, b) => (rankById.get(a.city.location_id) ?? 0) - (rankById.get(b.city.location_id) ?? 0),
   );
-  const minDist = MARK_R * 2 + MARK_GAP;
-  for (let iter = 0; iter < 8; iter++) {
-    let moved = false;
-    for (let i = 0; i < ordered.length; i++) {
-      for (let j = i + 1; j < ordered.length; j++) {
-        const a = ordered[i];
-        const b = ordered[j];
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        let dist = Math.hypot(dx, dy);
-        if (dist >= minDist) continue;
-        if (dist < 0.01) {
-          dx = 1;
-          dy = -0.6;
-          dist = 1;
-        }
-        const push = (minDist - dist) / Math.min(dist, 24);
-        const cap = (minDist - dist) / 2 + 1.2;
-        const step = Math.min(push, cap);
-        b.x += dx * step;
-        b.y += dy * step;
-        moved = true;
-      }
-    }
-    if (!moved) break;
-  }
 
   // Severity-ranked label placement: the provinces the page is about claim
   // the readable positions before the quiet ones take them.
@@ -398,6 +372,70 @@ watch(view, () => {
   anim.value = { from, t: 0 };
   gsap.to(anim.value, { t: 1, duration: 0.45, ease: "power2.out", overwrite: true });
 });
+
+/* Geographic geometry zooms; marks and names remain fixed-size screen glyphs. */
+const screenField = computed(() => {
+  const t = transform.value;
+  const points = render.value.marks.map((mark) => ({
+    ...mark, sx: t.applyX(mark.x), sy: t.applyY(mark.y),
+  }));
+  type ScreenMark = (typeof points)[number];
+  const groups: ScreenMark[][] = [];
+  const minDistance = t.k > 2.6 ? 14 : 19;
+  for (const mark of points) {
+    const nearby = groups.find((group) =>
+      group.some((member) => Math.hypot(mark.sx - member.sx, mark.sy - member.sy) < minDistance),
+    );
+    if (nearby) nearby.push(mark);
+    else groups.push([mark]);
+  }
+  const singles = groups.filter((group) => group.length === 1).map((group) => group[0]!);
+  const clusters = groups.filter((group) => group.length > 1).map((group) => {
+    const x = group.reduce((sum, mark) => sum + mark.sx, 0) / group.length;
+    const y = group.reduce((sum, mark) => sum + mark.sy, 0) / group.length;
+    const leader = [...group].sort((a, b) =>
+      (metricValue(b.city) ?? -Infinity) - (metricValue(a.city) ?? -Infinity),
+    )[0]!;
+    return { x, y, count: group.length, fill: leader.fill };
+  });
+
+  const limit = t.k < 1.5 ? 11 : t.k < 2.5 ? 25 : 80;
+  const emphasized = singles.filter((mark) =>
+    mark.city.location_id === pinned.value?.location_id ||
+    mark.city.location_id === hoveredCity.value?.location_id,
+  );
+  const order = [...singles].sort((a, b) =>
+    (metricValue(b.city) ?? -Infinity) - (metricValue(a.city) ?? -Infinity),
+  );
+  const candidates = [...emphasized, ...order.slice(0, limit)];
+  const placed: Box[] = [];
+  const labels: Array<{ id: number; name: string; slot: Slot }> = [];
+  for (const mark of candidates) {
+    if (labels.some((label) => label.id === mark.city.location_id)) continue;
+    const name = mark.city.name;
+    const w = textWidth(name, 12.5) + 6;
+    for (const slot of slotsFor(mark.sx, mark.sy, mark.r, w, 17)) {
+      const box = boxFor(mark.sx, mark.sy, mark.r, w, 17, slot);
+      if (box.x < 6 || box.y < 6 || box.x + box.w > size.value.w - 6 || box.y + box.h > size.value.h - 6) continue;
+      if (placed.some((other) => hits(box, other, 4))) continue;
+      placed.push(box);
+      labels.push({ id: mark.city.location_id, name, slot });
+      break;
+    }
+  }
+  return { singles, clusters, labels };
+});
+
+function openCluster(x: number, y: number) {
+  if (!svgEl.value || !zoomBehavior) return;
+  const t = transform.value;
+  const k = Math.min(4.5, Math.max(2.0, t.k * 1.8));
+  const ratio = k / t.k;
+  const next = zoomIdentity
+    .translate(size.value.w / 2 - (x - t.x) * ratio, size.value.h / 2 - (y - t.y) * ratio)
+    .scale(k);
+  select(svgEl.value).transition().duration(300).ease(easeCubicOut).call(zoomBehavior.transform, next);
+}
 
 function fmtTime(value: string | null | undefined) {
   if (!value) return "—";
@@ -950,73 +988,39 @@ onBeforeUnmount(() => {
           />
         </g>
 
-        <!-- City marks: uniform precision dots. Emphasis is geometry, not
-             glow — a thin reticle on the three most severe provinces and a
-             single radar ping on the worst one. -->
-        <g class="marks">
-          <template v-for="mark in render.marks" :key="mark.city.location_id">
-            <circle
-              v-if="mark.ping"
-              class="ping"
-              :cx="mark.x"
-              :cy="mark.y"
-              :r="MARK_R + 2.5"
-              :stroke="mark.fill"
-            />
-            <circle
-              v-if="mark.emphasis"
-              class="reticle"
-              :cx="mark.x"
-              :cy="mark.y"
-              :r="MARK_R + 3.5"
-            />
-            <circle
-              v-else-if="mark.ground"
-              class="ground-ring"
-              :cx="mark.x"
-              :cy="mark.y"
-              :r="MARK_R + 2.6"
-            />
-            <circle
-              class="mark"
-              :class="{ active: hoveredCity === mark.city }"
-              :cx="mark.x"
-              :cy="mark.y"
-              :r="mark.r"
-              :fill="mark.fill"
-              @mouseenter="onMarkEnter(mark.city)"
-              @mouseleave="onMarkLeave()"
-              @click.stop="onMarkClick(mark.city)"
-            />
-          </template>
+      </g>
+      <!-- Geographic paths zoom; observations remain fixed-size SVG glyphs. -->
+      <g class="marks">
+        <template v-for="mark in screenField.singles" :key="mark.city.location_id">
+          <circle v-if="mark.ping" class="ping" :cx="mark.sx" :cy="mark.sy" :r="MARK_R + 2.5" :stroke="mark.fill" />
+          <circle v-if="mark.emphasis" class="reticle" :cx="mark.sx" :cy="mark.sy" :r="MARK_R + 3.5" />
+          <circle v-else-if="mark.ground" class="ground-ring" :cx="mark.sx" :cy="mark.sy" :r="MARK_R + 2.6" />
+          <circle
+            class="mark"
+            :class="{ active: hoveredCity === mark.city }"
+            :cx="mark.sx" :cy="mark.sy" :r="mark.r" :fill="mark.fill"
+            role="button" tabindex="0" :aria-label="`${mark.city.name}，点击查看数据`"
+            @mouseenter="onMarkEnter(mark.city)"
+            @mouseleave="onMarkLeave"
+            @click.stop="onMarkClick(mark.city)"
+            @keydown.enter.prevent="onMarkClick(mark.city)"
+            @keydown.space.prevent="onMarkClick(mark.city)"
+          />
+        </template>
+        <g v-for="cluster in screenField.clusters" :key="`cluster-${cluster.x.toFixed(1)}-${cluster.y.toFixed(1)}`"
+          class="map-cluster" role="button" tabindex="0"
+          :aria-label="`${cluster.count} 个城市，放大查看`"
+          @click.stop="openCluster(cluster.x, cluster.y)"
+          @keydown.enter.prevent="openCluster(cluster.x, cluster.y)"
+          @keydown.space.prevent="openCluster(cluster.x, cluster.y)">
+          <circle :cx="cluster.x" :cy="cluster.y" r="11" :stroke="cluster.fill" />
+          <text :x="cluster.x" :y="cluster.y" text-anchor="middle" dominant-baseline="central">{{ cluster.count }}</text>
         </g>
-
-        <!-- Labels: severity-ranked, collision-free, haloed ink -->
-        <g class="labels" aria-hidden="true">
-          <g
-            v-for="label in render.labels"
-            :key="label.city.location_id"
-            class="label"
-            :class="{ reading: label.reading }"
-          >
-            <text
-              :x="label.slot.tx"
-              :y="label.slot.ty"
-              :text-anchor="label.slot.anchor"
-              dominant-baseline="central"
-              class="label-name"
-            >
-              {{ label.city.name }}
-              <tspan
-                v-if="label.reading"
-                :x="label.slot.tx"
-                dy="14"
-                class="label-value"
-                :fill="label.fill"
-              >{{ label.valueText }}</tspan>
-            </text>
-          </g>
-        </g>
+      </g>
+      <g class="labels" aria-hidden="true">
+        <text v-for="label in screenField.labels" :key="label.id"
+          :x="label.slot.tx" :y="label.slot.ty" :text-anchor="label.slot.anchor"
+          dominant-baseline="central" class="label-name">{{ label.name }}</text>
       </g>
     </svg>
 
@@ -1171,6 +1175,18 @@ onBeforeUnmount(() => {
   stroke: var(--ink);
   stroke-width: 1.8;
 }
+
+.map-cluster { cursor: zoom-in; }
+.map-cluster circle { fill: var(--sheet); stroke-width: 2; }
+.map-cluster text {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--ink);
+  pointer-events: none;
+}
+.map-cluster:focus-visible circle,
+.marks .mark:focus-visible { stroke: var(--ink); stroke-width: 2.5; outline: none; }
 
 /* Emphasis is crisp geometry: a hairline reticle on the severe provinces and
    one expanding hairline ping on the worst — no glows, no blurred halos. */

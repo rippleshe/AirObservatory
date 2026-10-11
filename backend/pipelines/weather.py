@@ -12,7 +12,7 @@ def _iso(value: datetime) -> str:
     return value.astimezone(UTC).isoformat()
 
 
-def _locations(city: str | None):
+def _locations(city: str | None, min_location_id: int | None = None):
     if city:
         location = get_location(city)
         if location is None:
@@ -23,8 +23,10 @@ def _locations(city: str | None):
             """
             SELECT * FROM locations
             WHERE active=1 AND station_type='city_reference'
+              AND (? IS NULL OR location_id>=?)
             ORDER BY location_id
-            """
+            """,
+            (min_location_id, min_location_id),
         ).fetchall()
 
 
@@ -33,12 +35,13 @@ async def backfill_weather(
     end_date: str,
     city: str | None = None,
     batch_size: int = 10,
+    min_location_id: int | None = None,
 ) -> dict:
     source = get_source("openmeteo_weather_reanalysis")
     if source is None:
         raise RuntimeError("Database is not initialized with the weather source")
 
-    locations = _locations(city)
+    locations = _locations(city, min_location_id)
     run_id = str(uuid4())
     started = datetime.now(UTC)
     t0 = perf_counter()

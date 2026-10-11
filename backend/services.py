@@ -12,6 +12,7 @@ from .repository import (
     backtest_rows,
     backtest_sample_rows,
     coverage_rows,
+    ground_pm25_recent_cities,
     latest_city_fingerprint_row,
     latest_city_structure_row,
     latest_forecast_rows,
@@ -174,6 +175,7 @@ def get_status() -> StatusResponse:
         ok=True,
         storage="SQLite WAL",
         counts=table_counts(),
+        ground_pm25_recent_cities=ground_pm25_recent_cities(),
         providers={
             "cams": _provider_status(
                 "Open-Meteo", "cams_live_and_forecast", True, timedelta(hours=15)

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
+from backend.analytics.materialize import materialize_city_fingerprint, materialize_city_structure
 from backend.config import get_settings
 from backend.db import init_db, transaction
 from backend.ml import lstm_pipeline
@@ -12,6 +14,8 @@ from backend.ml.forecasting import refresh_baseline_forecasts
 from backend.pipelines.cams import refresh_cams
 from backend.pipelines.openaq import refresh_openaq
 from backend.pipelines.weather import backfill_weather
+from backend.repository import active_location_rows, latest_city_fingerprint_row
+from scripts.backup import backup_database, prune_backups
 
 logging.basicConfig(
     level=logging.INFO,
@@ -76,6 +80,57 @@ async def refresh_lstm() -> dict:
     return await asyncio.to_thread(lstm_pipeline.train_and_register)
 
 
+async def archive_database() -> dict:
+    def archive() -> dict:
+        path = backup_database()
+        return {"status": "ok", "backup": str(path), "expired": prune_backups(path.parent)}
+
+    return await asyncio.to_thread(archive)
+
+
+async def refresh_research_statistics() -> dict:
+    """Update stored research products when the aligned archive has advanced."""
+    def refresh() -> dict:
+        from backend.db import connect
+
+        with connect() as con:
+            newest = con.execute(
+                "SELECT MAX(observed_at) FROM weather_observations"
+            ).fetchone()[0]
+            eligible = con.execute(
+                "SELECT COUNT(DISTINCT location_id) FROM weather_observations "
+                "WHERE observed_at >= datetime('now', '-14 days')"
+            ).fetchone()[0]
+        previous = latest_city_fingerprint_row()
+        previous_size = (
+            json.loads(previous["metrics_json"]).get("eligible_city_count", 0)
+            if previous else 0
+        )
+        if newest is None or (
+            previous
+            and previous_size >= eligible
+            and datetime.fromisoformat(previous["created_at"])
+            >= datetime.now(UTC) - timedelta(hours=20)
+        ):
+            return {"status": "ok", "action": "already-current"}
+        completed = 0
+        for city in active_location_rows():
+            try:
+                materialize_city_structure(int(city["location_id"]))
+                completed += 1
+            except ValueError as exc:
+                logger.warning("PCA skipped for %s: %s", city["city"], exc)
+        fingerprint = materialize_city_fingerprint()
+        return {
+            "status": "ok",
+            "city_pca": completed,
+            "fingerprint_cities": fingerprint["city_count"],
+            "analysis_end": fingerprint["window_end"],
+        }
+
+    return await asyncio.to_thread(refresh)
+
+
 def _fail_stale_running_runs() -> None:
     """A worker that died mid-run leaves 'running' rows that never resolve."""
     with transaction() as con:
@@ -129,6 +184,13 @@ async def main() -> None:
             86_400,
             refresh_lstm,
             initial_delay=45.0,
+        ),
+        periodic("verified database backup", 3600, archive_database, initial_delay=5.0),
+        periodic(
+            "research statistics",
+            86_400,
+            refresh_research_statistics,
+            initial_delay=150.0,
         ),
     )
 

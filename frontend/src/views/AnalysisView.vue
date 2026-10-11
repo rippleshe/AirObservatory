@@ -90,7 +90,7 @@ function focusCity(id: number, name: string) {
 
     <template v-if="scope === 'national'">
       <div v-if="fingerprintMeta" class="research-evidence">
-        <span><strong>{{ fingerprintMeta.city_count }}</strong> 省级代表城市 / <strong>{{ fingerprintMeta.eligible_city_count }}</strong> 合格城市</span>
+        <span><strong>{{ fingerprintMeta.city_count }}</strong> 纳入城市 / <strong>{{ fingerprintMeta.eligible_city_count }}</strong> 合格城市</span>
         <span><strong>{{ fingerprintMeta.sample_hours_min }}–{{ fingerprintMeta.sample_hours_max }}</strong> 小时/城市</span>
         <span>历史分析窗口 <strong>{{ fmt(fingerprintMeta.window_start) }} — {{ fmt(fingerprintMeta.window_end) }}</strong></span>
         <span>聚类轮廓系数 <strong>{{ fingerprintMeta.silhouette?.toFixed(2) ?? "—" }}</strong></span>
@@ -112,7 +112,7 @@ function focusCity(id: number, name: string) {
         </div>
       </section>
       <div v-if="fingerprintMeta" class="analysis-method-note">
-        <strong>抽样口径</strong> 31 个省级代表是在同一历史分析窗口内，从合格城市中按 PM2.5 均值最高者选取；不等同于全国地图的实时 AQI 代表规则。
+        <strong>分析口径</strong> {{ fingerprintMeta.representative_rule.startsWith("All city") ? "纳入共同历史窗口中拥有至少 168 个完整污染—气象配对小时的全部城市；相邻城市的 CAMS 网格并非独立地面观测。" : "当前仍在展示旧的省级代表分析产物，待分析任务重算后将覆盖全部合格城市。" }}
         <span v-if="fingerprint.data.value?.cluster_profiles.some((cluster) => cluster.city_count === 1)">当前分群存在单城市组，且轮廓系数仅 {{ fingerprintMeta.silhouette?.toFixed(2) ?? "—" }}，应视为离群探索线索。</span>
       </div>
       <footer class="research-evidence">

@@ -5,7 +5,7 @@ from backend.city_catalog import CITY_CATALOG
 def test_city_catalog_keeps_original_ids_and_expands_national_coverage():
     assert [city.location_id for city in CITY_CATALOG[:10]] == list(range(1, 11))
     assert [city.location_id for city in CITY_CATALOG] == list(range(1, len(CITY_CATALOG) + 1))
-    assert len(CITY_CATALOG) == 60
+    assert len(CITY_CATALOG) >= 120
 
 
 def test_hj633_2026_realtime_breakpoints():

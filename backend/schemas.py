@@ -125,6 +125,7 @@ class StatusResponse(BaseModel):
     storage: str
     counts: dict[str, int]
     providers: dict[str, ProviderStatus]
+    ground_pm25_recent_cities: int = 0
 
 
 class ModelMetric(BaseModel):

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -14,7 +16,7 @@ class CityReference:
 
 
 # Keep the first ten entries in their original order so existing location_id values stay stable.
-CITY_CATALOG: tuple[CityReference, ...] = (
+BASE_CITY_CATALOG: tuple[CityReference, ...] = (
     CityReference(1, "北京", "北京", 39.9042, 116.4074, "华北"),
     CityReference(2, "上海", "上海", 31.2304, 121.4737, "华东"),
     CityReference(3, "广州", "广东", 23.1291, 113.2644, "华南"),
@@ -76,6 +78,21 @@ CITY_CATALOG: tuple[CityReference, ...] = (
     CityReference(59, "咸阳", "陕西", 34.3296, 108.7089, "西北"),
     CityReference(60, "克拉玛依", "新疆", 45.5799, 84.8892, "西北"),
 )
+
+# Province-checked city centers from Open-Meteo Geocoding (2026-10-11).
+# Provenance IDs are preserved in the CSV; the original 60 IDs never change.
+with (Path(__file__).with_name("city_geocoding.csv")).open(encoding="utf-8", newline="") as handle:
+    CITY_CATALOG = BASE_CITY_CATALOG + tuple(
+        CityReference(
+            int(row["location_id"]),
+            row["city"],
+            row["province"],
+            float(row["latitude"]),
+            float(row["longitude"]),
+            row["region"],
+        )
+        for row in csv.DictReader(handle)
+    )
 
 
 def city_seed_rows() -> list[tuple[int, str, str, str, float, float]]:

@@ -83,6 +83,10 @@ function retry() {
             <dt>FCST</dt>
             <dd class="data-mono">{{ status.data.value?.counts.forecasts ?? "—" }}</dd>
           </div>
+          <div>
+            <dt>近24小时地面 PM2.5 城市</dt>
+            <dd class="data-mono">{{ status.data.value?.ground_pm25_recent_cities ?? "—" }} / {{ status.data.value?.counts.locations ?? "—" }}</dd>
+          </div>
         </dl>
       </section>
     </div>

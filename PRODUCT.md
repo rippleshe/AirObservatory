@@ -1,5 +1,9 @@
 # Product
 
+> **本文档是 Air Observatory 唯一的权威产品与视觉口径**（受众：科研人员）。
+> 配套文档：[docs/科研可视化重构.md](docs/科研可视化重构.md) 是实施路线，[docs/选题报告.md](docs/选题报告.md) 是选题正式表述，[docs/协作指南.md](docs/协作指南.md) 是四人分工与流程规范，[ARCHITECTURE.md](ARCHITECTURE.md) 是数据闭环与工程边界。
+> 历史上面向普通用户、主张“文字越少越好”的 `DESIGN.md`、`docs/SESSION_BRIEF.md`、`docs/REDESIGN.md` 与本文冲突，已从仓库删除（需要时从 git 历史取回）。**四个页面的分支不得再引用这三份文件的规则。**
+
 <!-- impeccable:product-schema 1 -->
 
 ## Platform

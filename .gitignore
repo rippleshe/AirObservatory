@@ -11,8 +11,9 @@ frontend/src/**/*.js
 frontend/vite.config.js
 frontend/vite.config.d.ts
 
-# 密钥与本地配置，绝不入库
-.env
+# 注：.env 是故意入库的课程组共用密钥，4 个协作者 clone 即用。
+#     一旦仓库转为 public、或密钥被滥用，立刻去 OpenAQ 后台轮换并更新本文件。
+#     想换成自己的私钥：复制 .env 为 .env.local 再改 OPENAQ_API_KEY（.env.local 不入库）。
 .env.local
 
 # 本机缓存 / 本地配置，不入库

@@ -55,6 +55,32 @@ uv run python -m scripts.backfill_weather --all --start 2026-06-25 --end 2026-09
 
 或直接使用课程组共享的数据库文件（网盘 / Release 附件）放到 `data/air_observatory.db`。离线分析产物用 `scripts.run_analysis` 与 `scripts.run_fingerprint` 重新物化。单元测试使用临时库，不依赖该文件。
 
+## 团队共享后端
+
+四个页面各自本地开发时默认连本机 `127.0.0.1:8110`。若只让一台机器跑采集（也就是只有它持有 OpenAQ 密钥），其他人不必各自建库：
+
+```powershell
+# frontend/.env.local
+VITE_API_PROXY_TARGET=http://<那台机器的地址>:8110
+```
+
+`pnpm dev` 启动后即读到同一套真实数据，本地不需要数据库，也不需要密钥。
+
+- 局域网内填内网 IP 即可；跨网络需要服务器或隧道（Cloudflare Tunnel / frp）。
+- 若前端不走 Vite 代理、而是从别的域名直连该 API，要在后端 `.env` 设置 `AIR_OBSERVATORY_CORS_ORIGINS=http://<前端地址>`。不设置则不加任何 CORS 头；API 全部是只读 GET，CORS 也只放行 GET。
+
+## 密钥怎么给队友
+
+`.env` 不入库是硬规则：仓库是 public，提交密钥等于公开，任何人都能消耗你的 OpenAQ 额度。队友要拿密钥只走私有渠道，三选一：
+
+| 方式 | 说明 |
+| --- | --- |
+| 群 / 私聊直接发，各自写进本地 `.env` | 课程作业最快，密钥只在你和三个队友之间 |
+| 密码管理器共享条目（Bitwarden 等免费版） | 比聊天记录可靠，可随时更换 |
+| 让队友连你的后端（上一节） | 密钥完全不出你的机器，队友根本不需要它 |
+
+无论哪种，`.env` 都只存在各人本地；CI 不读密钥。
+
 ## 文档
 
 | 文档 | 作用 |

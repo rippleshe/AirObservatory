@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     weather_archive_lag_days: int = Field(default=5, ge=1, le=20)
     forecast_hours: int = Field(default=24, ge=1, le=120)
     openaq_radius_m: int = Field(default=25_000, ge=1_000, le=25_000)
+    cors_origins: str = Field(
+        default="",
+        description="逗号分隔的允许来源；留空表示不加 CORS 头（本机同源代理不需要）。",
+    )
     openaq_api_key: SecretStr | None = Field(
         default=None,
         validation_alias="OPENAQ_API_KEY",
@@ -33,6 +37,10 @@ class Settings(BaseSettings):
     def resolved_database_path(self) -> Path:
         path = self.database_path
         return path if path.is_absolute() else ROOT / path
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
 
 
 @lru_cache

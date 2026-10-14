@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Primary users are students, instructors, and reviewers evaluating a data-visualization course project. The interface must also remain understandable to a non-specialist reader who wants to inspect current air-quality conditions, while retaining enough provenance and analytical depth for a technically literate reviewer.
+Primary users are environmental science, atmospheric science and data science researchers who investigate air-quality variation, pollutant–meteorology relationships, model–observation differences and forecast skill. The university course is the evaluation context, not the product's intended audience. Research questions, comparable time windows, provenance, uncertainty and reproducible evidence take precedence over a non-specialist news-style narrative.
 
 ## Product Purpose
 
@@ -38,13 +38,13 @@ The primary flow is national overview → city drill-down → structural analysi
 
 Product name: Air Observatory.
 
-The visual language is a public-facing environmental information product: map-first, calm, direct, and evidence-led. The first reading must work for a non-specialist without requiring them to decode axes, acronyms, model names, or statistical terminology. Technical provenance and analytical depth remain available as a secondary layer rather than dominating the primary story. It should not resemble a generic neon command center, a research plotting notebook, or a grid of interchangeable KPI cards.
+The visual language is a research-oriented visual analytics workbench: map-first, calm, precise and evidence-led. Experienced readers should be able to inspect periods, cohorts, statistical relationships, forecast error and missingness without drilling through decorative explanation layers. Statistical terminology is allowed when defined and measurable, and methods must remain attached to their evidence. The interface must not become a neon command center, an uncoordinated notebook of plots, or a grid of interchangeable KPI cards.
 
 National interaction commitments:
 - The China map is the primary national navigation surface; city entry happens from map markers, not a parallel text ranking.
-- Primary views lead with a plain-language conclusion, then use graphics as evidence; chart-type names and methodology labels are secondary.
+- Primary views lead with a research question, analytical controls and evidence; quantitative conclusions must follow from visible data, with methods accessible alongside the relevant analysis.
 - Direct labels, semantic color, and annotations are preferred over requiring users to read dense axes or legends.
-- Technical terms such as PCA, RMSE, provider bindings, model readiness, and backtest diagnostics belong in deep-analysis or data/method sections.
+- PCA, RMSE, sample size, time range, provider bindings and model readiness are first-class analytical metadata wherever needed to interpret a figure.
 - Geographic boundaries and labels should remain vector-crisp at normal zoom; core charts should render at deliberate high DPI.
 - Supporting copy and chart annotation must stay legible at presentation distance; tiny technical text is not a substitute for density.
 - National analysis should prefer real charts and spatial relationships over rows of decorative cards or text-only rankings.

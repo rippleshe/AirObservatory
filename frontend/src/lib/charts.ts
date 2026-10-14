@@ -68,7 +68,7 @@ export function chartTheme() {
   };
 }
 
-/* Every chart is SVG: DESIGN.md asks for vector-crisp geography and for core
+/* Every chart is SVG: PRODUCT.md asks for vector-crisp geography and for core
    charts that hold up at projector distance and in print. Call sites pass the
    renderer explicitly so the choice is never accidental. */
 export function init(

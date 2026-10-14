@@ -40,7 +40,32 @@ pnpm run dev
 
 ## 配置
 
-复制 `.env.example` 为 `.env` 并配置 `OPENAQ_API_KEY`。`.env` 已被 Git 忽略；密钥不得进入源码、README 或前端环境变量。
+复制 `.env.example` 为 `.env` 并配置 `OPENAQ_API_KEY`。`.env` 已被 Git 忽略，且已从版本库中移除；密钥不得进入源码、README 或前端环境变量。
+
+## 数据准备
+
+运行时数据库 `data/air_observatory.db` **不入库**：单文件已超 GitHub 100 MiB 上限，且每次采集都会写入，入库必然产生无法手工合并的二进制冲突。首次 clone 后任选其一：
+
+```powershell
+uv run python -m scripts.init_db
+uv run python -m scripts.backfill_cams --all --start 2026-06-25 --end 2026-09-23 --batch-size 5
+uv run python -m scripts.backfill_openaq --city 北京 --start 2026-06-25 --end 2026-09-23 --parameter pm25
+uv run python -m scripts.backfill_weather --all --start 2026-06-25 --end 2026-09-23 --batch-size 10
+```
+
+或直接使用课程组共享的数据库文件（网盘 / Release 附件）放到 `data/air_observatory.db`。离线分析产物用 `scripts.run_analysis` 与 `scripts.run_fingerprint` 重新物化。单元测试使用临时库，不依赖该文件。
+
+## 文档
+
+| 文档 | 作用 |
+| --- | --- |
+| `PRODUCT.md` | **唯一权威**的产品与视觉口径（科研受众） |
+| `docs/选题报告.md` | 选题正式表述 |
+| `docs/科研可视化重构.md` | 科研定位、逐图重构方向与验收条件 |
+| `ARCHITECTURE.md` | 数据闭环、产品层级与工程边界 |
+| `docs/协作指南.md` | 四人分工、文件归属、分支与 PR 流程 |
+
+历史上面向普通用户的 `DESIGN.md`、`docs/SESSION_BRIEF.md`、`docs/REDESIGN.md` 与上述口径冲突，已删除（需要时从 git 历史取回），四个页面的分支不得再引用。
 
 ## 常用命令
 

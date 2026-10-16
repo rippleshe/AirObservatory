@@ -159,7 +159,8 @@ uv run python -m scripts.backfill_weather --all --start 2026-07-18 --end 2026-10
 uv run python -m scripts.worker     # 常驻采集（API 与前端照常）
 ```
 
-`.env` 不入库，密钥不会被提交。`data/air_observatory.real.db` 是本机旧的真实采集库，可以自己删掉省空间。
+`.env` 不入库，密钥不会被提交。真实采集的库和演示库是两个文件：想两套都留着，
+在 `.env` 里用 `AIR_OBSERVATORY_DATABASE_PATH` 指过去就行（默认路径是演示库）。
 
 ## 9. 用 AI 写代码
 

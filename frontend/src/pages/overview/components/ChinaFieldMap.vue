@@ -16,10 +16,10 @@ import { zoom as d3Zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } f
 import type { Feature, MultiPolygon, Polygon } from "geojson";
 import { Minus, Plus, RotateCcw } from "lucide-vue-next";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
-import { gsap, prefersReducedMotion } from "../lib/motion";
-import { pm25Color } from "../lib/palette";
-import { aqiColor, changeColor, changeState } from "../lib/palette";
-import type { NationalCity } from "../lib/provinces";
+import { gsap, prefersReducedMotion } from "../../../lib/motion";
+import { pm25Color } from "../../../lib/palette";
+import { aqiColor, changeColor, changeState } from "../../../lib/palette";
+import type { NationalCity } from "../provinces";
 
 type MapMetric = "aqi" | "pm25" | "change";
 

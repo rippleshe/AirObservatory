@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import type { components } from "../api/schema";
-import { chartTheme, init, token, type ECharts } from "../lib/charts";
-import { useInView } from "../composables/useInView";
-import { VARIABLE_BANDS } from "../lib/palette";
-import { gsap, prefersReducedMotion } from "../lib/motion";
+import type { components } from "../../../api/schema";
+import { chartTheme, init, token, type ECharts } from "../../../lib/charts";
+import { useInView } from "../../../composables/useInView";
+import { VARIABLE_BANDS } from "../bands";
+import { gsap, prefersReducedMotion } from "../../../lib/motion";
 
 /* Charts stay blank until the reader scrolls to them: the first paint is
    the animated entrance, never a show that already ended. */

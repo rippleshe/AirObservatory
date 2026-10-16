@@ -405,20 +405,6 @@ button, a, select { outline-offset: 2px; }
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Modern Card Surface Container ───────────────────────── */
-.glass-panel {
-  background: var(--sheet);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  transition: border-color var(--duration-fast) ease, box-shadow var(--duration-normal) var(--ease-out), transform var(--duration-normal) var(--ease-out);
-}
-
-.glass-panel:hover {
-  border-color: var(--hairline-strong);
-  box-shadow: var(--shadow-md);
-}
-
 /* ── Page Frame ──────────────────────────────────────────── */
 .page-body {
   width: min(100%, var(--page-max));
@@ -467,11 +453,6 @@ button, a, select { outline-offset: 2px; }
 
 @keyframes skeleton-shimmer {
   100% { transform: translateX(100%); }
-}
-
-.skeleton-text {
-  height: 12px;
-  margin: 6px 0;
 }
 
 /* ── Press Feel ──────────────────────────────────────────── */

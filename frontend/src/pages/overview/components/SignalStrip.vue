@@ -3,7 +3,7 @@
      peak window, how many cities improve. Basis: each city's latest CAMS
      snapshot against its current analysis reading. -->
 <script setup lang="ts">
-import type { components } from "../api/schema";
+import type { components } from "../../../api/schema";
 
 type Signals = components["schemas"]["OverviewSignalsResponse"];
 

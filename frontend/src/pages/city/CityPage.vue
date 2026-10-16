@@ -3,21 +3,21 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useQuery } from "@tanstack/vue-query";
 import { useRoute } from "vue-router";
 import { Activity, BarChart3, Clock3, ShieldCheck } from "lucide-vue-next";
-import { api } from "../api/client";
-import { expectData } from "../api/request";
-import HorizonChart from "../components/HorizonChart.vue";
-import HourRing from "../components/HourRing.vue";
-import WindClearance from "../components/WindClearance.vue";
-import TraceDeck from "../components/TraceDeck.vue";
-import TrustPanel from "../components/TrustPanel.vue";
-import { useLocationCatalog } from "../composables/useLocationCatalog";
-import { useCountUp } from "../composables/useCountUp";
-import { aqiColor, POLLUTANT_COLORS } from "../lib/palette";
-import { useContextStore } from "../stores/context";
+import { api } from "../../api/client";
+import { expectData } from "../../api/request";
+import HorizonChart from "./components/HorizonChart.vue";
+import HourRing from "./components/HourRing.vue";
+import WindClearance from "../../shared/WindClearance.vue";
+import TraceDeck from "./components/TraceDeck.vue";
+import TrustPanel from "./components/TrustPanel.vue";
+import { useLocations } from "../../composables/useLocations";
+import { useCountUp } from "../../composables/useCountUp";
+import { aqiColor, POLLUTANT_COLORS } from "../../lib/palette";
+import { useContextStore } from "../../stores/context";
 
 const route = useRoute();
 const context = useContextStore();
-const { locations } = useLocationCatalog();
+const { data: locations } = useLocations();
 
 const locationId = computed(() => Number(route.params.locationId));
 const activeSection = ref("trend");
@@ -45,7 +45,6 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => spy?.disconnect());
-const heatmap = ref<InstanceType<typeof HourRing> | null>(null);
 const POLLUTANTS = ["pm25", "pm10", "no2", "o3", "so2", "co"] as const;
 const POLLUTANT_LABELS: Record<string, string> = {
   pm25: "PM2.5",
@@ -58,7 +57,7 @@ const POLLUTANT_LABELS: Record<string, string> = {
 const HORIZON_COLORS = POLLUTANT_COLORS;
 
 watch(
-  [locationId, () => locations.data.value],
+  [locationId, () => locations.value],
   ([id, catalog]) => {
     const location = catalog?.find((item) => item.location_id === id);
     if (location) context.selectLocation(location.location_id, location.city);
@@ -67,7 +66,7 @@ watch(
 );
 
 const snapshot = useQuery({
-  queryKey: computed(() => ["city-detail-snapshot", locationId.value]),
+  queryKey: computed(() => ["city", "snapshot", locationId.value]),
   enabled: computed(() => Number.isInteger(locationId.value) && locationId.value > 0),
   queryFn: () =>
     expectData(
@@ -79,13 +78,13 @@ const snapshot = useQuery({
 });
 
 const national = useQuery({
-  queryKey: ["city-detail-national"],
+  queryKey: ["city", "national"],
   queryFn: () => expectData(api.GET("/api/overview/national")),
   staleTime: 60_000,
 });
 
 const pulse = useQuery({
-  queryKey: computed(() => ["city-pulse", locationId.value]),
+  queryKey: computed(() => ["city", "pulse", locationId.value]),
   enabled: computed(() => Number.isInteger(locationId.value) && locationId.value > 0),
   queryFn: () =>
     Promise.all(
@@ -104,7 +103,7 @@ const pulse = useQuery({
 });
 
 const observation = useQuery({
-  queryKey: computed(() => ["city-detail-observation", locationId.value]),
+  queryKey: computed(() => ["city", "observation", locationId.value]),
   enabled: computed(() => Number.isInteger(locationId.value) && locationId.value > 0),
   queryFn: () =>
     expectData(
@@ -118,7 +117,7 @@ const observation = useQuery({
 });
 
 const forecast = useQuery({
-  queryKey: computed(() => ["city-detail-forecast", locationId.value]),
+  queryKey: computed(() => ["city", "forecast", locationId.value]),
   enabled: computed(() => Number.isInteger(locationId.value) && locationId.value > 0),
   queryFn: () =>
     expectData(
@@ -134,7 +133,7 @@ const forecast = useQuery({
 /* City-scoped slice of the national weather matrix: the phase path and the
    wind-clearance reading both need hourly wind beside the PM2.5 field. */
 const cityWeather = useQuery({
-  queryKey: computed(() => ["city-weather", locationId.value]),
+  queryKey: computed(() => ["city", "weather", locationId.value]),
   enabled: computed(() => Number.isInteger(locationId.value) && locationId.value > 0),
   queryFn: () =>
     expectData(
@@ -146,7 +145,7 @@ const cityWeather = useQuery({
 });
 
 const coverage = useQuery({
-  queryKey: computed(() => ["city-detail-coverage", locationId.value]),
+  queryKey: computed(() => ["city", "coverage", locationId.value]),
   enabled: computed(() => Number.isInteger(locationId.value) && locationId.value > 0),
   queryFn: () =>
     expectData(
@@ -466,7 +465,7 @@ const sourceGap = computed(() => {
       </div>
 
       <div class="rhythm-grid">
-        <HourRing ref="heatmap" class="rhythm-cell" :series="pm25Series" />
+        <HourRing class="rhythm-cell" :series="pm25Series" />
         <div class="rhythm-cell rhythm-phase">
           <WindClearance v-if="phasePoints.length" :points="phasePoints" />
           <div v-else class="section-state">风场数据不足</div>
@@ -745,11 +744,6 @@ const sourceGap = computed(() => {
   font-weight: var(--fw-strong);
   letter-spacing: 0.2em;
 }
-.forecast-note {
-  font-size: var(--fs-label);
-  color: var(--muted);
-  font-weight: 500;
-}
 .section-state {
   min-height: 100px;
   padding: 18px;
@@ -795,22 +789,6 @@ const sourceGap = computed(() => {
   gap: 16px;
 }
 
-.trust-waterfall {
-  display: grid;
-  gap: 10px;
-}
-
-.trust-waterfall h3 {
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: 15px;
-  font-weight: var(--fw-medium);
-}
-
-.waterfall-body {
-  height: 280px;
-}
-
 @media (max-width: 1180px) {
   .city-hero { grid-template-columns: 1fr; }
   .rhythm-grid { grid-template-columns: 1fr; }
@@ -832,7 +810,6 @@ const sourceGap = computed(() => {
   }
   .section-heading { display: grid; }
   .section-heading h2 { font-size: 18px; }
-  .forecast-note { justify-self: start; }
   .section-grid-skeleton { grid-template-columns: 1fr 1fr; }
 }
 </style>

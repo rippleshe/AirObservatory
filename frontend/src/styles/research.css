@@ -1,4 +1,7 @@
-/* Shared research-page composition. All colours and type stay on the existing design tokens. */
+/* Frozen composition layer for the two research pages (关联 / 预测).
+   Everything here is used by BOTH pages; anything only one page uses lives in
+   that page's scoped style, so neither owner has to edit this file.
+   All colours and type stay on the existing design tokens. */
 .research-view {
   min-height: calc(100vh - 60px);
   padding: 26px var(--page-pad) 68px;
@@ -28,15 +31,6 @@
   font-size: var(--fs-body);
   line-height: 1.5;
 }
-.research-side {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-  align-items: center;
-  color: var(--muted);
-  font-size: var(--fs-label);
-}
-.research-side b { color: var(--ink); font-weight: 650; }
 .research-section { margin-top: 34px; min-width: 0; }
 .research-section-head {
   min-height: 40px;
@@ -55,7 +49,6 @@
   letter-spacing: -.012em;
 }
 .research-section-head span { color: var(--muted); font-size: 12px; }
-.research-rule { border-top: 1px solid var(--hairline); margin-top: 32px; }
 .research-tabs {
   display: inline-flex;
   align-items: center;
@@ -100,14 +93,7 @@
 }
 .research-empty strong { color: var(--ink); font-size: 15px; }
 .research-empty small { color: var(--muted); font-size: 12px; max-width: 44ch; }
-.research-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
-  align-items: start;
-  gap: 20px;
-}
-.research-evidence {
-  display: flex;
+.research-evidence {  display: flex;
   flex-wrap: wrap;
   gap: 8px 24px;
   align-items: center;
@@ -140,27 +126,9 @@
   line-height: 1.7;
 }
 .research-methods-body p { margin: 0 0 8px; }
-.research-data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.research-data-table th {
-  text-align: left;
-  font-weight: 600;
-  color: var(--muted);
-  border-bottom: 1px solid var(--hairline);
-  padding: 11px 12px;
-  white-space: nowrap;
-}
-.research-data-table td { padding: 12px; border-bottom: 1px solid var(--hairline-soft); color: var(--ink-soft); }
-.research-data-table tr:last-child td { border-bottom: 0; }
-.research-data-table td.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.research-data-table th.num { text-align: right; }
-.research-table-scroll { overflow: auto; }
-@media(max-width: 1050px) {
-  .research-split { grid-template-columns: minmax(0,1fr); }
-}
 @media(max-width: 760px) {
   .research-view { padding-top: 17px; }
   .research-head { align-items: start; }
   .research-head h1 { font-size: 27px; }
-  .research-side { width: 100%; }
   .research-section { margin-top: 26px; }
 }

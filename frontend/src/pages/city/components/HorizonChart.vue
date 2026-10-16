@@ -4,8 +4,8 @@
      cross-pollutant timing lines up vertically. Hand-written SVG. -->
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { wipeUp } from "../lib/motion";
-import { dayTicks, useElementSize } from "../lib/viz";
+import { wipeUp } from "../../../lib/motion";
+import { dayTicks, useElementSize } from "../../../lib/viz";
 
 export type HorizonSeries = {
   key: string;

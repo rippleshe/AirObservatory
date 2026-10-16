@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { windSpeedBin, stackedWindRadii } from "../src/lib/windRose.ts";
+import { windSpeedBin, stackedWindRadii } from "../src/pages/analysis/windRose.ts";
 
 test("wind speeds use four non-overlapping classes, including boundary values", () => {
   const rows = [

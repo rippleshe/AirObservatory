@@ -2,15 +2,15 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useQuery } from "@tanstack/vue-query";
 import { useRouter } from "vue-router";
-import { api } from "../api/client";
-import { expectData } from "../api/request";
-import ChinaFieldMap from "../components/ChinaFieldMap.vue";
-import LiveStrip from "../components/LiveStrip.vue";
-import PollutionWeave from "../components/PollutionWeave.vue";
-import SeverityBand from "../components/SeverityBand.vue";
-import SignalStrip from "../components/SignalStrip.vue";
-import TimeRibbon from "../components/TimeRibbon.vue";
-import VizHead from "../components/VizHead.vue";
+import { api } from "../../api/client";
+import { expectData } from "../../api/request";
+import ChinaFieldMap from "./components/ChinaFieldMap.vue";
+import LiveStrip from "./components/LiveStrip.vue";
+import PollutionWeave from "./components/PollutionWeave.vue";
+import SeverityBand from "./components/SeverityBand.vue";
+import SignalStrip from "./components/SignalStrip.vue";
+import TimeRibbon from "./components/TimeRibbon.vue";
+import VizHead from "./components/VizHead.vue";
 import {
   AQI_LEVELS,
   CHANGE_COLORS,
@@ -19,12 +19,12 @@ import {
   levelOfAqi,
   PM25_BANDS,
   stageColor,
-} from "../lib/palette";
+} from "../../lib/palette";
 import {
   provinceRepresentatives,
   type NationalCity,
-} from "../lib/provinces";
-import { useContextStore } from "../stores/context";
+} from "./provinces";
+import { useContextStore } from "../../stores/context";
 
 type MapMetric = "aqi" | "pm25" | "change";
 
@@ -39,12 +39,16 @@ async function fetchSeries(variable: string) {
 const router = useRouter();
 const context = useContextStore();
 const mapMetric = ref<MapMetric>("aqi");
+/* Pinned city on the national layer: one selection, every chart on this page
+   answers (map card, band squares, weave row, fingerprint dot). Page-local on
+   purpose — leaving the page must not change what another page shows. */
+const focusId = ref<number | null>(null);
 /* The time machine: null rests on 现在, a number scrubs the whole first
    viewport back to that hour of the stored record. */
 const scrubIndex = ref<number | null>(null);
 
 const national = useQuery({
-  queryKey: ["national-overview"],
+  queryKey: ["overview", "national"],
   queryFn: () => expectData(api.GET("/api/overview/national")),
   refetchInterval: 5 * 60_000,
   staleTime: 60_000,
@@ -52,19 +56,19 @@ const national = useQuery({
 
 /* One aligned hourly field replaces N single-city calls. */
 const pmSeries = useQuery({
-  queryKey: ["national-series", "pm25", 720],
+  queryKey: ["overview", "series", "pm25", 720],
   queryFn: () => fetchSeries("pm25"),
   staleTime: 15 * 60_000,
 });
 
 const aqiSeries = useQuery({
-  queryKey: ["national-series", "aqi", 720],
+  queryKey: ["overview", "series", "aqi", 720],
   queryFn: () => fetchSeries("aqi"),
   staleTime: 15 * 60_000,
 });
 
 const weather = useQuery({
-  queryKey: ["national-weather", 720],
+  queryKey: ["overview", "weather", 720],
   queryFn: () =>
     expectData(
       api.GET("/api/overview/national/weather", {
@@ -86,7 +90,7 @@ const POLLUTANTS = [
 ] as const;
 
 const pollutantSuite = useQuery({
-  queryKey: ["national-series-suite", 720],
+  queryKey: ["overview", "suite", 720],
   queryFn: async () => Promise.all(POLLUTANTS.map((p) => fetchSeries(p.key))),
   staleTime: 15 * 60_000,
 });
@@ -94,7 +98,7 @@ const pollutantSuite = useQuery({
 /* Data-derived conclusions for the next 24h — the signals strip consumes
    this; the endpoint reads the latest CAMS snapshot per city. */
 const signals = useQuery({
-  queryKey: ["overview-signals"],
+  queryKey: ["overview", "signals"],
   queryFn: () => expectData(api.GET("/api/overview/signals")),
   refetchInterval: 5 * 60_000,
   staleTime: 60_000,
@@ -233,17 +237,12 @@ function openCity(id: number, name: string) {
 
 /* Click = inspect: pinning a city floods every chart with the same focus;
    navigation stays with the map card's CTA. ESC or an empty click releases. */
-function pinCity(id: number, name: string) {
-  context.setFocus(id, name);
+function pinCity(id: number) {
+  focusId.value = id;
 }
 
 function onMapPin(id: number | null) {
-  if (id == null) {
-    context.clearFocus();
-    return;
-  }
-  const city = displayCities.value.find((row) => row.location_id === id);
-  context.setFocus(id, city?.name ?? null);
+  focusId.value = id;
 }
 
 /* The loom weaves whatever the suite already carries — aqi rides its own
@@ -272,7 +271,7 @@ const liveOn = ref(false);
 let stageIO: IntersectionObserver | null = null;
 
 function onViewportKey(event: KeyboardEvent) {
-  if (event.key === "Escape") context.clearFocus();
+  if (event.key === "Escape") focusId.value = null;
 }
 
 onMounted(() => {
@@ -289,7 +288,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stageIO?.disconnect();
   window.removeEventListener("keydown", onViewportKey);
-  context.clearFocus();
 });
 </script>
 
@@ -379,7 +377,7 @@ onBeforeUnmount(() => {
       <SeverityBand
         :cities="displayCities"
         :metric="mapMetric"
-        :focus-id="context.focusId"
+        :focus-id="focusId"
         @select="pinCity"
       />
 
@@ -387,7 +385,7 @@ onBeforeUnmount(() => {
         v-if="weaveSources.pm25 || weaveSources.aqi"
         :sources="weaveSources"
         :roster="provinces"
-        :focus-id="context.focusId"
+        :focus-id="focusId"
       />
     </section>
 
@@ -400,7 +398,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   overflow-x: clip;
   grid-template-columns: minmax(0, 1fr);
-  min-height: calc(100vh - 64px);
+  min-height: calc(100vh - 60px);
   padding: 28px var(--page-pad) 72px;
   display: grid;
   gap: 28px;
@@ -650,62 +648,6 @@ onBeforeUnmount(() => {
   letter-spacing: 0.24em;
 }
 
-.viz-body {
-  width: 100%;
-}
-
-.stream-body {
-  height: clamp(260px, 34vh, 360px);
-}
-
-.duel-grid {
-  display: grid;
-  grid-template-columns: 1.6fr 1fr;
-  gap: 40px;
-  align-items: stretch;
-}
-
-.duel-cell {
-  height: 420px;
-}
-
-.duo-grid {
-  display: grid;
-  /* The fingerprint needs the wide cell: its ledger is a fixed-width
-     citizen, while the chord scales to whatever height the row takes. */
-  grid-template-columns: 1fr 1.25fr;
-  align-items: stretch;
-}
-
-.duo-cell {
-  min-width: 0;
-}
-
-.duo-chord {
-  height: 100%;
-  min-height: 480px;
-  padding-right: 36px;
-}
-
-.duo-finger {
-  border-left: 1px solid var(--hairline-soft);
-  padding-left: 36px;
-}
-
-.fingerprint-state {
-  min-height: 120px;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  font-size: var(--fs-body);
-}
-
-.fingerprint-skeleton {
-  width: min(100%, 760px);
-  height: 320px;
-  border-radius: var(--radius-lg);
-}
-
 @media (max-width: 900px) {
   .national-workspace { padding: 16px 16px 40px; gap: 20px; }
   .stage {
@@ -719,10 +661,6 @@ onBeforeUnmount(() => {
   }
   .map-area { height: clamp(460px, 58vh, 660px); min-height: 0; }
   .ribbon-dock { padding: 10px 16px 20px; }
-  .duel-grid { grid-template-columns: 1fr; gap: 28px; }
-  .duo-grid { grid-template-columns: 1fr; }
-  .duo-chord { padding-right: 0; min-height: 0; height: clamp(380px, 52vh, 460px); }
-  .duo-finger { border-left: 0; padding-left: 0; margin-top: 28px; }
 }
 
 @media (max-width: 700px) {

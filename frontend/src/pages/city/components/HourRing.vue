@@ -4,9 +4,9 @@
      The peak sector wears an ink reticle. -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import type { components } from "../api/schema";
-import { gsap } from "../lib/motion";
-import { PM25_BANDS, pm25Color } from "../lib/palette";
+import type { components } from "../../../api/schema";
+import { gsap } from "../../../lib/motion";
+import { PM25_BANDS, pm25Color } from "../../../lib/palette";
 
 type SeriesResponse = components["schemas"]["SeriesResponse"];
 const props = defineProps<{ series: SeriesResponse | undefined }>();

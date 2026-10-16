@@ -1,53 +1,53 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useQuery } from "@tanstack/vue-query";
-import { api } from "../api/client";
-import { expectData } from "../api/request";
-import { useLocationCatalog } from "../composables/useLocationCatalog";
-import ForecastTrajectory from "../components/ForecastTrajectory.vue";
-import BacktestAnatomy from "../components/BacktestAnatomy.vue";
-import { useContextStore } from "../stores/context";
-import { FORECAST_COLOR, MODEL_COLOR, MUTED_DATA_COLOR, OBSERVATION_COLOR } from "../lib/palette";
+import { api } from "../../api/client";
+import { expectData } from "../../api/request";
+import { useLocations } from "../../composables/useLocations";
+import ForecastTrajectory from "./components/ForecastTrajectory.vue";
+import BacktestAnatomy from "./components/BacktestAnatomy.vue";
+import { useContextStore } from "../../stores/context";
+import { FORECAST_COLOR, MODEL_COLOR, MUTED_DATA_COLOR, OBSERVATION_COLOR } from "../../lib/palette";
 
 const context = useContextStore();
-const { locations } = useLocationCatalog();
-const cityId = computed(() => context.selectedLocationId ?? locations.data.value?.[0]?.location_id ?? 1);
-const city = computed(() => locations.data.value?.find((row) => row.location_id === cityId.value)?.city ?? "当前城市");
+const { data: locations } = useLocations();
+const cityId = computed(() => context.selectedLocationId ?? locations.value?.[0]?.location_id ?? 1);
+const city = computed(() => locations.value?.find((row) => row.location_id === cityId.value)?.city ?? "当前城市");
 const forecast = useQuery({
-  queryKey: computed(() => ["research-forecast", cityId.value]),
+  queryKey: computed(() => ["forecast", "models", cityId.value]),
   queryFn: () => expectData(api.GET("/api/locations/{location_id}/forecast", {
     params: { path: { location_id: cityId.value }, query: { variable: "pm25" } },
   })),
   refetchInterval: 5 * 60_000,
 });
 const history = useQuery({
-  queryKey: computed(() => ["research-forecast-history", cityId.value]),
+  queryKey: computed(() => ["forecast", "history", cityId.value]),
   queryFn: () => expectData(api.GET("/api/locations/{location_id}/series", {
     params: { path: { location_id: cityId.value }, query: { variable: "pm25", data_kind: "model_analysis", hours: 168 } },
   })),
 });
 const observation = useQuery({
-  queryKey: computed(() => ["research-forecast-observation", cityId.value]),
+  queryKey: computed(() => ["forecast", "observation", cityId.value]),
   queryFn: () => expectData(api.GET("/api/locations/{location_id}/series", {
     params: { path: { location_id: cityId.value }, query: { variable: "pm25", data_kind: "observation", hours: 168 } },
   })),
   retry: false,
 });
 const backtest = useQuery({
-  queryKey: computed(() => ["research-backtest", cityId.value]),
+  queryKey: computed(() => ["forecast", "backtest", cityId.value]),
   queryFn: () => expectData(api.GET("/api/locations/{location_id}/backtest", {
     params: { path: { location_id: cityId.value } },
   })),
 });
 const readiness = useQuery({
-  queryKey: computed(() => ["research-training-readiness", cityId.value]),
+  queryKey: computed(() => ["forecast", "readiness", cityId.value]),
   queryFn: () => expectData(api.GET("/api/models/{location_id}/readiness", {
     params: { path: { location_id: cityId.value } },
   })),
   retry: false,
 });
 const validation = useQuery({
-  queryKey: ["research-model-validation"],
+  queryKey: ["forecast", "validation"],
   queryFn: () => expectData(api.GET("/api/models/validation")),
   staleTime: 30 * 60_000,
   retry: false,
@@ -239,6 +239,26 @@ function toggleModel(name: string) {
 .error-scale i { width: 112px; height: 7px; border-radius: 3px; background: linear-gradient(to right,var(--sheet),var(--accent)); border: 1px solid var(--hairline); }
 .error-scale span:last-child { margin-left: auto; }
 .research-panel-pad { overflow-x: auto; }
+/* Moved out of styles/research.css: only this page uses these, so the shared
+   stylesheet stays a frozen composition layer that two people never co-edit. */
+.research-side {
+  display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
+  color: var(--muted); font-size: var(--fs-label);
+}
+.research-side b { color: var(--ink); font-weight: 650; }
+.research-data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.research-data-table th {
+  text-align: left; font-weight: 600; color: var(--muted);
+  border-bottom: 1px solid var(--hairline); padding: 11px 12px; white-space: nowrap;
+}
+.research-data-table td { padding: 12px; border-bottom: 1px solid var(--hairline-soft); color: var(--ink-soft); }
+.research-data-table tr:last-child td { border-bottom: 0; }
+.research-data-table td.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.research-data-table th.num { text-align: right; }
+.research-table-scroll { overflow: auto; }
+@media(max-width: 760px) {
+  .research-side { width: 100%; }
+}
 @media(max-width: 850px) {
   .error-grid { min-width: 630px; }
   .forecast-model-controls { padding: 14px 12px 0; }

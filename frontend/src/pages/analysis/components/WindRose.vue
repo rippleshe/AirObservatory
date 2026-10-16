@@ -4,10 +4,10 @@
      sweep-in. Radius is sqrt(area-true), normalised to the busiest bin. -->
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { gsap, prefersReducedMotion } from "../lib/motion";
-import { pm25Color } from "../lib/palette";
-import { useElementSize } from "../lib/viz";
-import { WIND_SPEED_EDGES, windSpeedBin, stackedWindRadii } from "../lib/windRose";
+import { gsap, prefersReducedMotion } from "../../../lib/motion";
+import { pm25Color } from "../../../lib/palette";
+import { useElementSize } from "../../../lib/viz";
+import { WIND_SPEED_EDGES, windSpeedBin, stackedWindRadii } from "../windRose";
 
 export type RoseSample = {
   speed: number;

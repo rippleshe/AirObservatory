@@ -4,10 +4,10 @@
      blue cloud hid), and a correlation matrix with strength filter chips. -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import type { components } from "../api/schema";
-import { useInView } from "../composables/useInView";
+import type { components } from "../../../api/schema";
+import { useInView } from "../../../composables/useInView";
 import { interpolateRgb } from "d3-interpolate";
-import { gsap, prefersReducedMotion } from "../lib/motion";
+import { gsap, prefersReducedMotion } from "../../../lib/motion";
 
 type Structure = components["schemas"]["CityStructureResponse"];
 

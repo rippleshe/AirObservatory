@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import { flipReorder, gsap, prefersReducedMotion } from "../lib/motion";
+import { flipReorder, gsap, prefersReducedMotion } from "../../../lib/motion";
 import {
   AQI_LEVEL_COLORS,
   CHANGE_COLORS,
@@ -8,8 +8,9 @@ import {
   MUTED_DATA_COLOR,
   PM25_BANDS,
   changeState,
-} from "../lib/palette";
-import type { NationalCity } from "../lib/provinces";
+} from "../../../lib/palette";
+import type { NationalCity } from "../provinces";
+import { median } from "../../../lib/viz";
 
 type BandMetric = "aqi" | "pm25" | "change";
 
@@ -96,19 +97,12 @@ const marks = computed(() => {
    together, never a PM2.5 number sitting under an AQI headline. */
 const facts = computed(() => {
   const cities = props.cities;
-  const median = (pick: (city: NationalCity) => number | null | undefined) => {
-    const values = cities
-      .map(pick)
-      .filter((value): value is number => value != null)
-      .sort((a, b) => a - b);
-    if (!values.length) return null;
-    const mid = values.length >> 1;
-    return values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
-  };
+  const medianOf = (pick: (city: NationalCity) => number | null | undefined) =>
+    median(cities.map(pick).filter((value): value is number => value != null));
   const rising = cities.filter((city) => (city.pm25_change_24h ?? 0) >= 8).length;
   const falling = cities.filter((city) => (city.pm25_change_24h ?? 0) <= -8).length;
   if (props.metric === "pm25") {
-    const m = median((city) => city.pm25);
+    const m = medianOf((city) => city.pm25);
     return [
       { dt: "PM2.5 中位", dd: m == null ? "—" : m.toFixed(1), small: " µg/m³" },
       { dt: "24h 上升", dd: String(rising), small: " 省" },
@@ -116,7 +110,7 @@ const facts = computed(() => {
     ];
   }
   if (props.metric === "change") {
-    const m = median((city) => city.pm25_change_24h);
+    const m = medianOf((city) => city.pm25_change_24h);
     const text = m == null ? "—" : `${m > 0 ? "+" : ""}${m.toFixed(1)}`;
     return [
       { dt: "24h 变化中位", dd: text, small: " µg/m³" },
@@ -124,7 +118,7 @@ const facts = computed(() => {
       { dt: "改善", dd: String(falling), small: " 省" },
     ];
   }
-  const m = median((city) => city.china_aqi);
+  const m = medianOf((city) => city.china_aqi);
   return [
     { dt: "AQI 中位", dd: m == null ? "—" : String(Math.round(m)), small: "" },
     { dt: "24h 上升", dd: String(rising), small: " 省" },

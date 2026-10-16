@@ -48,6 +48,15 @@ export function mean(values: number[]): number {
   return sum / values.length;
 }
 
+/** Median of the values, or null when there are none — callers that draw a
+ *  reading need to tell "no data" apart from a real zero. */
+export function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
 /* Sparse x-axis ticks: ~1 tick every `span` days, formatted M/D. */
 export function dayTicks(times: string[], spanDays = 7): Array<{ index: number; label: string }> {
   const ticks: Array<{ index: number; label: string }> = [];

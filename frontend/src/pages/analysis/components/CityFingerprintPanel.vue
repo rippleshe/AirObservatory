@@ -4,10 +4,10 @@
      story collapses into one cumulative strip. No chart library. -->
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type { components } from "../api/schema";
-import { gsap, prefersReducedMotion } from "../lib/motion";
-import { clusterColor, FORECAST_COLOR, MODEL_COLOR, MUTED_DATA_COLOR } from "../lib/palette";
-import { useElementSize } from "../lib/viz";
+import type { components } from "../../../api/schema";
+import { gsap, prefersReducedMotion } from "../../../lib/motion";
+import { clusterColor, FORECAST_COLOR, MODEL_COLOR, MUTED_DATA_COLOR } from "../../../lib/palette";
+import { useElementSize } from "../../../lib/viz";
 
 type Fingerprint = components["schemas"]["CityFingerprintResponse"];
 

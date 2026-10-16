@@ -8,7 +8,7 @@
  * through. Values stay missing where they are missing: the trace breaks, it
  * never interpolates. */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { PM25_BANDS, stageColor } from "../lib/palette";
+import { PM25_BANDS, stageColor } from "../../../lib/palette";
 
 const props = withDefaults(
   defineProps<{

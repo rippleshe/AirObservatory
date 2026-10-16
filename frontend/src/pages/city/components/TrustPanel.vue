@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { components } from "../api/schema";
+import type { components } from "../../../api/schema";
 
 type CoverageResponse = components["schemas"]["CoverageResponse"];
 const props = defineProps<{ coverage: CoverageResponse | undefined }>();

@@ -1,10 +1,10 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-const NationalOverviewView = () => import("../views/NationalOverviewView.vue");
-const CityDetailView = () => import("../views/CityDetailView.vue");
-const SystemView = () => import("../views/SystemView.vue");
-const AnalysisView = () => import("../views/AnalysisView.vue");
-const ForecastView = () => import("../views/ForecastView.vue");
+const OverviewPage = () => import("../pages/overview/OverviewPage.vue");
+const CityPage = () => import("../pages/city/CityPage.vue");
+const SystemPage = () => import("../pages/system/SystemPage.vue");
+const AnalysisPage = () => import("../pages/analysis/AnalysisPage.vue");
+const ForecastPage = () => import("../pages/forecast/ForecastPage.vue");
 
 /* Four research workspaces; provenance stays an auxiliary tool route. */
 export default createRouter({
@@ -14,32 +14,32 @@ export default createRouter({
     {
       path: "/overview",
       name: "overview",
-      component: NationalOverviewView,
+      component: OverviewPage,
       meta: { title: "全国时空" },
     },
     {
       path: "/city/:locationId",
       name: "city",
-      component: CityDetailView,
+      component: CityPage,
       meta: { title: "污染过程" },
     },
     {
       path: "/analysis",
       name: "analysis",
-      component: AnalysisView,
+      component: AnalysisPage,
       meta: { title: "多变量关联" },
     },
     {
       path: "/forecast",
       name: "forecast",
-      component: ForecastView,
+      component: ForecastPage,
       meta: { title: "预测评估" },
     },
     { path: "/model", redirect: "/forecast" },
     {
       path: "/system",
       name: "system",
-      component: SystemView,
+      component: SystemPage,
       meta: { title: "数据与方法" },
     },
     { path: "/:pathMatch(.*)*", redirect: "/overview" },

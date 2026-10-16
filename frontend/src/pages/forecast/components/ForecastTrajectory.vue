@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import type { components } from "../api/schema";
-import { chartTheme, init, type ECharts } from "../lib/charts";
-import { FORECAST_COLOR, MODEL_COLOR, MUTED_DATA_COLOR, OBSERVATION_COLOR } from "../lib/palette";
+import type { components } from "../../../api/schema";
+import { chartTheme, init, type ECharts } from "../../../lib/charts";
+import { FORECAST_COLOR, MODEL_COLOR, MUTED_DATA_COLOR, OBSERVATION_COLOR } from "../../../lib/palette";
 
 type Series = components["schemas"]["SeriesResponse"];
 type Forecast = components["schemas"]["ForecastResponse"];

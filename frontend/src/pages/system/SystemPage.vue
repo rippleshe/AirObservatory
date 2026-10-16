@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { useQuery } from "@tanstack/vue-query";
 import { Database, HardDrive, Radio, RefreshCw } from "lucide-vue-next";
-import { api } from "../api/client";
-import { expectData } from "../api/request";
+import { api } from "../../api/client";
+import { expectData } from "../../api/request";
 
 const status = useQuery({
-  queryKey: ["system-status"],
+  queryKey: ["system", "status"],
   queryFn: () => expectData(api.GET("/api/status")),
   refetchInterval: 30_000,
 });
 
 const system = useQuery({
-  queryKey: ["system-state"],
+  queryKey: ["system", "state"],
   queryFn: () =>
     expectData(
       api.GET("/api/system", {

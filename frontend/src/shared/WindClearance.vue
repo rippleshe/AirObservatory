@@ -12,7 +12,13 @@ export type ClearancePoint = {
   pm25: number;
 };
 
-const props = defineProps<{ points: ClearancePoint[] }>();
+/* Height is owned here, not by the caller's container: pass `height` in px for
+   a fixed plot box, omit it to fill a parent that already has a definite
+   height. This is what keeps two pages from fighting over one component. */
+const props = withDefaults(
+  defineProps<{ points: ClearancePoint[]; height?: number }>(),
+  { height: 0 },
+);
 
 const shell = ref<HTMLElement | null>(null);
 const size = useElementSize(shell);
@@ -121,7 +127,12 @@ const hoverPoint = computed(() => {
 </script>
 
 <template>
-  <div ref="shell" class="wind-clearance" @mouseleave="hoverBin = null">
+  <div
+    ref="shell"
+    class="wind-clearance"
+    :style="props.height > 0 ? { height: `${props.height}px`, minHeight: '0px' } : undefined"
+    @mouseleave="hoverBin = null"
+  >
     <svg :width="geometry?.w" :height="geometry?.h" v-if="geometry">
       <g class="grid">
         <g v-for="tick in windTicks" :key="`w-${tick}`">

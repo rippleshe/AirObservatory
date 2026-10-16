@@ -16,8 +16,8 @@
  * to the lower location_id, so the set is deterministic.
  */
 
-import type { components } from "../api/schema";
-import { AQI_LEVELS } from "./palette";
+import type { components } from "../../api/schema";
+import { AQI_LEVELS } from "../../lib/palette";
 
 export type NationalCity = components["schemas"]["NationalCity"];
 export type RegionRow = components["schemas"]["NationalRegion"];

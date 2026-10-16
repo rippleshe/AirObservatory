@@ -3,8 +3,9 @@
      lives by — metric median, worst city, the 24h trace, update time. -->
 <script setup lang="ts">
 import { computed } from "vue";
-import type { NationalCity } from "../lib/provinces";
-import { aqiColor } from "../lib/palette";
+import type { NationalCity } from "../provinces";
+import { aqiColor } from "../../../lib/palette";
+import { median } from "../../../lib/viz";
 
 type StripMetric = "aqi" | "pm25" | "change";
 
@@ -19,27 +20,21 @@ const props = withDefaults(
   { metric: "aqi", updated: null, spark: () => [], on: false },
 );
 
-function median(pick: (city: NationalCity) => number | null | undefined) {
-  const values = props.cities
-    .map(pick)
-    .filter((value): value is number => value != null)
-    .sort((a, b) => a - b);
-  if (!values.length) return null;
-  const mid = values.length >> 1;
-  return values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+function medianOf(pick: (city: NationalCity) => number | null | undefined) {
+  return median(props.cities.map(pick).filter((value): value is number => value != null));
 }
 
 const reading = computed(() => {
   if (props.metric === "pm25") {
-    const m = median((city) => city.pm25);
+    const m = medianOf((city) => city.pm25);
     return { label: "PM2.5 中位", value: m == null ? "—" : m.toFixed(1), unit: "µg/m³" };
   }
   if (props.metric === "change") {
-    const m = median((city) => city.pm25_change_24h);
+    const m = medianOf((city) => city.pm25_change_24h);
     const text = m == null ? "—" : `${m > 0 ? "+" : ""}${m.toFixed(1)}`;
     return { label: "24h 变化中位", value: text, unit: "µg/m³" };
   }
-  const m = median((city) => city.china_aqi);
+  const m = medianOf((city) => city.china_aqi);
   return { label: "AQI 中位", value: m == null ? "—" : String(Math.round(m)), unit: "" };
 });
 

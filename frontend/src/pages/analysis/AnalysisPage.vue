@@ -1,29 +1,32 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useQuery } from "@tanstack/vue-query";
-import { api } from "../api/client";
-import { expectData } from "../api/request";
-import { useLocationCatalog } from "../composables/useLocationCatalog";
-import CityFingerprintPanel from "../components/CityFingerprintPanel.vue";
-import PCAStructurePanel from "../components/PCAStructurePanel.vue";
-import WindClearance from "../components/WindClearance.vue";
-import WindRose from "../components/WindRose.vue";
-import { useContextStore } from "../stores/context";
+import { api } from "../../api/client";
+import { expectData } from "../../api/request";
+import { useLocations } from "../../composables/useLocations";
+import CityFingerprintPanel from "./components/CityFingerprintPanel.vue";
+import PCAStructurePanel from "./components/PCAStructurePanel.vue";
+import WindClearance from "../../shared/WindClearance.vue";
+import WindRose from "./components/WindRose.vue";
+import { useContextStore } from "../../stores/context";
 
 const context = useContextStore();
-const { locations } = useLocationCatalog();
+const { data: locations } = useLocations();
 const scope = ref<"national" | "city">("national");
-const cityId = computed(() => context.selectedLocationId ?? locations.data.value?.[0]?.location_id ?? 1);
-const cityName = computed(() => locations.data.value?.find((row) => row.location_id === cityId.value)?.city ?? "当前城市");
+/* Which city the fingerprint panel highlights — page-local, like every other
+   page's focus, so nothing outside this page can move it. */
+const focusId = ref<number | null>(null);
+const cityId = computed(() => context.selectedLocationId ?? locations.value?.[0]?.location_id ?? 1);
+const cityName = computed(() => locations.value?.find((row) => row.location_id === cityId.value)?.city ?? "当前城市");
 
 const fingerprint = useQuery({
-  queryKey: ["research-fingerprint"],
+  queryKey: ["analysis", "fingerprint"],
   queryFn: () => expectData(api.GET("/api/analysis/city-fingerprint")),
   staleTime: 30 * 60_000,
   retry: false,
 });
 const structure = useQuery({
-  queryKey: computed(() => ["research-city-structure", cityId.value]),
+  queryKey: computed(() => ["analysis", "structure", cityId.value]),
   queryFn: () => expectData(api.GET("/api/locations/{location_id}/structure", {
     params: { path: { location_id: cityId.value } },
   })),
@@ -31,14 +34,14 @@ const structure = useQuery({
   retry: false,
 });
 const pmSeries = useQuery({
-  queryKey: computed(() => ["research-pm25", cityId.value]),
+  queryKey: computed(() => ["analysis", "pm25", cityId.value]),
   queryFn: () => expectData(api.GET("/api/locations/{location_id}/series", {
     params: { path: { location_id: cityId.value }, query: { variable: "pm25", data_kind: "model_analysis", hours: 720 } },
   })),
   enabled: computed(() => scope.value === "city"),
 });
 const weather = useQuery({
-  queryKey: computed(() => ["research-weather", cityId.value]),
+  queryKey: computed(() => ["analysis", "weather", cityId.value]),
   queryFn: () => expectData(api.GET("/api/overview/national/weather", {
     params: { query: { hours: 720, location_id: cityId.value } },
   })),
@@ -70,7 +73,7 @@ const fmt = (time: string | undefined) => time ? time.slice(0, 10) : "—";
 
 function focusCity(id: number, name: string) {
   context.selectLocation(id, name);
-  context.setFocus(id, name);
+  focusId.value = id;
   scope.value = "city";
 }
 </script>
@@ -103,7 +106,7 @@ function focusCity(id: number, name: string) {
         <CityFingerprintPanel
           v-if="fingerprint.data.value"
           :fingerprint="fingerprint.data.value"
-          :focus-id="context.focusId"
+          :focus-id="focusId"
           @select="focusCity"
         />
         <div v-else class="research-panel research-empty" role="status">
@@ -147,7 +150,7 @@ function focusCity(id: number, name: string) {
         <div v-if="matched.length >= 16" class="research-split">
           <div class="research-panel research-panel-pad relationship-plot">
             <h3>风速与 PM2.5 浓度</h3>
-            <WindClearance :points="matched" />
+            <WindClearance :points="matched" :height="360" />
             <p class="plot-method">风速分箱中位数与四分位带；每箱至少 8 个有效样本。</p>
           </div>
           <div class="research-panel research-panel-pad relationship-plot">
@@ -174,7 +177,15 @@ function focusCity(id: number, name: string) {
 .analysis-workspace { padding-bottom: 88px; }
 .relationship-plot { min-height: 350px; }
 .relationship-plot h3 { color: var(--ink); font-size: 14px; font-weight: 650; margin: 0 0 12px; }
-.relationship-plot :deep(.wind-clearance),
 .relationship-plot :deep(.wind-rose) { height: 360px; min-height: 0; }
 .plot-method { color: var(--ink-secondary); font-size: var(--fs-label); line-height: 1.55; margin: 10px 0 0; }
+.research-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+  align-items: start;
+  gap: 20px;
+}
+@media (max-width: 1050px) {
+  .research-split { grid-template-columns: minmax(0, 1fr); }
+}
 </style>

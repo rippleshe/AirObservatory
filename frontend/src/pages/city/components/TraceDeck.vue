@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import type { components } from "../api/schema";
-import { chartTheme, init, type ECharts } from "../lib/charts";
-import { useInView } from "../composables/useInView";
+import type { components } from "../../../api/schema";
+import { chartTheme, init, type ECharts } from "../../../lib/charts";
+import { useInView } from "../../../composables/useInView";
 
 /* Charts stay blank until the reader scrolls to them: the first paint is
    the animated entrance, never a show that already ended. */
@@ -13,7 +13,7 @@ import {
   FORECAST_COLOR,
   OBSERVATION_COLOR,
   PM25_BANDS,
-} from "../lib/palette";
+} from "../../../lib/palette";
 
 type SeriesResponse = components["schemas"]["SeriesResponse"];
 type ForecastResponse = components["schemas"]["ForecastResponse"];

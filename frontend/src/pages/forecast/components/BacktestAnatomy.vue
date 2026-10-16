@@ -6,11 +6,11 @@
      sparkline. No chart library. -->
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type { components } from "../api/schema";
-import { useElementSize } from "../lib/viz";
-import { useInView } from "../composables/useInView";
-import { drawIn, gsap, prefersReducedMotion } from "../lib/motion";
-import { FORECAST_COLOR, MODEL_COLOR, MUTED_DATA_COLOR, OBSERVATION_COLOR } from "../lib/palette";
+import type { components } from "../../../api/schema";
+import { useElementSize } from "../../../lib/viz";
+import { useInView } from "../../../composables/useInView";
+import { drawIn, gsap, prefersReducedMotion } from "../../../lib/motion";
+import { FORECAST_COLOR, MODEL_COLOR, MUTED_DATA_COLOR, OBSERVATION_COLOR } from "../../../lib/palette";
 
 type BacktestResponse = components["schemas"]["BacktestResponse"];
 

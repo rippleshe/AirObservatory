@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { useQuery } from "@tanstack/vue-query";
 import { Activity, ChartScatter, Database, MapPinned, Radar, TrendingUp } from "lucide-vue-next";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "./api/client";
 import { expectData } from "./api/request";
-import { useLocationCatalog } from "./composables/useLocationCatalog";
+import { useLocations } from "./composables/useLocations";
 import { useContextStore } from "./stores/context";
 
 const route = useRoute();
 const router = useRouter();
 const context = useContextStore();
-const { locations } = useLocationCatalog();
+const { data: locations } = useLocations();
 const status = useQuery({
   queryKey: ["app-status"],
   queryFn: () => expectData(api.GET("/api/status")),
@@ -31,9 +31,20 @@ const runtimeState = computed(() => {
   return "数据在线";
 });
 
+/* The shell owns the default selection: pages only read the store. */
+watch(
+  () => locations.value,
+  (items) => {
+    if (!items?.length) return;
+    if (items.some((item) => item.location_id === context.selectedLocationId)) return;
+    context.selectLocation(items[0].location_id, items[0].city);
+  },
+  { immediate: true },
+);
+
 function selectGlobalLocation(event: Event) {
   const id = Number((event.target as HTMLSelectElement).value);
-  const location = locations.data.value?.find((item) => item.location_id === id);
+  const location = locations.value?.find((item) => item.location_id === id);
   if (!location) return;
   context.selectLocation(location.location_id, location.city);
   /* Switching must actually move the page: the city view derives everything
@@ -92,11 +103,11 @@ function selectGlobalLocation(event: Event) {
             <label class="city-context">
               <span class="sr-only">选择城市</span>
               <select
-                :value="route.name === 'city' ? Number(route.params.locationId) : context.selectedLocationId ?? locations.data.value?.[0]?.location_id ?? ''"
+                :value="route.name === 'city' ? Number(route.params.locationId) : context.selectedLocationId ?? locations?.[0]?.location_id ?? ''"
                 @change="selectGlobalLocation"
               >
                 <option
-                  v-for="location in locations.data.value ?? []"
+                  v-for="location in locations ?? []"
                   :key="location.location_id"
                   :value="location.location_id"
                 >

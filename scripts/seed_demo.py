@@ -66,12 +66,14 @@ AQI_STANDARD_TEXT = "HJ 633-2026（按地面观测浓度实时换算）"
 # The national field has to reach every AQI band in a single hour. The city level
 # is driven by the emission index from backend/city_geography.csv, stretched across
 # the roster's own range so the bands stay reachable however that table changes.
-# HJ 633-2026 puts 严重污染 at PM2.5 250 µg/m³ and the hour's concentration runs
-# 1.2-1.4x the level, so the ceiling sits above 250 but not far above it: in the
-# northern dust belt PM10 is about twice PM2.5, and a higher ceiling would only pin
-# those cities to the top of the AQI scale instead of spreading them out.
+# The ceiling is set from the measured anatomy rather than from taste: at the
+# evening anchor the hour multiplies the level by K (median ~1.4, up to ~3.6 across
+# cities), so a ceiling of 330 left eighteen cities pinned to the top of the AQI
+# scale and the province representatives reading 中度污染 and worse. At 170 the same
+# hour spreads 优 through 严重污染 with the top of the roster catching the cap,
+# which is what a dust-belt hour is supposed to look like.
 LEVEL_FLOOR = 26.0
-LEVEL_CEILING = 330.0
+LEVEL_CEILING = 170.0
 
 # The pages are built around provenance, freshness and coverage, so a library
 # that only ever shows the healthy path demonstrates none of them. These inject

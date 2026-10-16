@@ -17,10 +17,8 @@
  */
 
 import type { components } from "../../api/schema";
-import { AQI_LEVELS } from "../../lib/palette";
 
 export type NationalCity = components["schemas"]["NationalCity"];
-export type RegionRow = components["schemas"]["NationalRegion"];
 
 function higher(a: NationalCity, b: NationalCity): NationalCity {
   if (a.china_aqi != null || b.china_aqi != null) {
@@ -45,57 +43,4 @@ export function provinceRepresentatives(cities: NationalCity[]): NationalCity[] 
     best.set(key, held ? higher(held, city) : city);
   }
   return [...best.values()];
-}
-
-export function levelCounts(cities: NationalCity[]): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const level of AQI_LEVELS) counts[level] = 0;
-  for (const city of cities) {
-    const level = city.china_aqi_level;
-    if (level && level in counts) counts[level] += 1;
-  }
-  return counts;
-}
-
-/** 优 + 良 — the two HJ 633-2026 levels that need no health caution. */
-export function goodCount(cities: NationalCity[]): number {
-  return cities.filter(
-    (city) => city.china_aqi_level === "优" || city.china_aqi_level === "良",
-  ).length;
-}
-
-/** Levels above 良, i.e. the provinces the headline asks the reader to watch. */
-export function concernCount(cities: NationalCity[]): number {
-  return cities.filter(
-    (city) =>
-      city.china_aqi_level != null &&
-      city.china_aqi_level !== "优" &&
-      city.china_aqi_level !== "良",
-  ).length;
-}
-
-function mean(values: number[]): number | null {
-  if (!values.length) return null;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-/** Region aggregates recomputed over the displayed set, so bars and headline agree. */
-export function regionSummary(cities: NationalCity[]): RegionRow[] {
-  const groups = new Map<string, NationalCity[]>();
-  for (const city of cities) {
-    const key = city.region || "未分组";
-    const held = groups.get(key);
-    if (held) held.push(city);
-    else groups.set(key, [city]);
-  }
-  return [...groups.entries()].map(([region, rows]) => ({
-    region,
-    city_count: rows.length,
-    mean_pm25: mean(
-      rows.map((row) => row.pm25).filter((value): value is number => value != null),
-    ),
-    mean_china_aqi: mean(
-      rows.map((row) => row.china_aqi).filter((value): value is number => value != null),
-    ),
-  }));
 }

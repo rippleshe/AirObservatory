@@ -5,6 +5,7 @@ import { useRouter } from "vue-router";
 import { api } from "../../api/client";
 import { expectData } from "../../api/request";
 import ChinaFieldMap from "./components/ChinaFieldMap.vue";
+import CityScatter from "./components/CityScatter.vue";
 import LiveStrip from "./components/LiveStrip.vue";
 import PollutionWeave from "./components/PollutionWeave.vue";
 import SeverityBand from "./components/SeverityBand.vue";
@@ -146,6 +147,29 @@ const displayCities = computed<NationalCity[]>(() => {
   });
 });
 
+/* The province reduction is taken over the projected cities, so scrubbing moves
+   the band with the map instead of leaving it behind on the live hour. */
+const displayProvinces = computed(() => provinceRepresentatives(displayCities.value));
+
+/* Which province the pinned city belongs to: the province-level charts highlight
+   that unit, whether or not the pinned city is the one representing it. */
+const focusedProvince = computed(() => {
+  const id = focusId.value;
+  if (id == null) return null;
+  const city = displayCities.value.find((row) => row.location_id === id);
+  return city ? (city.province ?? city.name) : null;
+});
+
+/* Which hour the 现状 section stands on: 现在, or the hour the ribbon is parked on.
+   Stated once in that section's head, because the map, the band, the scatter and
+   the loom are all describing that one hour and nothing on the page said so. */
+const sliceTime = computed(() => {
+  const times = pmSeries.data.value?.times ?? [];
+  const index = scrubIndex.value;
+  if (index == null) return national.data.value?.latest_source_time ?? times.at(-1) ?? null;
+  return times[Math.min(Math.max(0, index), Math.max(0, times.length - 1))] ?? null;
+});
+
 /* Weather archive may lag or contain holes. Never label an earlier wind
    reading as the selected CAMS hour. */
 const windField = computed(() => {
@@ -167,26 +191,40 @@ const windField = computed(() => {
   });
 });
 
-/* The legend is a ramp ruler with boundary ticks. */
+/* The legend is a ramp ruler with boundary ticks. Segments are as wide as the value
+   interval they stand for (HJ 633 for AQI, the page's own bands for PM2.5), and each
+   number sits on its own boundary — equal-width boxes under evenly spread numbers
+   read as a scale while saying nothing true about it. The 24h-change key stays a
+   categorical row: its thresholds are ±8 / ±25 with open ends. */
+const AQI_TICKS = [0, 50, 100, 150, 200, 300, 500];
+const PM25_TICKS = [0, 35, 75, 115, 150];
+
 const ramp = computed(() => {
   if (mapMetric.value === "aqi") {
     return {
-      segments: AQI_LEVELS.map((level) => aqiColor(level)),
-      ticks: ["0", "50", "100", "150", "200", "300", "500"],
-      words: false,
+      segments: AQI_LEVELS.map((level, index) => ({
+        color: aqiColor(level),
+        span: AQI_TICKS[index + 1]! - AQI_TICKS[index]!,
+      })),
+      ruler: AQI_TICKS.map((value) => ({ label: String(value), at: value / 500 })),
+      words: null,
     };
   }
   if (mapMetric.value === "pm25") {
     return {
-      segments: PM25_BANDS.map(([, color]) => stageColor(color)),
-      ticks: ["0", "35", "75", "115", "150", "+"],
-      words: false,
+      segments: PM25_BANDS.map(([, color], index) => ({
+        color: stageColor(color),
+        span: PM25_TICKS[index + 1]! - PM25_TICKS[index]!,
+      })),
+      ruler: [...PM25_TICKS.map((value) => ({ label: String(value), at: value / 150 })),
+        { label: "+", at: 1 }],
+      words: null,
     };
   }
   return {
-    segments: CHANGE_LEVELS.map((level) => CHANGE_COLORS[level]),
-    ticks: [...CHANGE_LEVELS],
-    words: true,
+    segments: CHANGE_LEVELS.map((level) => ({ color: CHANGE_COLORS[level], span: 1 })),
+    ruler: [],
+    words: [...CHANGE_LEVELS],
   };
 });
 
@@ -308,7 +346,7 @@ onBeforeUnmount(() => {
 
     <section ref="stageEl" v-reveal class="stage">
       <header class="stage-head">
-        <h1 class="stage-title">全国空气场 <small class="stage-city-count data-mono">{{ displayCities.length }} 城</small></h1>
+        <h1 class="stage-title">全国空气场 <small class="stage-city-count data-mono">{{ displayCities.length }} 城 / {{ displayProvinces.length }} 省级单位</small></h1>
         <div class="update-note">
           <strong class="data-mono">{{ formatTime(national.data.value?.latest_source_time) }}</strong>
           <span>{{ national.data.value?.aqi_standard ?? "HJ 633-2026" }}</span>
@@ -342,14 +380,22 @@ onBeforeUnmount(() => {
           <div class="legend-ramp">
             <div class="ramp-track">
               <span
-                v-for="(color, i) in ramp.segments"
+                v-for="(segment, i) in ramp.segments"
                 :key="i"
                 class="ramp-seg"
-                :style="{ background: color }"
+                :style="{ background: segment.color, flexGrow: segment.span }"
               ></span>
             </div>
-            <div class="ramp-ticks" :class="{ words: ramp.words }">
-              <span v-for="tick in ramp.ticks" :key="tick" class="ramp-tick">{{ tick }}</span>
+            <div v-if="ramp.words" class="ramp-ticks words">
+              <span v-for="word in ramp.words" :key="word" class="ramp-tick">{{ word }}</span>
+            </div>
+            <div v-else class="ramp-ticks">
+              <span
+                v-for="tick in ramp.ruler"
+                :key="tick.label"
+                class="ramp-tick"
+                :style="{ left: `${tick.at * 100}%` }"
+              >{{ tick.label }}</span>
             </div>
           </div>
         </div>
@@ -361,32 +407,52 @@ onBeforeUnmount(() => {
           :times="ribbon.times"
           :values="ribbon.values"
           :index="scrubIndex"
+          :caption="`省级代表 ${displayProvinces.length} · ${ribbon.times.length} h · 断线＝缺测`"
           @update:index="scrubIndex = $event"
         />
         <div v-else class="ribbon-skeleton skeleton" role="status"></div>
       </div>
     </section>
 
-    <section v-if="signals.data.value" v-reveal="60" class="viz-section">
-      <VizHead label="信号" :meta="`CAMS 未来 24h · ${signals.data.value.evaluated} 城`" />
-      <SignalStrip :signals="signals.data.value" @focus="pinCity" />
-    </section>
-
     <section v-if="displayCities.length" v-reveal="60" class="viz-section">
-      <VizHead label="分布" />
+      <VizHead label="现状" :meta="`${formatTime(sliceTime)} · 1 小时`" />
+
+      <div class="chart-head">
+        <h3>省级分布</h3>
+        <span>{{ displayProvinces.length }} 个省级单位 · 每省取当前 AQI 最高的城市</span>
+      </div>
       <SeverityBand
-        :cities="displayCities"
+        :cities="displayProvinces"
         :metric="mapMetric"
-        :focus-id="focusId"
+        :focus-province="focusedProvince"
         @select="pinCity"
       />
 
+      <div class="chart-head">
+        <h3>城市：严重 × 变化</h3>
+        <span>{{ displayCities.length }} 城 · 点一个城市，全页跟着聚焦</span>
+      </div>
+      <CityScatter
+        :cities="displayCities"
+        :focus-id="focusId"
+        @select="pinCity"
+        @pin="onMapPin"
+      />
+    </section>
+
+    <section v-if="weaveSources.pm25 || weaveSources.aqi" v-reveal="60" class="viz-section">
+      <VizHead label="演变" meta="720 h · 省级代表" />
       <PollutionWeave
-        v-if="weaveSources.pm25 || weaveSources.aqi"
         :sources="weaveSources"
         :roster="provinces"
         :focus-id="focusId"
+        :index="scrubIndex"
       />
+    </section>
+
+    <section v-if="signals.data.value" v-reveal="60" class="viz-section">
+      <VizHead label="未来" :meta="`CAMS 未来 24h · ${signals.data.value.evaluated} 城对比最新分析`" />
+      <SignalStrip :signals="signals.data.value" @focus="pinCity" />
     </section>
 
 
@@ -407,12 +473,21 @@ onBeforeUnmount(() => {
 }
 
 /* ── The Stage ───────────────────────────────────────────── */
+/* One screen for the map *and* its time axis: the axis is what scrubs every chart
+   below it, so it cannot be the thing that falls off the fold. The old fixed map
+   height (73vh) put the ribbon's plot 40-70px under the fold at 1440x900 and
+   1720x1000; the height is now the viewport minus the context bar and the page
+   padding, and the map takes what is left (rows: head / map / ribbon). */
 .stage {
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
+  height: calc(100vh - 116px);
+  height: calc(100dvh - 116px);
+  min-height: 620px;
+  max-height: 1080px;
   position: relative;
   display: grid;
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-xl);
@@ -449,7 +524,7 @@ onBeforeUnmount(() => {
 
 .map-area {
   position: relative;
-  height: clamp(600px, 73vh, 850px);
+  height: auto;
   min-height: 0;
 }
 .stage-city-count { color: var(--muted); font-size: 12px; font-weight: 500; margin-left: 12px; letter-spacing: 0; }
@@ -570,9 +645,9 @@ onBeforeUnmount(() => {
 }
 
 .ramp-ticks {
+  position: relative;
   margin-top: 4px;
-  display: flex;
-  justify-content: space-between;
+  height: 13px;
   color: var(--muted);
   font-family: var(--font-display);
   font-size: 10.5px;
@@ -580,12 +655,19 @@ onBeforeUnmount(() => {
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
 }
+.ramp-tick { position: absolute; transform: translateX(-50%); }
+.ramp-tick:first-child { transform: none; }
+.ramp-tick:last-child { transform: translateX(-100%); }
 
+/* The 24h-change key is a categorical row, not a scale: five words over open
+   thresholds, so its cells stay equal. */
 .ramp-ticks.words {
+  position: static;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  justify-content: unset;
+  height: auto;
 }
+.ramp-ticks.words .ramp-tick { position: static; transform: none; }
 
 .map-skeleton {
   position: absolute;
@@ -640,6 +722,29 @@ onBeforeUnmount(() => {
   gap: 18px;
 }
 
+/* One head per chart. The section head says which hour the section stands on;
+   these say what each chart encodes and over what set, so the two charts in
+   现状 are not left sharing a single word. */
+.chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 20px;
+  margin-bottom: -8px;
+}
+.chart-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.chart-head span {
+  color: var(--muted);
+  font-size: var(--fs-label);
+}
+
 .stage-title {
   margin: 0;
   color: var(--stage-ink);
@@ -651,6 +756,8 @@ onBeforeUnmount(() => {
 @media (max-width: 900px) {
   .national-workspace { padding: 16px 16px 40px; gap: 20px; }
   .stage {
+    height: auto;
+    min-height: 0;
     grid-template-rows: auto auto auto;
     border-radius: var(--radius-lg);
   }
@@ -661,6 +768,13 @@ onBeforeUnmount(() => {
   }
   .map-area { height: clamp(460px, 58vh, 660px); min-height: 0; }
   .ribbon-dock { padding: 10px 16px 20px; }
+}
+
+/* Short windows go back to "map first, axis follows on scroll": squeezing the map
+   under ~380px to keep the ribbon on screen trades one problem for a worse one. */
+@media (min-width: 901px) and (max-height: 840px) {
+  .stage { height: auto; min-height: 0; }
+  .map-area { height: min(62vh, 560px); }
 }
 
 @media (max-width: 700px) {

@@ -30,8 +30,8 @@ function fmtAt(iso: string): string {
           @click="emit('focus', signal.location_id, signal.name)"
         >
           <b>{{ signal.name }}</b>
-          <span class="delta data-mono">+{{ signal.delta.toFixed(0) }}</span>
-          <small class="data-mono">{{ fmtAt(signal.peak_at) }} · {{ signal.peak.toFixed(0) }}</small>
+          <span class="delta data-mono">+{{ signal.delta.toFixed(0) }} µg/m³</span>
+          <small class="data-mono">{{ fmtAt(signal.peak_at) }} · 峰值 {{ signal.peak.toFixed(0) }}</small>
         </button>
         <span v-if="!signals.worsening?.length" class="signal-none">无显著恶化</span>
       </div>
@@ -41,6 +41,7 @@ function fmtAt(iso: string): string {
       <span class="signal-k">全国峰值</span>
       <div class="signal-value">
         <b class="data-mono">{{ signals.peak?.value ?? "—" }}</b>
+        <small class="data-mono">µg/m³</small>
         <small v-if="signals.peak" class="data-mono">{{ fmtAt(signals.peak.target_at) }} · +{{ signals.peak.lead_hours }}h</small>
       </div>
     </div>

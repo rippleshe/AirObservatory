@@ -14,9 +14,17 @@ import { median } from "../../../lib/viz";
 
 type BandMetric = "aqi" | "pm25" | "change";
 
+/* One square per province-level unit, so the caller passes province
+   representatives — not the full city roster. With 185 cities this row was a
+   barcode: every square ~4.5px wide, its reading spilling over its neighbours and
+   its name clipped to nothing, while the fact row counted cities and said 省. */
 const props = withDefaults(
-  defineProps<{ cities: NationalCity[]; metric?: BandMetric; focusId?: number | null }>(),
-  { metric: "aqi", focusId: null },
+  defineProps<{
+    cities: NationalCity[];
+    metric?: BandMetric;
+    focusProvince?: string | null;
+  }>(),
+  { metric: "aqi", focusProvince: null },
 );
 const emit = defineEmits<{ select: [id: number, name: string] }>();
 
@@ -70,10 +78,13 @@ const ordered = computed(() => {
 
 const total = computed(() => props.cities.length || 1);
 
-/* Dim only when the focused city actually lives in this band — a focus
-   outside the dataset must not wash out the whole chart. */
+/* Highlight follows the province, not the exact city: the square stands for the
+   province's worst city, and a focus on any other city in that province must
+   still light its square instead of washing the whole row out. */
 const focusActive = computed(
-  () => props.focusId != null && props.cities.some((city) => city.location_id === props.focusId),
+  () =>
+    props.focusProvince != null &&
+    props.cities.some((city) => (city.province ?? city.name) === props.focusProvince),
 );
 
 /** Index of the first unit in each band — the boundary ruler reads off these. */
@@ -164,8 +175,23 @@ watch(
   },
 );
 
+/* The axis has room for the short form only — province names run long
+   (内蒙古自治区, 新疆维吾尔自治区, 香港特别行政区) and the full name plus its
+   representative city are in the square's tooltip. */
+const PROVINCE_SUFFIXES = [
+  "维吾尔自治区",
+  "壮族自治区",
+  "回族自治区",
+  "特别行政区",
+  "自治区",
+  "省",
+];
+
 function shortName(name: string) {
-  return name.slice(0, 2);
+  const trimmed = PROVINCE_SUFFIXES.find(
+    (suffix) => name.length > suffix.length && name.endsWith(suffix),
+  );
+  return (trimmed ? name.slice(0, -trimmed.length) : name).slice(0, 3);
 }
 
 
@@ -220,7 +246,7 @@ function tickStyle(mark: { start: number }) {
           :key="row.city.location_id"
           class="unit-col"
           :class="{
-            dimmed: focusActive && focusId !== row.city.location_id,
+            dimmed: focusActive && focusProvince !== (row.city.province ?? row.city.name),
           }"
           role="listitem"
         >
@@ -228,7 +254,7 @@ function tickStyle(mark: { start: number }) {
             type="button"
             class="unit"
             :style="{ background: row.color }"
-            :class="{ focused: focusId === row.city.location_id }"
+            :class="{ focused: focusProvince === (row.city.province ?? row.city.name) }"
             :title="unitTip(row)"
             :aria-label="`${index + 1}/${total} ${unitTip(row)}`"
             @click="emit('select', row.city.location_id, row.city.name)"
@@ -236,7 +262,7 @@ function tickStyle(mark: { start: number }) {
             <b class="unit-aqi data-mono">{{ readingText(row) }}</b>
             <span class="sr-only">{{ row.city.name }}</span>
           </button>
-          <span class="unit-name">{{ shortName(row.city.name) }}</span>
+          <span class="unit-name">{{ shortName(row.city.province ?? row.city.name) }}</span>
         </div>
       </div>
 
@@ -253,6 +279,12 @@ function tickStyle(mark: { start: number }) {
           <b class="data-mono">{{ mark.count }}</b>
         </span>
       </div>
+
+      <p class="band-legend">
+        <span>按数值升序 · 格宽等分</span>
+        <span>上升 / 改善 = Δ24h ≥ +8 / ≤ −8 µg/m³</span>
+        <span>暂无 ＝ 该省当面无读数</span>
+      </p>
     </div>
 
     <dl class="band-facts">
@@ -368,6 +400,20 @@ function tickStyle(mark: { start: number }) {
   font-weight: 600;
 }
 
+.band-legend {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  color: var(--muted);
+  font-size: var(--fs-label);
+}
+.band-legend span + span::before {
+  content: "·";
+  margin-right: 18px;
+  color: var(--hairline-strong);
+}
+
 .band-facts {
   margin: 0;
   padding-top: 12px;
@@ -401,16 +447,6 @@ function tickStyle(mark: { start: number }) {
   font-size: 11px;
   font-weight: 400;
 }
-.band-rule {
-  margin-left: auto;
-  border-right: 0;
-}
-.band-rule dd {
-  color: var(--muted);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-body);
-}
-
 @media (max-width: 860px) {
   .severity-band,
   .band-plot { min-width: 0; }

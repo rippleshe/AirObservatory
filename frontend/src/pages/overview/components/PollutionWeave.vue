@@ -20,6 +20,9 @@ const props = defineProps<{
   sources: Record<string, NationalSeriesResponse | undefined>;
   roster: NationalCity[];
   focusId?: number | null;
+  /* Where the page's time axis is parked, so the loom shows the same hour the
+     map, the band and the scatter are standing on. */
+  index?: number | null;
 }>();
 
 const active = ref<string>("pm25");
@@ -50,6 +53,16 @@ const rows = computed(() => {
 
 const times = computed(() => series.value?.times ?? []);
 
+/* "null = now" on the page's axis; live therefore means the last column, so the
+   playhead is always on screen as a reference instead of appearing only mid-scrub. */
+const playhead = computed(() => {
+  const stamps = times.value;
+  if (!stamps.length) return null;
+  const index = props.index;
+  if (index == null) return stamps.length - 1;
+  return Math.min(Math.max(0, index), stamps.length - 1);
+});
+
 /* The focused province keeps its ink label while the rest of the loom reads
    normally — a quiet anchor, not a strobe. */
 const focusLabel = computed(() => {
@@ -78,12 +91,13 @@ function dayLabel(iso: string) {
 const unitSuffix = computed(() => (band.value.unit ? ` ${band.value.unit}` : ""));
 
 /* The loom's own conclusion: the hour when the most representatives sat at or
-   above the variable's threshold at once. Numbers first, then the fabric. */
+   above the variable's threshold at once. Nothing when there is no window yet —
+   a sentence that only says "this is a chart of time and space" is filler. */
 const headline = computed(() => {
   const ts = times.value;
   const rs = rows.value;
   const exceed = band.value.exceed;
-  if (!ts.length || !rs.length) return "近 30 天逐小时时空演变";
+  if (!ts.length || !rs.length) return "";
   let best = -1;
   let bestAt = 0;
   ts.forEach((_, index) => {
@@ -242,6 +256,20 @@ function render() {
               borderWidth: 1.5,
             },
           },
+          /* The page's time authority, drawn on the loom: scrubbing moves this
+             line instead of re-rendering 720 × 34 cells. */
+          markLine: {
+            silent: true,
+            symbol: "none",
+            animation: false,
+            lineStyle: {
+              color: token("--ink", chartTheme().ink),
+              width: 1.4,
+              opacity: 0.75,
+              type: "solid",
+            },
+            data: playhead.value == null ? [] : [{ xAxis: playhead.value }],
+          },
           progressive: 2000,
         },
       ],
@@ -260,6 +288,13 @@ onMounted(() => {
 
 watch(() => [series.value, props.roster, props.focusId], render, { deep: true });
 watch(inView, () => render());
+
+/* Scrubbing fires on every pointer move, so the playhead is merged in on its own
+   instead of going through a full re-render of the loom. */
+watch(playhead, (at) => {
+  if (!chart || !inView.value) return;
+  chart.setOption({ series: [{ markLine: { data: at == null ? [] : [{ xAxis: at }] } }] });
+});
 
 /* A variable swap repaints every cell: dip the loom so the exchange reads as
    one deliberate dissolve instead of a hard cut. */
@@ -295,7 +330,7 @@ defineExpose({ headline, peakStats });
           {{ vb.label }}
         </button>
       </div>
-      <span class="weave-meta">{{ headline }}</span>
+      <span v-if="headline" class="weave-meta">{{ headline }}</span>
       <button
         type="button"
         class="table-toggle"
@@ -337,7 +372,9 @@ defineExpose({ headline, peakStats });
       <span v-for="([label, color]) in band.bands" :key="label">
         <i :style="{ background: color }"></i>{{ label }}
       </span>
-      <span class="key-rule">白线=日界</span>
+      <span class="key-rule">色阶上限 {{ vmax }}{{ unitSuffix }}</span>
+      <span class="key-rule">≥{{ band.exceed }}{{ unitSuffix }} ＝ 超标</span>
+      <span class="key-rule">深色竖线 ＝ 时间轴所在小时 · 白色竖线 ＝ 日界 · 行按纬度自北向南</span>
     </footer>
   </article>
 </template>

@@ -4,8 +4,11 @@
    geometry (Albers-style equal-area conic — the projection China maps are
    actually printed with), Vue renders the SVG, d3-zoom supplies the
    gestures. Layers: ocean graticule → lifted landmass (dot-grid atlas
-   texture + soft shadow) → province hairlines → city marks with sonar
-   halos on the worst provinces → severity-ranked collision-free labels.
+   texture + soft shadow) → province hairlines → city marks (a hairline ring
+   where the city actually reports ground observations, one expanding ping on
+   the worst province) → severity-ranked collision-free labels → a neutral
+   wind-particle canvas riding above the plate. Every one of those is named in
+   the mark legend at the bottom left: a ring nobody can name is decoration.
    Colours still come from the shared palette; the map owns no hues.
 
    Coverage: public/maps/china.json carries 34 province-level units —
@@ -26,8 +29,7 @@ import type { Feature, MultiPolygon, Polygon } from "geojson";
 import { Minus, Plus, RotateCcw } from "lucide-vue-next";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { gsap, prefersReducedMotion } from "../../../lib/motion";
-import { pm25Color } from "../../../lib/palette";
-import { aqiColor, changeColor, changeState } from "../../../lib/palette";
+import { AQI_LEVEL_COLORS, aqiColor, changeColor, changeState, pm25Color } from "../../../lib/palette";
 import type { NationalCity } from "../provinces";
 
 type MapMetric = "aqi" | "pm25" | "change";
@@ -144,21 +146,11 @@ function metricLabel(city: NationalCity) {
   return city.china_aqi == null ? "—" : `${city.china_aqi}`;
 }
 
-/* Uniform precision dots: magnitude lives in the reading chips, the tooltip
-   and the charts — the map's only job is "where to look". Equal size keeps
-   the field calm and dense clusters legible; severity is carried by colour
-   plus crisp geometric emphasis rings, never by bubble volume. */
+/* Uniform precision dots: the map's only job is "where to look", so magnitude lives
+   in the tooltip, the band and the scatter — never in bubble volume. Equal size
+   keeps the field calm and dense clusters legible; severity is carried by colour
+   plus one crisp geometric ring on the worst province. */
 const MARK_R = 4.6;
-const MARK_GAP = 2.5;
-
-/* The reading row appears only where there is something to read — a province
-   that is genuinely polluted or genuinely moving — so the crowded east
-   carries names while the story-carrying provinces carry numbers. */
-function hasReading(city: NationalCity) {
-  if (props.metric === "pm25") return (city.pm25 ?? 0) > 75;
-  if (props.metric === "change") return Math.abs(city.pm25_change_24h ?? 0) >= 25;
-  return (city.china_aqi ?? 0) > 100;
-}
 
 /* ── marks & collision-ranked labels ─────────────────────────────────── */
 
@@ -168,9 +160,6 @@ type Mark = {
   y: number;
   r: number;
   fill: string;
-  reading: boolean;
-  valueText: string;
-  emphasis: boolean;
   ping: boolean;
   ground: boolean;
 };
@@ -242,19 +231,16 @@ const view = computed(() => {
       y: xy?.[1] ?? -100,
       r: MARK_R,
       fill: cityColor(city),
-      reading: hasReading(city),
-      valueText: metricLabel(city),
-      emphasis: false,
       ping: false,
       ground: city.has_recent_ground_observation,
     };
   });
 
-  // Crisp geometric emphasis: the three most severe provinces wear a thin
-  // reticle ring, and the worst one alone carries the radar ping.
+  // Crisp geometric emphasis: the single worst province carries the radar ping.
+  // (A second ring for the top three sat on top of the ground-observation ring and
+  // meant nothing a reader could tell apart; the ranking is already in the labels.)
   const severe = ranked.slice(0, 3).filter((r) => r.value != null).map((r) => r.city.location_id);
   for (const mark of marks) {
-    mark.emphasis = severe.includes(mark.city.location_id);
     mark.ping = severe[0] === mark.city.location_id;
   }
 
@@ -270,8 +256,8 @@ const view = computed(() => {
   const slots = new Map<number, { slot: Slot; w: number; h: number }>();
   for (const mark of ordered) {
     const name = mark.city.name;
-    const w = Math.max(textWidth(name, 12.5), mark.reading ? textWidth(mark.valueText, 11) : 0) + 6;
-    const h = mark.reading ? 30 : 16;
+    const w = textWidth(name, 12.5) + 6;
+    const h = 16;
     let chosen: Slot | null = null;
     for (const slot of slotsFor(mark.x, mark.y, mark.r, w, h)) {
       const box = boxFor(mark.x, mark.y, mark.r, w, h, slot);
@@ -308,11 +294,27 @@ const tooltipStyle = computed(() => {
 const marks = computed(() => view.value.marks);
 const labels = computed(() => view.value.labels);
 
+/* Pointer position inside the plate, for the province name that follows it. */
+const pointer = ref<{ x: number; y: number } | null>(null);
+
+function onPlateMove(event: MouseEvent) {
+  const rect = (event.currentTarget as SVGSVGElement).getBoundingClientRect();
+  pointer.value = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
+/* One tone sampled from the ramp the plate is currently wearing, so the legend's
+   dot is the same kind of mark as the dots it explains. */
+const legendTone = computed(() => {
+  if (props.metric === "pm25") return pm25Color(60);
+  if (props.metric === "change") return changeColor(20);
+  return AQI_LEVEL_COLORS["轻度污染"] ?? "#64748b";
+});
+
 /* ── time-machine interpolation ────────────────────────────────────────
    Scrubbing replaces the whole city array each tick. Snapping is what made
-   the old ribbon feel like a flip-book, so the mark layer now tweens: the
-   numbers roll, colours cross-fade between bands and label anchors glide to
-   their new slots. `view` stays the target; `render` is what paints. */
+   the old ribbon feel like a flip-book, so the mark layer now tweens: colours
+   cross-fade between bands and label anchors glide to their new slots.
+   `view` stays the target; `render` is what paints. */
 type LiveLabel = Mark & { slot: Slot; w: number; h: number };
 type LiveState = { marks: Mark[]; labels: LiveLabel[] };
 
@@ -325,30 +327,13 @@ function snapshot(state: LiveState): LiveState {
   };
 }
 
-function formatValue(city: NationalCity, value: number | null | undefined) {
-  if (props.metric === "pm25") return value == null ? "—" : value.toFixed(0);
-  if (props.metric === "change") {
-    const state = changeState(value);
-    if (value == null) return state.label;
-    return `${state.arrow}${value >= 0 ? "+" : ""}${value.toFixed(1)}`;
-  }
-  return value == null ? "—" : `${Math.round(value)}`;
-}
-
 function interpolateState(from: LiveState, t: number): LiveState {
   const to = view.value;
   const markFrom = new Map(from.marks.map((m) => [m.city.location_id, m]));
   const nextMarks = to.marks.map((mark) => {
     const prev = markFrom.get(mark.city.location_id);
     if (!prev) return mark;
-    const a = metricValue(prev.city);
-    const b = metricValue(mark.city);
-    const value = a != null && b != null ? a + (b - a) * t : b;
-    return {
-      ...mark,
-      fill: interpolateRgb(prev.fill, mark.fill)(t),
-      valueText: formatValue(mark.city, value),
-    };
+    return { ...mark, fill: interpolateRgb(prev.fill, mark.fill)(t) };
   });
   const labelFrom = new Map(from.labels.map((l) => [l.city.location_id, l]));
   const nextLabels = to.labels.map((label) => {
@@ -476,12 +461,15 @@ let fieldVisible = true;
 let fieldHardClear = true;
 const FIELD_CELL = 26;
 const SPEED_SCALE = 7.5;
+/* Wind is one neutral ink, never a second colour scale: the map already spends its
+   hues on the metric, and particles coloured by local PM2.5 contradicted the
+   legend the moment the switch was not on PM2.5. */
+const WIND_INK = "#94a3b8";
 const fieldGrid = {
   cols: 0,
   rows: 0,
   u: new Float32Array(0),
   v: new Float32Array(0),
-  c: new Float32Array(0),
 };
 
 function devicePixelScale() {
@@ -542,20 +530,13 @@ function rebuildGrid() {
   const rows = Math.max(2, Math.ceil(size.value.h / FIELD_CELL) + 1);
   const u = new Float32Array(cols * rows);
   const v = new Float32Array(cols * rows);
-  const c = new Float32Array(cols * rows);
   const wind = projectedWind();
-  const pm = props.cities.flatMap((city) => {
-    const xy = proj([city.lon, city.lat]);
-    if (!xy || city.pm25 == null) return [];
-    return [{ x: xy[0]!, y: xy[1]!, value: city.pm25 }];
-  });
   for (let r = 0; r < rows; r++) {
     for (let col = 0; col < cols; col++) {
       const gx = col * FIELD_CELL;
       const gy = r * FIELD_CELL;
       let wu = 0;
       let wv = 0;
-      let wc = 0;
       let wsum = 0;
       for (const point of wind) {
         const d2 = (point.x - gx) ** 2 + (point.y - gy) ** 2 + 64;
@@ -564,29 +545,20 @@ function rebuildGrid() {
         wv += point.v * weight;
         wsum += weight;
       }
-      let csum = 0;
-      for (const point of pm) {
-        const d2 = (point.x - gx) ** 2 + (point.y - gy) ** 2 + 100;
-        const weight = 1 / d2;
-        wc += point.value * weight;
-        csum += weight;
-      }
       const idx = r * cols + col;
       if (wsum > 0) {
         u[idx] = wu / wsum;
         v[idx] = wv / wsum;
       }
-      c[idx] = csum > 0 ? wc / csum : -1;
     }
   }
   fieldGrid.cols = cols;
   fieldGrid.rows = rows;
   fieldGrid.u = u;
   fieldGrid.v = v;
-  fieldGrid.c = c;
 }
 
-function sampleGrid(x: number, y: number): [number, number, number] {
+function sampleGrid(x: number, y: number): [number, number] {
   const gx = x / FIELD_CELL;
   const gy = y / FIELD_CELL;
   const x0 = Math.min(fieldGrid.cols - 1, Math.max(0, Math.floor(gx)));
@@ -601,9 +573,7 @@ function sampleGrid(x: number, y: number): [number, number, number] {
     lerp(lerp(fieldGrid.u[idx(x0, y0)]!, fieldGrid.u[idx(x1, y0)]!, fx), lerp(fieldGrid.u[idx(x0, y1)]!, fieldGrid.u[idx(x1, y1)]!, fx), fy);
   const v =
     lerp(lerp(fieldGrid.v[idx(x0, y0)]!, fieldGrid.v[idx(x1, y0)]!, fx), lerp(fieldGrid.v[idx(x0, y1)]!, fieldGrid.v[idx(x1, y1)]!, fx), fy);
-  const c =
-    lerp(lerp(fieldGrid.c[idx(x0, y0)]!, fieldGrid.c[idx(x1, y0)]!, fx), lerp(fieldGrid.c[idx(x0, y1)]!, fieldGrid.c[idx(x1, y1)]!, fx), fy);
-  return [u, v, c];
+  return [u, v];
 }
 
 function spawnParticle(p: { x: number; y: number; age: number; ttl: number }) {
@@ -659,11 +629,11 @@ function drawStaticField() {
       const y = r * FIELD_CELL;
       if (!insideLand(x, y)) continue;
       const idx = r * fieldGrid.cols + col;
-      const [u, v, c] = [fieldGrid.u[idx]!, fieldGrid.v[idx]!, fieldGrid.c[idx]!];
+      const [u, v] = [fieldGrid.u[idx]!, fieldGrid.v[idx]!];
       const speed = Math.hypot(u, v);
       if (speed < 0.2) continue;
       const len = Math.min(18, 5 + speed * 1.8);
-      ctx.strokeStyle = c >= 0 ? pm25Color(c) : "#94a3b8";
+      ctx.strokeStyle = WIND_INK;
       ctx.globalAlpha = 0.7;
       ctx.lineWidth = 1.6 / Math.max(0.7, t.k);
       ctx.beginPath();
@@ -703,7 +673,7 @@ function fieldFrame(ts: number) {
   ctx.lineCap = "round";
 
   for (const particle of particles) {
-    const [u, v, c] = sampleGrid(particle.x, particle.y);
+    const [u, v] = sampleGrid(particle.x, particle.y);
     particle.px = particle.x;
     particle.py = particle.y;
     particle.x += u * SPEED_SCALE * dt;
@@ -718,7 +688,7 @@ function fieldFrame(ts: number) {
       spawnParticle(particle);
       continue;
     }
-    ctx.strokeStyle = c >= 0 ? pm25Color(c) : "#94a3b8";
+    ctx.strokeStyle = WIND_INK;
     ctx.globalAlpha = 0.62;
     ctx.beginPath();
     ctx.moveTo(particle.px, particle.py);
@@ -741,6 +711,7 @@ function ensureParticleCount() {
 }
 
 function startField() {
+  if (!windOn.value) return;
   if (fieldActive || prefersReducedMotion()) {
     if (prefersReducedMotion()) drawStaticField();
     return;
@@ -754,6 +725,19 @@ function stopField() {
   fieldActive = false;
   cancelAnimationFrame(rafId);
 }
+
+/* The particle layer is a layer, so it can be turned off — and when it is off the
+   canvas is cleared rather than frozen mid-swirl. */
+const windOn = ref(true);
+watch(windOn, (on) => {
+  if (on) {
+    refreshFieldLayer();
+    startField();
+  } else {
+    stopField();
+    clearField();
+  }
+});
 
 let fieldObserver: IntersectionObserver | null = null;
 
@@ -964,6 +948,7 @@ onBeforeUnmount(() => {
       role="img"
       aria-label="全国空气质量地图"
       @click="onStageClick"
+      @mousemove="onPlateMove"
     >
       <defs>
         <pattern id="atlas-dots" width="7" height="7" patternUnits="userSpaceOnUse">
@@ -1002,8 +987,7 @@ onBeforeUnmount(() => {
       <g class="marks">
         <template v-for="mark in screenField.singles" :key="mark.city.location_id">
           <circle v-if="mark.ping" class="ping" :cx="mark.sx" :cy="mark.sy" :r="MARK_R + 2.5" :stroke="mark.fill" />
-          <circle v-if="mark.emphasis" class="reticle" :cx="mark.sx" :cy="mark.sy" :r="MARK_R + 3.5" />
-          <circle v-else-if="mark.ground" class="ground-ring" :cx="mark.sx" :cy="mark.sy" :r="MARK_R + 2.6" />
+          <circle v-if="mark.ground" class="ground-ring" :cx="mark.sx" :cy="mark.sy" :r="MARK_R + 2.6" />
           <circle
             class="mark"
             :class="{ active: hoveredCity === mark.city }"
@@ -1035,7 +1019,62 @@ onBeforeUnmount(() => {
 
     <!-- Wind particles ride above the plate: translucent streaks, no pointer
          capture, same zoom transform as the SVG geometry. -->
-    <canvas ref="fieldCanvas" class="field-canvas" aria-hidden="true"></canvas>
+    <canvas v-show="windOn" ref="fieldCanvas" class="field-canvas" aria-hidden="true"></canvas>
+
+    <!-- Hovering a province tints it; without the name the tint is an unexplained
+         smudge, so the name follows the pointer. -->
+    <div
+      v-if="hoveredProvince && pointer"
+      class="province-tip"
+      :style="{ left: `${pointer.x + 14}px`, top: `${pointer.y + 14}px` }"
+    >{{ hoveredProvince }}</div>
+
+    <!-- What every mark on the plate means, in one place. The four shapes are
+         drawn as themselves: a legend that approximates its own marks is how
+         readers end up asking what the rings are. -->
+    <div class="mark-legend">
+      <div class="mark-row">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="4.4" class="ml-fill" :style="{ fill: legendTone }" />
+        </svg>
+        <span>城市 · 颜色＝指标，大小无含义</span>
+      </div>
+      <div class="mark-row">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="6.4" class="ml-ring" />
+          <circle cx="8" cy="8" r="2.6" class="ml-fill" :style="{ fill: legendTone }" />
+        </svg>
+        <span>有近期地面观测</span>
+      </div>
+      <div class="mark-row">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="4.2" class="ml-fill" :style="{ fill: legendTone }" />
+          <circle cx="8" cy="8" r="7.1" class="ml-ping" :style="{ stroke: legendTone }" />
+        </svg>
+        <span>当前最差省</span>
+      </div>
+      <div class="mark-row">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="6.6" class="ml-cluster" :style="{ stroke: legendTone }" />
+          <text x="8" y="8.6" text-anchor="middle" class="ml-count">4</text>
+        </svg>
+        <span>聚合城市数 · 点开放大</span>
+      </div>
+      <div class="mark-row">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <text x="1" y="12" class="ml-label">名</text>
+        </svg>
+        <span>只给最差的前几城与选中城市</span>
+      </div>
+      <button type="button" class="mark-row mark-toggle" :aria-pressed="windOn" @click="windOn = !windOn">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2 10.5 q3 -5 6 0 t6 0" class="ml-wind" />
+        </svg>
+        <span>近地风场 · 尾迹长度 ≈ 风速</span>
+        <b>{{ windOn ? "开" : "关" }}</b>
+      </button>
+      <p class="mark-foot">{{ cities.length }} 城 · CAMS 模式分析</p>
+    </div>
 
     <!-- Tooltip: the same reading the page would give, anchored to the dot -->
     <div
@@ -1185,7 +1224,93 @@ onBeforeUnmount(() => {
   stroke-width: 1.8;
 }
 
-.map-cluster { cursor: zoom-in; }
+.map-cluster {
+  cursor: zoom-in;
+}
+
+/* ── overlays ────────────────────────────────────────────────────────── */
+/* The province name follows the pointer: the hover tint alone was an unexplained
+   smudge, since nothing on the plate ever said which province was tinted. */
+.province-tip {
+  position: absolute;
+  z-index: 11;
+  padding: 3px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-sm);
+  color: var(--ink-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* Sits above the page's ramp legend (bottom: 18px + its 44px + a gap). */
+.mark-legend {
+  position: absolute;
+  z-index: 9;
+  left: 20px;
+  bottom: 74px;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px 8px;
+  max-width: 268px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--sheet-glass, rgba(255, 255, 255, 0.9));
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
+  color: var(--muted);
+  font-size: var(--fs-label);
+}
+
+.mark-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 17px;
+}
+.mark-row svg { flex: none; }
+.mark-row span { color: var(--ink-secondary); }
+
+.ml-fill { stroke: var(--sheet); stroke-width: 0.9; }
+.ml-ring { fill: none; stroke: var(--ink); stroke-width: 1; opacity: 0.45; }
+.ml-ping { fill: none; stroke-width: 1.3; opacity: 0.55; }
+.ml-cluster { fill: var(--sheet); stroke-width: 1.6; }
+.ml-count { fill: var(--ink); font-size: 8px; font-weight: 700; }
+.ml-label { fill: var(--ink-secondary); font-size: 10px; font-weight: 600; }
+.ml-wind { fill: none; stroke: #94a3b8; stroke-width: 1.4; }
+
+.mark-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mark-toggle:hover span { color: var(--ink); }
+.mark-toggle b {
+  margin-left: auto;
+  color: var(--ink);
+  font-weight: 650;
+}
+.mark-toggle[aria-pressed="false"] span { text-decoration: line-through; }
+
+.mark-foot {
+  margin: 2px 0 0;
+  padding-top: 5px;
+  border-top: 1px solid var(--hairline-soft);
+  color: var(--faint);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .mark-legend { left: 14px; bottom: 68px; max-width: 220px; font-size: 11px; }
+  .mark-row span { font-size: 11px; }
+}
 .map-cluster circle { fill: var(--sheet); stroke-width: 2; }
 .map-cluster text {
   font-family: var(--font-display);
@@ -1197,16 +1322,8 @@ onBeforeUnmount(() => {
 .map-cluster:focus-visible circle,
 .marks .mark:focus-visible { stroke: var(--ink); stroke-width: 2.5; outline: none; }
 
-/* Emphasis is crisp geometry: a hairline reticle on the severe provinces and
-   one expanding hairline ping on the worst — no glows, no blurred halos. */
-.reticle {
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 1.2;
-  opacity: 0.7;
-  pointer-events: none;
-}
-
+/* Emphasis is crisp geometry: one expanding hairline ping on the worst province —
+   no glows, no blurred halos. */
 .ping {
   fill: none;
   stroke-width: 1.4;
@@ -1242,16 +1359,6 @@ onBeforeUnmount(() => {
   paint-order: stroke;
   stroke: rgba(255, 255, 255, 0.88);
   stroke-width: 2.6px;
-  stroke-linejoin: round;
-}
-
-.label-value {
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 700;
-  paint-order: stroke;
-  stroke: rgba(255, 255, 255, 0.92);
-  stroke-width: 3px;
   stroke-linejoin: round;
 }
 

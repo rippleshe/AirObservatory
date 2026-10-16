@@ -112,10 +112,13 @@ function fmtUpdated(value?: string | null) {
         <span class="live-city">{{ worst.name }}</span>
         <b class="data-mono" :style="{ color: worst.color }">{{ worst.text }}</b>
       </div>
-      <svg v-if="sparkPath" class="live-spark" viewBox="0 0 64 18" aria-hidden="true">
-        <path :d="sparkPath" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
-      </svg>
-      <span class="live-time data-mono">{{ fmtUpdated(updated) }}</span>
+      <span v-if="sparkPath" class="live-spark-cell">
+        <small class="live-k">近 24h 中位</small>
+        <svg class="live-spark" viewBox="0 0 64 18" aria-hidden="true">
+          <path :d="sparkPath" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+        </svg>
+      </span>
+      <span class="live-time data-mono">更新 {{ fmtUpdated(updated) }}</span>
     </div>
   </div>
 </template>
@@ -183,6 +186,12 @@ function fmtUpdated(value?: string | null) {
   color: var(--ink-soft);
   font-size: 12.5px;
   font-weight: 600;
+}
+
+.live-spark-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .live-spark {

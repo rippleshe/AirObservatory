@@ -11,9 +11,8 @@ frontend/src/**/*.js
 frontend/vite.config.js
 frontend/vite.config.d.ts
 
-# 注：.env 是故意入库的课程组共用密钥，4 个协作者 clone 即用。
-#     一旦仓库转为 public、或密钥被滥用，立刻去 OpenAQ 后台轮换并更新本文件。
-#     想换成自己的私钥：复制 .env 为 .env.local 再改 OPENAQ_API_KEY（.env.local 不入库）。
+# 本地配置与密钥（含 OpenAQ key）不入库：平时用本地演示库，不需要任何密钥
+.env
 .env.local
 
 # 本机缓存 / 本地配置，不入库
@@ -26,8 +25,10 @@ frontend/vite.config.d.ts
 .zcode/
 .zcodeignore
 
-# 本地开发日志
+# 本地开发日志与一次性产物
 data/*.log
+data/*.json
+data/*.csv
 # 运行时数据库：单文件已超 GitHub 100 MiB 上限，且每次采集都会变，入库必冲突
 data/*.db
 data/*.db-wal

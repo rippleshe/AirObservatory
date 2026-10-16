@@ -73,10 +73,11 @@ REPAIRS = {
     "岳阳": 1927639,
     "芜湖": 1791236,
 }
-# Two records carry a name the CSV does not use: 普洱's prefecture was renamed (the
-# GeoNames record for the urban district is still 思茅) and the Zhoushan record is
-# only reachable — and only named — in pinyin.
-RECORD_ALIAS = {"普洱": ("思茅",), "舟山": ("Zhoushan",)}
+# Records whose name is not the city's own name: 普洱's prefecture was renamed (the
+# GeoNames record for the urban district is still 思茅), 舟山 only resolves in
+# pinyin, and 宝鸡's populated record is named "Baoji" while its Chinese record has
+# no population at all.
+RECORD_ALIAS = {"普洱": ("思茅",), "舟山": ("Zhoushan",), "宝鸡": ("Baoji",)}
 
 # province-level units that are not queried with countryCode=CN: the filter drops
 # them entirely, and admin1 cannot be used as the acceptance test.
@@ -267,10 +268,11 @@ def _population(city: City, cache: dict) -> tuple[int | None, int | None]:
         record = _by_id(city.geocoding_id, cache)
         return (record.get("population"), city.geocoding_id)
     terms = (f"{city.city}市", city.city, *EXTRA_TERMS.get(city.city, ()))
+    aliases = RECORD_ALIAS.get(city.city, ())
     candidates = []
     for term in terms:
         for item in _search(term, cache, country="CN"):
-            if strip_suffix(item.get("name", "")) != city.city:
+            if strip_suffix(item.get("name", "")) != city.city and item.get("name") not in aliases:
                 continue
             if normalize_province(item.get("admin1", "")) != city.province:
                 continue

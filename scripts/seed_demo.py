@@ -7,6 +7,12 @@ synthetic records anchored to the hour it runs: CAMS analysis fields, weather,
 sparse ground observations, forecast snapshots, and the ingestion bookkeeping
 the status page reads.
 
+Where per-city differences come from: ``backend/city_geography.csv`` — measured
+elevation, relief and population, plus synthetic road, industry and emission
+columns. The emission index drives each city's level (``_regime``), so the belt the
+map draws is a consequence of the table instead of a coordinate hardcoded here.
+``scripts/build_city_geography.py`` wrote it and says which columns are synthetic.
+
 Three rules it does not break:
 
 - the analysis layer still runs for real — the PCA artifacts are produced by
@@ -36,6 +42,7 @@ from backend.analytics.materialize import (
     materialize_city_fingerprint,
     materialize_city_structure,
 )
+from backend.city_catalog import CityGeography, geography_for
 from backend.config import get_settings
 from backend.db import connect, init_db, transaction
 from backend.repository import active_location_rows
@@ -56,6 +63,15 @@ FORECAST_HORIZON = 24
 SNAPSHOT_STEP_HOURS = 12
 SNAPSHOT_COUNT = 6
 AQI_STANDARD_TEXT = "HJ 633-2026（按地面观测浓度实时换算）"
+# The national field has to reach every AQI band in a single hour. The city level
+# is driven by the emission index from backend/city_geography.csv, stretched across
+# the roster's own range so the bands stay reachable however that table changes.
+# HJ 633-2026 puts 严重污染 at PM2.5 250 µg/m³ and the hour's concentration runs
+# 1.2-1.4x the level, so the ceiling sits above 250 but not far above it: in the
+# northern dust belt PM10 is about twice PM2.5, and a higher ceiling would only pin
+# those cities to the top of the AQI scale instead of spreading them out.
+LEVEL_FLOOR = 26.0
+LEVEL_CEILING = 330.0
 
 # The pages are built around provenance, freshness and coverage, so a library
 # that only ever shows the healthy path demonstrates none of them. These inject
@@ -119,7 +135,6 @@ class Regime:
     wind_scale: float
     wind_direction: float
     dust: float
-    stagnation: float
 
 
 class CitySeries:
@@ -331,39 +346,75 @@ def _european_aqi(pm25: float, pm10: float, no2: float, o3: float) -> float:
     return max(pm25 / 2.0, pm10 / 4.0, no2 / 2.0, o3 / 1.6) * 1.15
 
 
-def _regime(rng: random.Random, latitude: float, longitude: float) -> Regime:
+def _regime(
+    rng: random.Random,
+    latitude: float,
+    longitude: float,
+    geography: CityGeography | None,
+    level_range: tuple[float, float],
+) -> Regime:
+    """Per-city latent factors and where they now come from.
+
+    The level used to be read straight off the coordinate ("the further inland and
+    north, the dirtier"), which bakes one hardcoded belt into every page. It now
+    follows the city's own static drivers from ``backend/city_geography.csv`` —
+    industrial land, heating demand, urban size — so the regional structure the map
+    and the clustering describe has something to be explained by, and the PCA
+    loadings can be read as an emission axis.
+
+    The coordinate gradient stays, in two places: as the fallback for a city with no
+    geography row, and as the dust belt, which no column in that table describes
+    (aridity is not relief: 青藏 and 华北 sit on opposite sides of that one).
+    """
     north = _clamp((latitude - 30.0) / 14.0, 0.0, 1.0)
     west = _clamp((113.0 - longitude) / 25.0, 0.0, 1.0)
-    # Stagnation runs continuously from the south-east coast to the north-west
-    # interior, and the level follows it: a gradient produces the regional
-    # structure the map, the bands and the clustering all need to describe,
-    # without a few arbitrary cities being declared extreme. Calibrated so one
-    # hour of the national field can read 优 through 严重污染 across cities.
-    stagnation = north * (0.35 + 0.65 * west)
+    belt = north * (0.35 + 0.65 * west)
+    if geography is None:
+        emission = belt
+        altitude = 0.0
+    else:
+        low, high = level_range
+        emission = _clamp((geography.emission_intensity - low) / max(high - low, 1e-6), 0.0, 1.0)
+        altitude = _clamp(geography.elevation_m / 3000.0, 0.0, 1.0)
     return Regime(
-        level=(30.0 + 230.0 * stagnation) * math.exp(rng.gauss(0.0, 0.20)),
+        level=(LEVEL_FLOOR + (LEVEL_CEILING - LEVEL_FLOOR) * emission)
+        * math.exp(rng.gauss(0.0, 0.18)),
         diurnal=rng.uniform(0.16, 0.50),
         weekly=rng.uniform(0.0, 0.08),
         wind_clearance=rng.uniform(0.55, 1.55),
         blh_clearance=rng.uniform(0.15, 0.55),
-        ozone=rng.uniform(38.0, 78.0),
+        # Clean air holds more ozone, and high ground more of it than low: the two
+        # pollutant axes then point in different directions instead of being one.
+        ozone=40.0 + 44.0 * (1.0 - emission) + rng.uniform(-6.0, 6.0),
         ozone_peak=rng.uniform(12.5, 17.5),
         temperature_bias=rng.uniform(-2.5, 2.5),
         humidity=rng.uniform(45.0, 80.0),
         rain_rate=rng.uniform(0.04, 0.22),
-        wind_scale=rng.uniform(0.65, 1.55),
+        wind_scale=rng.uniform(0.65, 1.55) * (1.0 + 0.35 * altitude),
         wind_direction=rng.uniform(0.0, 360.0),
         dust=rng.uniform(0.25, 0.85) + 0.7 * west,
-        stagnation=stagnation,
     )
 
 
+def _level_range(locations: list) -> tuple[float, float]:
+    """The roster's own emission range, so one hour still spans 优…严重污染."""
+    values = [
+        geography.emission_intensity
+        for location in locations
+        if (geography := geography_for(str(location["city"]))) is not None
+    ]
+    return (min(values), max(values)) if values else (0.0, 100.0)
+
+
 def _regimes(locations: list, seed: int) -> dict[int, Regime]:
+    level_range = _level_range(locations)
     return {
         int(location["location_id"]): _regime(
             _rng(seed, int(location["location_id"])),
             float(location["latitude"]),
             float(location["longitude"]),
+            geography_for(str(location["city"])),
+            level_range,
         )
         for location in locations
     }

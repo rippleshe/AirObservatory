@@ -9,15 +9,33 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
-from backend.city_catalog import region_for
+from backend.city_catalog import CityGeography, geography_for, region_for
 from backend.repository import active_location_rows
 
 from .features import PCA_FEATURES, load_city_feature_frame
 
 REPRESENTATIVE_RULE = (
     "All city references with at least 168 complete pollution-weather paired hours "
-    "in the same common analysis window are included. Spatially correlated CAMS "
-    "grid cells are not independent ground observations."
+    "in the same common analysis window, and a complete static geography row, are "
+    "included. Spatially correlated CAMS grid cells are not independent ground "
+    "observations."
+)
+
+# The static half of the feature vector: measured elevation, relief and population
+# plus synthetic roads and industrial land (scripts/build_city_geography.py). They
+# are what lets the components be read as something — without them the first axis
+# is "concentration is high here" and the second is noise. The emission index those
+# columns are folded into is deliberately not a feature: it is a combination of
+# them, and a PCA fed both would spend a component counting one fact twice.
+#
+# These names are also CityGeography attribute names, which is what
+# ``_geography_features`` relies on.
+GEOGRAPHY_FEATURES = (
+    "elevation_m",
+    "relief_m",
+    "population",
+    "road_density_index",
+    "industrial_share",
 )
 
 FINGERPRINT_FEATURES = (
@@ -42,6 +60,7 @@ FINGERPRINT_FEATURES = (
     "corr_pm25_wind",
     "corr_pm25_boundary_layer",
     "corr_o3_temperature",
+    *GEOGRAPHY_FEATURES,
 )
 
 
@@ -61,6 +80,11 @@ class CityFingerprintArtifact:
     cluster_profiles: list[dict]
     cluster_count: int
     silhouette: float | None
+
+
+def _geography_features(geography: CityGeography) -> dict[str, float]:
+    """The static drivers, keyed by GEOGRAPHY_FEATURES so the two cannot drift."""
+    return {name: float(getattr(geography, name)) for name in GEOGRAPHY_FEATURES}
 
 
 def _numeric_complete(frame: pd.DataFrame) -> pd.DataFrame:
@@ -161,6 +185,12 @@ def fit_city_fingerprint(
             continue
         summary = _city_summary(common)
         location = location_by_id[location_id]
+        # No geography row, or a row with no population means a hole in the feature
+        # matrix; the city is left out rather than filled in, and the rule string
+        # says so.
+        geography = geography_for(str(location["city"]))
+        if geography is None or geography.population is None:
+            continue
         rows.append(
             {
                 "location_id": location_id,
@@ -169,6 +199,7 @@ def fit_city_fingerprint(
                 "region": region_for(location["city"]) or "其他",
                 "sample_hours": complete_count,
                 **summary,
+                **_geography_features(geography),
             }
         )
 

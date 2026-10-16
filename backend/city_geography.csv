@@ -56,7 +56,7 @@ location_id,city,province,elevation_m,relief_m,population,road_density_index,ind
 55,桂林,广西,153,131,1572300,69.0,0.422,27.1,"open-meteo:geocoding(geonames)+elevation","roads/industry/emission synthetic (seed 20261016)"
 56,绵阳,四川,473,76,1550000,64.9,0.448,28.3,"open-meteo:geocoding(geonames)+elevation","roads/industry/emission synthetic (seed 20261016)"
 57,遵义,贵州,860,386,2037775,53.1,0.299,23.0,"open-meteo:geocoding(geonames)+elevation","roads/industry/emission synthetic (seed 20261016)"
-58,宝鸡,陕西,570,1179,,39.2,0.202,18.1,"open-meteo:geocoding(geonames)+elevation","roads/industry/emission synthetic (seed 20261016)"
+58,宝鸡,陕西,570,1179,1437802,40.6,0.202,18.5,"open-meteo:geocoding(geonames)+elevation","roads/industry/emission synthetic (seed 20261016)"
 59,咸阳,陕西,389,112,1034081,51.3,0.395,24.5,"open-meteo:geocoding(geonames)+elevation","roads/industry/emission synthetic (seed 20261016)"
 60,克拉玛依,新疆,359,553,261445,32.5,0.813,77.3,"open-meteo:geocoding(geonames)+elevation","roads/industry/emission synthetic (seed 20261016)"
 61,济宁,山东,40,10,1241012,57.2,0.49,35.3,"open-meteo:geocoding(geonames)+elevation","roads/industry/emission synthetic (seed 20261016)"

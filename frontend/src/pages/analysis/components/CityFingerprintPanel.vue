@@ -53,6 +53,11 @@ const FEATURE_LABELS: Record<string, string> = {
   corr_pm25_wind: "PM2.5 与风速",
   corr_pm25_boundary_layer: "PM2.5 与边界层",
   corr_o3_temperature: "O₃ 与气温",
+  elevation_m: "海拔",
+  relief_m: "地形起伏",
+  population: "城市人口",
+  road_density_index: "路网密度",
+  industrial_share: "工业用地占比",
 };
 
 function featureLabel(name: string) {

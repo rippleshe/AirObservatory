@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vue-tsc -b && node scripts/check-boundaries.mjs && vite build",
+    "build": "vue-tsc -b && node scripts/check-boundaries.mjs && node scripts/check-contract.mjs && vite build",
     "check:visual": "node scripts/visual-check.mjs",
     "check:analysis": "node scripts/check-analysis.mjs",
     "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:contract": "node scripts/check-contract.mjs",
     "api:types": "openapi-typescript http://127.0.0.1:8110/openapi.json -o src/api/schema.d.ts"
   },
   "dependencies": {

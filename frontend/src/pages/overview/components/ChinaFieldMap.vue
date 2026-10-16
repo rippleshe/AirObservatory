@@ -6,7 +6,16 @@
    gestures. Layers: ocean graticule → lifted landmass (dot-grid atlas
    texture + soft shadow) → province hairlines → city marks with sonar
    halos on the worst provinces → severity-ranked collision-free labels.
-   Colours still come from the shared palette; the map owns no hues. */
+   Colours still come from the shared palette; the map owns no hues.
+
+   Coverage: public/maps/china.json carries 34 province-level units —
+   including 台湾省 710000, 香港特别行政区 810000 and 澳门特别行政区 820000 —
+   plus one unnamed feature, the nine-dash line (adcode 100000_JD), which
+   fitExtent excludes on purpose: drawn, it reaches far into the South China
+   Sea and squeezes the mainland into a corner of its own plate. Provinces
+   are hairlines and nothing here is joined by province name — the marks are
+   whatever cities the API returns (185 across 34 province-level units), so
+   the plate shows the coverage the database actually has. */
 import { geoConicEqualArea, geoGraticule, geoPath } from "d3-geo";
 import { interpolateRgb } from "d3-interpolate";
 import { select } from "d3-selection";

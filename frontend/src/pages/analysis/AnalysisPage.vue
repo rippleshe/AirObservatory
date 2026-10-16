@@ -111,17 +111,8 @@ function focusCity(id: number, name: string) {
         />
         <div v-else class="research-panel research-empty" role="status">
           <strong>{{ fingerprint.isPending.value ? "正在读取分析结果" : fingerprint.isError.value ? "全国统计结果加载失败" : "当前缺少有效的全国统计结果" }}</strong>
-          <small>统计图只使用已经完成计算的特征矩阵，不补造数据。</small>
         </div>
       </section>
-      <details v-if="fingerprintMeta" class="research-methods">
-        <summary>数据口径与解释边界</summary>
-        <div class="research-methods-body">
-          <p>{{ fingerprintMeta.representative_rule.startsWith("All city") ? "纳入共同历史窗口中具有至少 168 个完整污染—气象配对小时的全部城市。" : "本次仍为旧版省级代表样本，等待分析重算。" }} 数据来自 CAMS 模式分析场和 Open-Meteo 气象再分析；相邻城市的模式网格不应视为独立地面观测。</p>
-          <p v-if="fingerprint.data.value?.cluster_profiles.some((cluster) => cluster.city_count === 1)">分群存在单城市组，轮廓系数为 {{ fingerprintMeta.silhouette?.toFixed(2) ?? "—" }}；聚类用于探索相似性，不构成环境质量分类或因果判断。</p>
-          <p v-else>聚类用于探索城市特征相似性，不构成环境质量分类或因果判断。</p>
-        </div>
-      </details>
     </template>
 
     <template v-else>
@@ -130,6 +121,7 @@ function focusCity(id: number, name: string) {
         <span v-if="structureMeta">PCA 完整样本 <strong>{{ structureMeta.sample_count }}</strong></span>
         <span v-if="structureMeta">缺失比例 <strong>{{ (structureMeta.missing_fraction * 100).toFixed(1) }}%</strong></span>
         <span v-if="structureMeta">窗口 <strong>{{ fmt(structureMeta.window_start) }} — {{ fmt(structureMeta.window_end) }}</strong></span>
+        <span v-if="structureMeta">标准化：{{ structureMeta.standardization }}</span>
       </div>
       <section class="research-section">
         <div class="research-section-head">
@@ -161,14 +153,9 @@ function focusCity(id: number, name: string) {
         </div>
         <div v-else class="research-panel research-empty" role="status">
           <strong>配对气象样本不足</strong>
-          <small>只有同一时刻的污染物和气象记录都有效时才参与统计。</small>
+          <small>请在右上角切换城市。</small>
         </div>
       </section>
-      <footer class="research-evidence">
-        <span>关联结构仅反映样本内的统计关系，不作为污染成因的因果证明。</span>
-        <span>气象配对窗口与历史 PCA 产物独立，不混合样本量。</span>
-        <span v-if="structureMeta">标准化：{{ structureMeta.standardization }}</span>
-      </footer>
     </template>
   </section>
 </template>

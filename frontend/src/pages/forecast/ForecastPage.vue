@@ -72,7 +72,6 @@ const latestForecast = computed(() => {
   return { ...data, series: [...latest.values()] };
 });
 const availableModels = computed(() => latestForecast.value?.series.map((row) => row.model_name) ?? []);
-const modelRows = computed(() => (latestForecast.value?.series ?? []).filter((row) => chosenModels.value.includes(row.model_name)));
 const errorRows = computed(() => {
   return (validation.data.value?.models ?? []).map((model) => ({
     name: model.model_name,
@@ -87,6 +86,15 @@ const fmtTime = (time: string) => new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit",
   minute: "2-digit", hour12: false,
 }).format(new Date(time));
+
+/* The batch facts the disclosure block used to hold, in one line: the snapshot
+   times are older than the chart unless somebody says how old they are. */
+const batchSummary = computed(() => {
+  const series = latestForecast.value?.series ?? [];
+  if (!series.length) return "";
+  const newest = series.reduce((a, b) => (+new Date(a.snapshot_at) >= +new Date(b.snapshot_at) ? a : b));
+  return `${series.length} 个模型批次 · 最新快照 ${fmtTime(newest.snapshot_at)}`;
+});
 
 function toggleModel(name: string) {
   if (chosenModels.value.includes(name)) chosenModels.value = chosenModels.value.filter((row) => row !== name);
@@ -110,7 +118,7 @@ function toggleModel(name: string) {
     <section class="research-section">
       <div class="research-section-head">
         <h2>历史演变与多模型预测</h2>
-        <span>历史分析与地面观测独立显示</span>
+        <span v-if="batchSummary">{{ batchSummary }}</span>
       </div>
       <div class="research-panel">
         <div class="forecast-model-controls" role="group" aria-label="显示预测模型">
@@ -124,20 +132,6 @@ function toggleModel(name: string) {
         <ForecastTrajectory :history="history.data.value" :observation="observation.data.value"
           :forecast="latestForecast" :active-models="chosenModels" />
       </div>
-      <details class="research-methods">
-        <summary>预测批次与数据来源</summary>
-        <div class="research-methods-body">
-          <p>历史分析为 CAMS，地面观测来自 OpenAQ；观测缺失不连线。LSTM 的监督目标是 CAMS 分析场，不能将其验证误差理解为相对地面实测的误差。</p>
-          <div v-if="modelRows.length" class="forecast-issues">
-            <div v-for="row in modelRows" :key="row.model_name">
-              <strong>{{ row.model_name }}</strong>
-              <span class="data-mono">{{ fmtTime(row.snapshot_at) }}</span>
-              <span>{{ row.points.length }}h</span>
-              <code>{{ row.model_revision }}</code>
-            </div>
-          </div>
-        </div>
-      </details>
     </section>
 
     <section class="research-section">
@@ -151,6 +145,8 @@ function toggleModel(name: string) {
       <div v-if="validation.data.value" class="validation-context">
         <span><strong>{{ validation.data.value.models[0]?.samples ?? 0 }}</strong> 个验证窗口</span>
         <span>{{ fmtTime(validation.data.value.validation_start) }} — {{ fmtTime(validation.data.value.validation_end) }}</span>
+        <span>模型版本 <strong>{{ validation.data.value.model_version }}</strong></span>
+        <span v-if="readiness.data.value">地面观测训练条件 <strong>{{ readiness.data.value.ready ? "满足" : "未满足" }}</strong>（{{ readiness.data.value.observation_rows }} 行有效观测）</span>
       </div>
       <div v-if="errorRows.length" class="research-panel research-panel-pad">
         <div class="error-grid" role="table" :aria-label="selectedMetric.toUpperCase() + ' 预测时效误差矩阵'">
@@ -198,14 +194,6 @@ function toggleModel(name: string) {
         <strong>尚不足以绘制后验误差走势</strong>
         <span>已积累 {{ backtest.data.value?.samples.length ?? 0 }} 条核验样本，至少需要 30 条。预测必须在目标时刻到达后与有效数据配对。</span>
       </div>
-      <details class="research-methods">
-        <summary>模型验证与训练条件</summary>
-        <div class="research-methods-body">
-          <p>上方误差矩阵来自固定的 CAMS 验证集；后验回测来自之后逐步积累的预测与核验记录。不同目标、时间窗及样本集合的误差不能直接排名。</p>
-          <p v-if="validation.data.value">验证模型版本：<code>{{ validation.data.value.model_version }}</code></p>
-          <p>地面观测训练条件：{{ readiness.data.value?.ready ? "满足" : "未满足或待核验" }}<template v-if="readiness.data.value">；有效观测行数 {{ readiness.data.value.observation_rows }}</template>。</p>
-        </div>
-      </details>
     </section>
   </section>
 </template>
@@ -221,10 +209,6 @@ function toggleModel(name: string) {
 .forecast-model-controls button.active { background: var(--canvas-subtle); border-color: var(--hairline-strong); color: var(--ink); }
 .model-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--model-color); opacity: .35; }
 .forecast-model-controls button.active .model-dot { opacity: 1; }
-.forecast-issues { display: grid; gap: 5px; margin-top: 12px; color: var(--ink-secondary); font-size: 13px; }
-.forecast-issues > div { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 15px; row-gap: 2px; }
-.forecast-issues strong { color: var(--ink); min-width: 110px; font-weight: 650; }
-.forecast-issues code { overflow-wrap: anywhere; color: var(--muted); font-size: 12px; }
 .validation-context { display: flex; flex-wrap: wrap; gap: 6px 26px; padding: 0 0 16px; color: var(--ink-secondary); font-size: 13px; }
 .validation-context strong { color: var(--ink); font-weight: 650; }
 .backtest-pending { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px 18px; padding: 24px; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--sheet); }

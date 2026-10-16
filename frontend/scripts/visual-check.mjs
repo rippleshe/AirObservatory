@@ -95,10 +95,11 @@ try {
 
   const analysis = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await analysis.goto("http://127.0.0.1:5173/analysis", { waitUntil: "networkidle" });
-  const analysisMethods = analysis.locator(".research-methods").first();
-  if (await analysisMethods.evaluate((el) => el.open)) throw new Error("Analysis methods expanded by default");
-  await analysisMethods.locator("summary").click();
-  if (!(await analysisMethods.locator(".research-methods-body").isVisible())) throw new Error("Analysis methods inaccessible");
+  /* The page used to fold its methods and its table caveats into disclosures; those
+     blocks are gone, so what gets guarded now is that they stayed gone and that the
+     sample-count strip they sat next to survived them. */
+  if (await analysis.locator(".research-methods").count()) throw new Error("Analysis still carries a methods disclosure");
+  if ((await analysis.locator(".research-evidence span").count()) < 3) throw new Error("Analysis evidence strip lost its sample counts");
   await analysis.getByRole("button", { name: "单城市关联" }).click();
   await analysis.locator(".structure-panel").waitFor({ state: "visible", timeout: 18000 });
   report.push({ interaction: "national PCA→city PCA", ok: true });
@@ -137,14 +138,20 @@ try {
 
   const forecast = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await forecast.goto("http://127.0.0.1:5173/forecast", { waitUntil: "networkidle" });
-  if (await forecast.locator(".forecast-issues").isVisible()) throw new Error("Dense forecast metadata visible by default");
-  await forecast.getByText("预测批次与数据来源").click();
-  if (!(await forecast.locator(".forecast-issues").isVisible())) throw new Error("Forecast batches cannot be expanded");
+  /* The batch metadata moved out of a disclosure into the section head; the model
+     legend is the interaction this page has left, so that is what is exercised. */
+  if (await forecast.locator(".research-methods").count()) throw new Error("Forecast still carries a methods disclosure");
+  const forecastModels = forecast.locator(".forecast-model-controls button");
+  if ((await forecastModels.count()) !== 4) throw new Error("Forecast model legend lost a model");
+  await forecastModels.nth(1).click();
+  if ((await forecastModels.nth(1).getAttribute("aria-pressed")) !== "false") throw new Error("Model toggle did not switch off");
+  await forecastModels.nth(1).click();
+  if ((await forecastModels.nth(1).getAttribute("aria-pressed")) !== "true") throw new Error("Model toggle did not switch back on");
   await forecast.getByRole("button", { name: "RMSE" }).click();
   if ((await forecast.locator(".research-tabs button.active").last().textContent()) !== "RMSE") {
     throw new Error("Forecast error metric selection failed");
   }
-  report.push({ interaction: "forecast metadata disclosure, metric selection", ok: true });
+  report.push({ interaction: "forecast model legend toggle, metric selection", ok: true });
   await forecast.close();
 
   const mobileAnalysis = await browser.newPage({ viewport: { width: 390, height: 844 } });

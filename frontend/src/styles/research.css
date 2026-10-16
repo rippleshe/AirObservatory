@@ -102,30 +102,6 @@
   font-size: 12px;
 }
 .research-evidence strong { color: var(--ink-secondary); font-weight: 600; }
-.research-methods {
-  margin-top: 20px;
-  padding: 14px 0 0;
-  border-top: 1px solid var(--hairline);
-  color: var(--ink-secondary);
-}
-.research-methods summary {
-  width: fit-content;
-  cursor: pointer;
-  color: var(--ink-secondary);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.6;
-}
-.research-methods summary:hover { color: var(--ink); }
-.research-methods summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.research-methods-body {
-  max-width: 82ch;
-  padding: 10px 0 4px;
-  color: var(--ink-secondary);
-  font-size: 13px;
-  line-height: 1.7;
-}
-.research-methods-body p { margin: 0 0 8px; }
 @media(max-width: 760px) {
   .research-view { padding-top: 17px; }
   .research-head { align-items: start; }

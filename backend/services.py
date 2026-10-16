@@ -171,6 +171,11 @@ def _provider_status(
 
 def get_status() -> StatusResponse:
     settings = get_settings()
+    # A library that already holds OpenAQ ingestions is usable data even with no
+    # API key: the local demo library ships observations and no key at all, and
+    # reporting that provider as "disabled" next to its own station list would
+    # be self-contradictory.
+    openaq_has_records = latest_ingestion("OpenAQ", "ground_latest") is not None
     return StatusResponse(
         ok=True,
         storage="SQLite WAL",
@@ -183,7 +188,7 @@ def get_status() -> StatusResponse:
             "openaq": _provider_status(
                 "OpenAQ",
                 "ground_latest",
-                settings.openaq_api_key is not None,
+                settings.openaq_api_key is not None or openaq_has_records,
                 timedelta(hours=3),
             ),
         },

@@ -114,3 +114,52 @@ def region_for(city_name: str) -> str | None:
         if city.name == city_name:
             return city.region
     return None
+
+
+@dataclass(frozen=True)
+class CityGeography:
+    """Static explanatory variables for one city.
+
+    ``elevation_m`` / ``relief_m`` / ``population`` are measured values;
+    ``road_density_index`` / ``industrial_share`` / ``emission_intensity`` are
+    synthetic (Overpass mirrors are unreachable and the Geofabrik China extract is
+    1.61 GB). ``backend/city_geography.csv`` states which half is which in its last
+    column, and ``scripts/build_city_geography.py`` is what wrote it.
+    """
+
+    elevation_m: int
+    relief_m: int
+    population: int | None
+    road_density_index: float
+    industrial_share: float
+    emission_intensity: float
+
+
+def _load_geography() -> dict[str, CityGeography]:
+    """Empty table when the file is absent.
+
+    The demo generator and the fingerprint analysis both fall back to their own
+    geography, so a missing file degrades instead of taking the API down with it.
+    """
+    path = Path(__file__).with_name("city_geography.csv")
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8", newline="") as handle:
+        return {
+            row["city"]: CityGeography(
+                int(row["elevation_m"]),
+                int(row["relief_m"]),
+                int(row["population"]) if row["population"] else None,
+                float(row["road_density_index"]),
+                float(row["industrial_share"]),
+                float(row["emission_intensity"]),
+            )
+            for row in csv.DictReader(handle)
+        }
+
+
+CITY_GEOGRAPHY = _load_geography()
+
+
+def geography_for(city_name: str) -> CityGeography | None:
+    return CITY_GEOGRAPHY.get(city_name)

@@ -12,15 +12,7 @@ import SeverityBand from "./components/SeverityBand.vue";
 import SignalStrip from "./components/SignalStrip.vue";
 import TimeRibbon from "./components/TimeRibbon.vue";
 import VizHead from "./components/VizHead.vue";
-import {
-  AQI_LEVELS,
-  CHANGE_COLORS,
-  CHANGE_LEVELS,
-  aqiColor,
-  levelOfAqi,
-  PM25_BANDS,
-  stageColor,
-} from "../../lib/palette";
+import { levelOfAqi } from "../../lib/palette";
 import {
   provinceRepresentatives,
   type NationalCity,
@@ -191,43 +183,6 @@ const windField = computed(() => {
   });
 });
 
-/* The legend is a ramp ruler with boundary ticks. Segments are as wide as the value
-   interval they stand for (HJ 633 for AQI, the page's own bands for PM2.5), and each
-   number sits on its own boundary — equal-width boxes under evenly spread numbers
-   read as a scale while saying nothing true about it. The 24h-change key stays a
-   categorical row: its thresholds are ±8 / ±25 with open ends. */
-const AQI_TICKS = [0, 50, 100, 150, 200, 300, 500];
-const PM25_TICKS = [0, 35, 75, 115, 150];
-
-const ramp = computed(() => {
-  if (mapMetric.value === "aqi") {
-    return {
-      segments: AQI_LEVELS.map((level, index) => ({
-        color: aqiColor(level),
-        span: AQI_TICKS[index + 1]! - AQI_TICKS[index]!,
-      })),
-      ruler: AQI_TICKS.map((value) => ({ label: String(value), at: value / 500 })),
-      words: null,
-    };
-  }
-  if (mapMetric.value === "pm25") {
-    return {
-      segments: PM25_BANDS.map(([, color], index) => ({
-        color: stageColor(color),
-        span: PM25_TICKS[index + 1]! - PM25_TICKS[index]!,
-      })),
-      ruler: [...PM25_TICKS.map((value) => ({ label: String(value), at: value / 150 })),
-        { label: "+", at: 1 }],
-      words: null,
-    };
-  }
-  return {
-    segments: CHANGE_LEVELS.map((level) => ({ color: CHANGE_COLORS[level], span: 1 })),
-    ruler: [],
-    words: [...CHANGE_LEVELS],
-  };
-});
-
 const METRIC_ORDER: MapMetric[] = ["aqi", "pm25", "change"];
 const metricIndex = computed(() => METRIC_ORDER.indexOf(mapMetric.value));
 
@@ -350,6 +305,7 @@ onBeforeUnmount(() => {
         <div class="update-note">
           <strong class="data-mono">{{ formatTime(national.data.value?.latest_source_time) }}</strong>
           <span>{{ national.data.value?.aqi_standard ?? "HJ 633-2026" }}</span>
+          <span>CAMS 模式分析</span>
         </div>
       </header>
 
@@ -376,29 +332,6 @@ onBeforeUnmount(() => {
           <button :class="{ active: mapMetric === 'change' }" @click="mapMetric = 'change'">24h 变化</button>
         </div>
 
-        <div class="map-legend" aria-label="图例">
-          <div class="legend-ramp">
-            <div class="ramp-track">
-              <span
-                v-for="(segment, i) in ramp.segments"
-                :key="i"
-                class="ramp-seg"
-                :style="{ background: segment.color, flexGrow: segment.span }"
-              ></span>
-            </div>
-            <div v-if="ramp.words" class="ramp-ticks words">
-              <span v-for="word in ramp.words" :key="word" class="ramp-tick">{{ word }}</span>
-            </div>
-            <div v-else class="ramp-ticks">
-              <span
-                v-for="tick in ramp.ruler"
-                :key="tick.label"
-                class="ramp-tick"
-                :style="{ left: `${tick.at * 100}%` }"
-              >{{ tick.label }}</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       <div class="ribbon-dock">
@@ -407,7 +340,6 @@ onBeforeUnmount(() => {
           :times="ribbon.times"
           :values="ribbon.values"
           :index="scrubIndex"
-          :caption="`省级代表 ${displayProvinces.length} · ${ribbon.times.length} h · 断线＝缺测`"
           @update:index="scrubIndex = $event"
         />
         <div v-else class="ribbon-skeleton skeleton" role="status"></div>
@@ -419,7 +351,7 @@ onBeforeUnmount(() => {
 
       <div class="chart-head">
         <h3>省级分布</h3>
-        <span>{{ displayProvinces.length }} 个省级单位 · 每省取当前 AQI 最高的城市</span>
+        <span>{{ displayProvinces.length }} 个省级单位</span>
       </div>
       <SeverityBand
         :cities="displayProvinces"
@@ -430,7 +362,7 @@ onBeforeUnmount(() => {
 
       <div class="chart-head">
         <h3>城市：严重 × 变化</h3>
-        <span>{{ displayCities.length }} 城 · 点一个城市，全页跟着聚焦</span>
+        <span>{{ displayCities.length }} 城</span>
       </div>
       <CityScatter
         :cities="displayCities"
@@ -441,7 +373,7 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-if="weaveSources.pm25 || weaveSources.aqi" v-reveal="60" class="viz-section">
-      <VizHead label="演变" meta="720 h · 省级代表" />
+      <VizHead label="演变" :meta="`${formatTime(sliceTime)} · 720 h · 省级代表`" />
       <PollutionWeave
         :sources="weaveSources"
         :roster="provinces"
@@ -451,7 +383,7 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-if="signals.data.value" v-reveal="60" class="viz-section">
-      <VizHead label="未来" :meta="`CAMS 未来 24h · ${signals.data.value.evaluated} 城对比最新分析`" />
+      <VizHead label="未来" :meta="`CAMS 未来 24h · ${signals.data.value.evaluated} 城`" />
       <SignalStrip :signals="signals.data.value" @focus="pinCity" />
     </section>
 
@@ -603,72 +535,6 @@ onBeforeUnmount(() => {
   font-weight: var(--fw-strong);
 }
 
-.map-legend {
-  position: absolute;
-  z-index: 9;
-  left: 20px;
-  right: 80px;
-  bottom: 18px;
-  min-height: 44px;
-  padding: 9px 16px 7px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  background: var(--sheet-glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: var(--muted);
-  font-size: var(--fs-label);
-  box-shadow: var(--shadow-sm);
-}
-
-.legend-ramp {
-  min-width: 240px;
-  flex: 1;
-  max-width: 380px;
-}
-
-.ramp-track {
-  display: flex;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
-}
-
-.ramp-seg {
-  flex: 1;
-  transition: background var(--duration-normal) var(--ease-out);
-}
-
-.ramp-ticks {
-  position: relative;
-  margin-top: 4px;
-  height: 13px;
-  color: var(--muted);
-  font-family: var(--font-display);
-  font-size: 10.5px;
-  font-weight: var(--fw-medium);
-  letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums;
-}
-.ramp-tick { position: absolute; transform: translateX(-50%); }
-.ramp-tick:first-child { transform: none; }
-.ramp-tick:last-child { transform: translateX(-100%); }
-
-/* The 24h-change key is a categorical row, not a scale: five words over open
-   thresholds, so its cells stay equal. */
-.ramp-ticks.words {
-  position: static;
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  height: auto;
-}
-.ramp-ticks.words .ramp-tick { position: static; transform: none; }
-
 .map-skeleton {
   position: absolute;
   inset: 16px;
@@ -786,10 +652,5 @@ onBeforeUnmount(() => {
     right: auto;
   }
   .metric-switch button { padding: 0 12px; }
-  .map-legend {
-    left: 14px;
-    right: 70px;
-    bottom: 64px;
-  }
 }
 </style>

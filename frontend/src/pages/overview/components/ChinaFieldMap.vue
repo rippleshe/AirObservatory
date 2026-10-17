@@ -29,7 +29,18 @@ import type { Feature, MultiPolygon, Polygon } from "geojson";
 import { Minus, Plus, RotateCcw } from "lucide-vue-next";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { gsap, prefersReducedMotion } from "../../../lib/motion";
-import { AQI_LEVEL_COLORS, aqiColor, changeColor, changeState, pm25Color } from "../../../lib/palette";
+import {
+  AQI_LEVELS,
+  AQI_LEVEL_COLORS,
+  CHANGE_COLORS,
+  CHANGE_LEVELS,
+  PM25_BANDS,
+  aqiColor,
+  changeColor,
+  changeState,
+  pm25Color,
+  stageColor,
+} from "../../../lib/palette";
 import type { NationalCity } from "../provinces";
 
 type MapMetric = "aqi" | "pm25" | "change";
@@ -308,6 +319,49 @@ const legendTone = computed(() => {
   if (props.metric === "pm25") return pm25Color(60);
   if (props.metric === "change") return changeColor(20);
   return AQI_LEVEL_COLORS["轻度污染"] ?? "#64748b";
+});
+
+/* Segments are as wide as the value interval they stand for (HJ 633 for AQI, the
+   page's own bands for PM2.5), and every number sits on its own boundary: equal
+   boxes under evenly spread numbers read as a scale while saying nothing true
+   about it. The 24h-change key stays a categorical row — ±8 / ±25, open ends. */
+const AQI_TICKS = [0, 50, 100, 150, 200, 300, 500];
+const PM25_TICKS = [0, 35, 75, 115, 150];
+type RampSegment = { color: string; span: number };
+type RampTick = { label: string; at: number };
+
+const ramp = computed<{ segments: RampSegment[]; ruler: RampTick[]; words: string[] | null }>(() => {
+  if (props.metric === "pm25") {
+    return {
+      segments: PM25_BANDS.map(([, color], index) => ({
+        color: stageColor(color),
+        span: PM25_TICKS[index + 1]! - PM25_TICKS[index]!,
+      })),
+      ruler: [
+        ...PM25_TICKS.map((value) => ({ label: String(value), at: value / 150 })),
+        { label: "+", at: 1 },
+      ],
+      words: null,
+    };
+  }
+  if (props.metric === "change") {
+    return {
+      segments: CHANGE_LEVELS.map((level) => ({
+        color: CHANGE_COLORS[level] ?? "#64748b",
+        span: 1,
+      })),
+      ruler: [],
+      words: [...CHANGE_LEVELS],
+    };
+  }
+  return {
+    segments: AQI_LEVELS.map((level, index) => ({
+      color: aqiColor(level),
+      span: AQI_TICKS[index + 1]! - AQI_TICKS[index]!,
+    })),
+    ruler: AQI_TICKS.map((value) => ({ label: String(value), at: value / 500 })),
+    words: null,
+  };
 });
 
 /* ── time-machine interpolation ────────────────────────────────────────
@@ -1029,51 +1083,72 @@ onBeforeUnmount(() => {
       :style="{ left: `${pointer.x + 14}px`, top: `${pointer.y + 14}px` }"
     >{{ hoveredProvince }}</div>
 
-    <!-- What every mark on the plate means, in one place. The four shapes are
-         drawn as themselves: a legend that approximates its own marks is how
-         readers end up asking what the rings are. -->
-    <div class="mark-legend">
-      <div class="mark-row">
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="4.4" class="ml-fill" :style="{ fill: legendTone }" />
-        </svg>
-        <span>城市 · 颜色＝指标，大小无含义</span>
+    <!-- One legend for the whole plate, in a single strip along the bottom edge.
+         An earlier pass floated this as a card over the map and left the colour key
+         alone in its own full-width rail; between them they read as two loose slabs
+         with the map squeezed in the middle. The strip carries all three things the
+         plate needs said: what colour means, what each mark means, and what it is. -->
+    <div class="map-legend" aria-label="图例">
+      <div class="legend-ramp">
+        <div class="ramp-track">
+          <span
+            v-for="(segment, i) in ramp.segments"
+            :key="i"
+            class="ramp-seg"
+            :style="{ background: segment.color, flexGrow: segment.span }"
+          ></span>
+        </div>
+        <div v-if="ramp.words" class="ramp-ticks words">
+          <span v-for="word in ramp.words" :key="word" class="ramp-tick">{{ word }}</span>
+        </div>
+        <div v-else class="ramp-ticks">
+          <span
+            v-for="tick in ramp.ruler"
+            :key="tick.label"
+            class="ramp-tick"
+            :style="{ left: `${tick.at * 100}%` }"
+          >{{ tick.label }}</span>
+        </div>
       </div>
-      <div class="mark-row">
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="6.4" class="ml-ring" />
-          <circle cx="8" cy="8" r="2.6" class="ml-fill" :style="{ fill: legendTone }" />
-        </svg>
-        <span>有近期地面观测</span>
-      </div>
-      <div class="mark-row">
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="4.2" class="ml-fill" :style="{ fill: legendTone }" />
-          <circle cx="8" cy="8" r="7.1" class="ml-ping" :style="{ stroke: legendTone }" />
-        </svg>
-        <span>当前最差省</span>
-      </div>
-      <div class="mark-row">
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="6.6" class="ml-cluster" :style="{ stroke: legendTone }" />
-          <text x="8" y="8.6" text-anchor="middle" class="ml-count">4</text>
-        </svg>
-        <span>聚合城市数 · 点开放大</span>
-      </div>
-      <div class="mark-row">
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <text x="1" y="12" class="ml-label">名</text>
-        </svg>
-        <span>只给最差的前几城与选中城市</span>
-      </div>
-      <button type="button" class="mark-row mark-toggle" :aria-pressed="windOn" @click="windOn = !windOn">
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M2 10.5 q3 -5 6 0 t6 0" class="ml-wind" />
-        </svg>
-        <span>近地风场 · 尾迹长度 ≈ 风速</span>
-        <b>{{ windOn ? "开" : "关" }}</b>
-      </button>
-      <p class="mark-foot">{{ cities.length }} 城 · CAMS 模式分析</p>
+
+      <ul class="legend-marks">
+        <li title="带细环的城市有近期地面观测">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.6" class="ml-ring" />
+            <circle cx="8" cy="8" r="2.8" class="ml-fill" :style="{ fill: legendTone }" />
+          </svg>地面观测
+        </li>
+        <li title="当前指标最差的那个省，带扩散环">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="4.2" class="ml-fill" :style="{ fill: legendTone }" />
+            <circle cx="8" cy="8" r="7.1" class="ml-ping" :style="{ stroke: legendTone }" />
+          </svg>最差省
+        </li>
+        <li title="圈里的数字是聚合在一起的城市数，点一下放大">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.6" class="ml-cluster" :style="{ stroke: legendTone }" />
+            <text x="8" y="8.6" text-anchor="middle" class="ml-count">4</text>
+          </svg>聚合城市
+        </li>
+        <li title="只有最差的前几城与选中的城市带名称">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <text x="0" y="12" class="ml-label">名</text>
+          </svg>名称
+        </li>
+        <li>
+          <button
+            type="button"
+            class="legend-toggle"
+            :aria-pressed="windOn"
+            title="近地风场粒子：尾迹长度 ≈ 风速"
+            @click="windOn = !windOn"
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M2 10.5 q3 -5 6 0 t6 0" class="ml-wind" />
+            </svg>风场<b>{{ windOn ? "开" : "关" }}</b>
+          </button>
+        </li>
+      </ul>
     </div>
 
     <!-- Tooltip: the same reading the page would give, anchored to the dot -->
@@ -1245,16 +1320,21 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-/* Sits above the page's ramp legend (bottom: 18px + its 44px + a gap). */
-.mark-legend {
+/* One strip along the bottom-left: colour key, mark key, nothing else. It hugs its
+   own content (a full-width rail with a thin ramp inside it was mostly empty white)
+   and stops short of the zoom controls' corner. */
+.map-legend {
   position: absolute;
   z-index: 9;
   left: 20px;
-  bottom: 74px;
-  display: grid;
-  gap: 3px;
-  padding: 10px 12px 8px;
-  max-width: 268px;
+  bottom: 16px;
+  width: fit-content;
+  max-width: calc(100% - 92px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 22px;
+  padding: 9px 16px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
   background: var(--sheet-glass, rgba(255, 255, 255, 0.9));
@@ -1264,57 +1344,98 @@ onBeforeUnmount(() => {
   font-size: var(--fs-label);
 }
 
-.mark-row {
+.legend-ramp {
+  flex: 0 1 340px;
+  min-width: 210px;
+}
+
+.ramp-track {
+  display: flex;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+.ramp-seg { flex: 1; }
+
+.ramp-ticks {
+  position: relative;
+  margin-top: 3px;
+  height: 12px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.ramp-tick { position: absolute; transform: translateX(-50%); }
+.ramp-tick:first-child { transform: none; }
+.ramp-tick:last-child { transform: translateX(-100%); }
+.ramp-ticks.words {
+  position: static;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  height: auto;
+}
+.ramp-ticks.words .ramp-tick { position: static; transform: none; }
+
+/* Marks, each drawn as itself and named in one word; the sentence lives in the
+   element's title, where it costs no layout. */
+.legend-marks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.legend-marks li {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 17px;
+  gap: 6px;
+  color: var(--ink-secondary);
+  white-space: nowrap;
 }
-.mark-row svg { flex: none; }
-.mark-row span { color: var(--ink-secondary); }
+.legend-marks svg { flex: none; width: 15px; height: 15px; }
 
-.ml-fill { stroke: var(--sheet); stroke-width: 0.9; }
-.ml-ring { fill: none; stroke: var(--ink); stroke-width: 1; opacity: 0.45; }
-.ml-ping { fill: none; stroke-width: 1.3; opacity: 0.55; }
-.ml-cluster { fill: var(--sheet); stroke-width: 1.6; }
+.ml-fill { stroke: var(--sheet); stroke-width: 1; }
+.ml-ring { fill: none; stroke: var(--ink); stroke-width: 1; opacity: 0.38; }
+.ml-ping { fill: none; stroke-width: 1.3; opacity: 0.5; }
+.ml-cluster { fill: var(--sheet); stroke-width: 1.5; }
 .ml-count { fill: var(--ink); font-size: 8px; font-weight: 700; }
 .ml-label { fill: var(--ink-secondary); font-size: 10px; font-weight: 600; }
 .ml-wind { fill: none; stroke: #94a3b8; stroke-width: 1.4; }
 
-.mark-toggle {
+.legend-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 0;
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
-  text-align: left;
   cursor: pointer;
 }
-.mark-toggle:hover span { color: var(--ink); }
-.mark-toggle b {
-  margin-left: auto;
-  color: var(--ink);
-  font-weight: 650;
-}
-.mark-toggle[aria-pressed="false"] span { text-decoration: line-through; }
-
-.mark-foot {
-  margin: 2px 0 0;
-  padding-top: 5px;
-  border-top: 1px solid var(--hairline-soft);
-  color: var(--faint);
-  font-size: 10.5px;
-  line-height: 1.45;
-}
+.legend-toggle:hover { color: var(--ink); }
+.legend-toggle b { color: var(--ink); font-weight: 650; }
+.legend-toggle[aria-pressed="false"] { text-decoration: line-through; }
 
 @media (max-width: 900px) {
-  .mark-legend { left: 14px; bottom: 68px; max-width: 220px; font-size: 11px; }
-  .mark-row span { font-size: 11px; }
+  .map-legend {
+    left: 14px;
+    bottom: 12px;
+    max-width: calc(100% - 74px);
+    padding: 8px 12px;
+    font-size: 11px;
+  }
+  .legend-ramp { flex-basis: 100%; }
 }
-.map-cluster circle { fill: var(--sheet); stroke-width: 2; }
+.map-cluster circle { fill: var(--sheet); stroke-width: 1.6; }
 .map-cluster text {
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   fill: var(--ink);
   pointer-events: none;

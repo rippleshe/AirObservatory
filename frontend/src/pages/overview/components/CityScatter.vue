@@ -172,6 +172,11 @@ onMounted(() => {
             ΔPM2.5 24h · µg/m³
           </text>
           <text class="cs-unit" :x="PAD.left - 8" :y="PAD.top - 4" text-anchor="end">AQI</text>
+          <!-- Sample size sits on the plot, the way a corner note does on a paper
+               figure: a ratio, so a city that could not be placed shows up here. -->
+          <text class="cs-count" :x="geometry.w - PAD.right" :y="PAD.top + 4" text-anchor="end">
+            n ＝ {{ plotted.length }} / {{ points.length }} 城
+          </text>
         </g>
 
         <g class="cs-ref">
@@ -202,13 +207,6 @@ onMounted(() => {
         <span class="data-mono">24h {{ changeText(hoverDot.change) }}</span>
       </div>
     </div>
-
-    <p class="cs-legend">
-      <span>x ＝ ΔPM2.5 24h · y ＝ AQI · 颜色 ＝ AQI 等级</span>
-      <span>虚线：稳定带 ±8 µg/m³、良 / 轻度界 100</span>
-      <span>贴名：恶化且已污染的前 {{ MAX_LABELS }} 城</span>
-      <span>n ＝ {{ plotted.length }} / {{ points.length }} 城 · 1 小时 · 缺失不落点</span>
-    </p>
   </div>
 </template>
 
@@ -247,6 +245,12 @@ onMounted(() => {
 .cs-unit {
   fill: var(--faint);
   font-size: 10.5px;
+}
+
+.cs-count {
+  fill: var(--faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 .cs-ref line {
@@ -301,19 +305,5 @@ onMounted(() => {
 .cs-tip strong {
   color: var(--ink);
   font-size: 12.5px;
-}
-
-.cs-legend {
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 18px;
-  color: var(--muted);
-  font-size: var(--fs-label);
-}
-.cs-legend span + span::before {
-  content: "·";
-  margin-right: 18px;
-  color: var(--hairline-strong);
 }
 </style>

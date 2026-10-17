@@ -104,8 +104,8 @@ const marks = computed(() => {
   return out;
 });
 
-/* The fact row re-encodes with the metric too: the median and its unit move
-   together, never a PM2.5 number sitting under an AQI headline. */
+/* The fact row re-encodes with the metric too, and each label carries its own rule
+   (24h 上升 is the ±8 threshold, not a sentence about thresholds). */
 const facts = computed(() => {
   const cities = props.cities;
   const medianOf = (pick: (city: NationalCity) => number | null | undefined) =>
@@ -116,24 +116,24 @@ const facts = computed(() => {
     const m = medianOf((city) => city.pm25);
     return [
       { dt: "PM2.5 中位", dd: m == null ? "—" : m.toFixed(1), small: " µg/m³" },
-      { dt: "24h 上升", dd: String(rising), small: " 省" },
-      { dt: "24h 改善", dd: String(falling), small: " 省" },
+      { dt: "24h 上升 ≥ +8", dd: String(rising), small: " 省" },
+      { dt: "24h 改善 ≤ −8", dd: String(falling), small: " 省" },
     ];
   }
   if (props.metric === "change") {
     const m = medianOf((city) => city.pm25_change_24h);
     const text = m == null ? "—" : `${m > 0 ? "+" : ""}${m.toFixed(1)}`;
     return [
-      { dt: "24h 变化中位", dd: text, small: " µg/m³" },
-      { dt: "上升", dd: String(rising), small: " 省" },
-      { dt: "改善", dd: String(falling), small: " 省" },
+      { dt: "Δ24h 中位", dd: text, small: " µg/m³" },
+      { dt: "上升 ≥ +8", dd: String(rising), small: " 省" },
+      { dt: "改善 ≤ −8", dd: String(falling), small: " 省" },
     ];
   }
   const m = medianOf((city) => city.china_aqi);
   return [
     { dt: "AQI 中位", dd: m == null ? "—" : String(Math.round(m)), small: "" },
-    { dt: "24h 上升", dd: String(rising), small: " 省" },
-    { dt: "24h 改善", dd: String(falling), small: " 省" },
+    { dt: "24h 上升 ≥ +8", dd: String(rising), small: " 省" },
+    { dt: "24h 改善 ≤ −8", dd: String(falling), small: " 省" },
   ];
 });
 
@@ -279,12 +279,6 @@ function tickStyle(mark: { start: number }) {
           <b class="data-mono">{{ mark.count }}</b>
         </span>
       </div>
-
-      <p class="band-legend">
-        <span>按数值升序 · 格宽等分</span>
-        <span>上升 / 改善 = Δ24h ≥ +8 / ≤ −8 µg/m³</span>
-        <span>暂无 ＝ 该省当面无读数</span>
-      </p>
     </div>
 
     <dl class="band-facts">
@@ -400,36 +394,22 @@ function tickStyle(mark: { start: number }) {
   font-weight: 600;
 }
 
-.band-legend {
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 18px;
-  color: var(--muted);
-  font-size: var(--fs-label);
-}
-.band-legend span + span::before {
-  content: "·";
-  margin-right: 18px;
-  color: var(--hairline-strong);
-}
+/* ── facts ── */
 
+/* Three facts across the full width: the row used to hug the left edge and leave
+   the right half of the band empty, which read as an unfinished page. */
 .band-facts {
   margin: 0;
   padding-top: 12px;
   border-top: 1px solid var(--hairline-soft);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .band-facts > div {
-  flex: 0 0 auto;
-  padding: 0 20px;
-  border-right: 1px solid var(--hairline-soft);
+  padding: 0 24px;
+  border-left: 1px solid var(--hairline-soft);
 }
-.band-facts > div:first-child { padding-left: 0; }
-.band-facts > div:last-child { border-right: 0; }
+.band-facts > div:first-child { padding-left: 0; border-left: 0; }
 .band-facts dt {
   color: var(--muted);
   font-size: 11px;

@@ -161,6 +161,25 @@ const peakStats = computed(() =>
   }),
 );
 
+/* The playhead's own label, kept inside the grid: at the live end the line sits on
+   the last column, where a centred label would be clipped by the plot edge. */
+function playheadLine(at: number | null) {
+  const total = times.value.length;
+  const align = at == null || total < 12 ? "center" : at >= total - 6 ? "right" : at <= 5 ? "left" : "center";
+  return {
+    silent: true,
+    symbol: "none",
+    animation: false,
+    lineStyle: {
+      color: token("--ink", chartTheme().ink),
+      width: 1.4,
+      opacity: 0.75,
+      type: "solid",
+    },
+    data: at == null ? [] : [{ xAxis: at }],
+  };
+}
+
 function render() {
   if (!inView.value) return;
   if (!chart) return;
@@ -256,20 +275,10 @@ function render() {
               borderWidth: 1.5,
             },
           },
-          /* The page's time authority, drawn on the loom: scrubbing moves this
-             line instead of re-rendering 720 × 34 cells. */
-          markLine: {
-            silent: true,
-            symbol: "none",
-            animation: false,
-            lineStyle: {
-              color: token("--ink", chartTheme().ink),
-              width: 1.4,
-              opacity: 0.75,
-              type: "solid",
-            },
-            data: playhead.value == null ? [] : [{ xAxis: playhead.value }],
-          },
+          /* The page's time authority, drawn on the loom, labelled with the hour it
+             stands on: a bare vertical line across a heatmap is exactly the kind of
+             mark that used to need a sentence in the footer to explain it. */
+          markLine: playheadLine(playhead.value),
           progressive: 2000,
         },
       ],
@@ -293,7 +302,7 @@ watch(inView, () => render());
    instead of going through a full re-render of the loom. */
 watch(playhead, (at) => {
   if (!chart || !inView.value) return;
-  chart.setOption({ series: [{ markLine: { data: at == null ? [] : [{ xAxis: at }] } }] });
+  chart.setOption({ series: [{ markLine: playheadLine(at) }] });
 });
 
 /* A variable swap repaints every cell: dip the loom so the exchange reads as
@@ -372,9 +381,6 @@ defineExpose({ headline, peakStats });
       <span v-for="([label, color]) in band.bands" :key="label">
         <i :style="{ background: color }"></i>{{ label }}
       </span>
-      <span class="key-rule">色阶上限 {{ vmax }}{{ unitSuffix }}</span>
-      <span class="key-rule">≥{{ band.exceed }}{{ unitSuffix }} ＝ 超标</span>
-      <span class="key-rule">深色竖线 ＝ 时间轴所在小时 · 白色竖线 ＝ 日界 · 行按纬度自北向南</span>
     </footer>
   </article>
 </template>
@@ -517,7 +523,4 @@ defineExpose({ headline, peakStats });
   margin-right: 5px;
 }
 
-.key-rule {
-  color: var(--faint);
-}
 </style>

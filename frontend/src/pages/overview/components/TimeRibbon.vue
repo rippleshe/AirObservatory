@@ -16,10 +16,9 @@ const props = withDefaults(
     values: (number | null)[];
     /** null = live, the playhead rests on 现在. */
     index: number | null;
-    caption?: string;
     autoplay?: boolean;
   }>(),
-  { caption: "省级代表 PM2.5 中位数 · 近 30 天", autoplay: false },
+  { autoplay: false },
 );
 
 const emit = defineEmits<{ "update:index": [index: number | null] }>();
@@ -315,14 +314,12 @@ onBeforeUnmount(() => {
         <strong class="data-mono clock">{{ fmtTime(times[activeIndex]) }}</strong>
         <span class="position" :class="{ live: index == null }">{{ positionLabel }}</span>
         <span v-if="activeValue != null" class="value">
-          <em>中位 PM2.5</em>
           <b class="data-mono">{{ activeValue.toFixed(1) }}</b>
           <small>µg/m³</small>
         </span>
       </div>
 
       <div class="head-right">
-        <span class="caption">{{ caption }}</span>
         <button v-if="index != null" type="button" class="now" @click="backToNow">
           回到现在
         </button>
@@ -342,6 +339,9 @@ onBeforeUnmount(() => {
           <stop offset="100%" class="ribbon-fill-stop" stop-opacity=".01" />
         </linearGradient>
       </defs>
+
+      <!-- What the line is, as a series label rather than a sentence in the head. -->
+      <text class="series-name" :x="5" :y="12">省级代表中位 PM2.5</text>
 
       <!-- ruled severity zones, the scale legend -->
       <template v-for="zone in visibleZones" :key="zone.label || 'top'">
@@ -508,18 +508,16 @@ onBeforeUnmount(() => {
   letter-spacing: -0.02em;
 }
 .position {
-  padding: 2px 8px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
   color: var(--muted);
   font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
 }
 .position.live {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
   color: #ffffff;
   background: var(--ink);
-  border-color: var(--ink);
   font-weight: 600;
 }
 .value {
@@ -527,12 +525,6 @@ onBeforeUnmount(() => {
   align-items: baseline;
   gap: 5px;
   white-space: nowrap;
-}
-.value em {
-  font-style: normal;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 500;
 }
 .value b {
   color: var(--ink);
@@ -550,11 +542,10 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
 }
-.caption {
-  color: var(--muted);
-  font-size: var(--fs-label);
-  font-weight: 500;
-  white-space: nowrap;
+.series-name {
+  fill: var(--muted);
+  font-size: 10.5px;
+  letter-spacing: 0.01em;
 }
 .now {
   min-height: 28px;
@@ -620,7 +611,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 900px) {
   .clock { font-size: 19px; }
-  .caption { display: none; }
+
   .value { display: none; }
 }
 </style>
